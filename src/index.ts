@@ -414,69 +414,75 @@ export const on = <T extends EventTarget = EventTarget>(target: T | null) => {
 };
 
 /**
- * Attaches a delegated event listener using event bubbling.
+ * Attaches a **Delegated Event Listener** using event bubbling.
  * 
- * The handler only fires if the event target (or an ancestor) matches the
- * selector. This is more efficient than attaching listeners to many elements.
- * The matched element type is inferred from the selector.
+ * 🧠 **Architecture**: `Root -> Selector -> Event`
+ * This ordering allows you to group interactions by the target element type.
  * 
- * @template K - The event type key from HTMLElementEventMap
- * @template S - The CSS selector string for matching targets
- * @param root - The root element to attach the listener to (typically a container)
- * @returns A curried function that accepts event type, selector, handler, and options
+ * 🛡️ **Type Safety**:
+ * - The `match` argument is inferred from the CSS selector (e.g. `'button'` -> `HTMLButtonElement`).
+ * - The `event` argument is inferred from the event name (e.g. `'click'` -> `MouseEvent`).
+ * 
+ * @param root - The container element (e.g. `<ul>`, `form`, `document`).
  * 
  * @example
  * ```typescript
- * // Delegate clicks on list items
- * const list = document.querySelector('ul');
- * const cleanup = onDelegated(list)('click', 'li', (e, listItem) => {
- *   console.log('Clicked item:', listItem.textContent);
- *   // listItem is typed as HTMLLIElement
+ * // 1. Define the scope (e.g. a User Table)
+ * const table = find(document)('#user-table');
+ * const onTable = onDelegated(table);
+ * 
+ * // 2. Define interactions for specific child elements
+ * // Type inference knows 'tr' is HTMLTableRowElement
+ * const onRow = onTable('tr');
+ * 
+ * onRow('click', (e, row) => {
+ *   console.log('Row clicked', row.dataset.id);
+ *   cls.toggle(row)('selected');
  * });
  * 
- * // Delegate to buttons with a class
- * onDelegated(document)('click', 'button.delete', (e, btn) => {
- *   e.preventDefault();
+ * // 3. Define interactions for buttons
+ * // Type inference knows 'button.delete' is HTMLButtonElement
+ * onTable('button.delete')('click', (e, btn) => {
+ *   e.stopPropagation();
  *   const id = btn.dataset.id;
- *   deleteItem(id);
+ *   api.delete(id);
  * });
- * 
- * // Form input delegation
- * const form = document.querySelector('form');
- * onDelegated(form)('input', 'input[type="text"]', (e, input) => {
- *   console.log('Input changed:', input.value);
- * });
- * 
- * // Works with complex selectors
- * onDelegated(document)('click', '.card .btn-primary', (e, btn) => {
- *   // Handler only fires for .btn-primary inside .card
- * });
- * 
- * // Performance benefit: One listener handles all current AND future elements
- * // Great for dynamically added content
- * onDelegated(document)('click', '.dynamic-button', handler);
- * // New buttons added later will automatically work
  * ```
  */
-export const onDelegated = (root: HTMLElement | Document | null) => {
-  return <K extends keyof HTMLElementEventMap, S extends string>(
-    eventType: K,
-    selector: S,
-    handler: (event: HTMLElementEventMap[K], match: ParseSelector<S>) => void,
-    options: boolean | AddEventListenerOptions = false
-  ): Unsubscribe => {
-    if (!root) return () => { };
+export const onDelegated = (root: ParentNode | null = document) => {
+  /**
+   * @param selector - CSS Selector to match target elements against (e.g. 'li', '.btn')
+   */
+  return <S extends string>(selector: S) => {
+    /**
+     * @param eventType - Standard DOM event name (click, input, change, etc)
+     * @param handler - Callback receiving the typed Event and the typed Matched Element
+     * @param options - EventListener options (capture, passive, etc)
+     */
+    return <K extends keyof HTMLElementEventMap>(
+      eventType: K,
+      handler: (event: HTMLElementEventMap[K], match: ParseSelector<S>) => void,
+      options: boolean | AddEventListenerOptions = false
+    ): Unsubscribe => {
+      if (!root) return () => {};
 
-    const listener = (e: Event) => {
-      const target = e.target as Element;
-      const match = target?.closest?.(selector);
-      if (match && root.contains(match)) {
-        handler(e as HTMLElementEventMap[K], match as ParseSelector<S>);
-      }
+      const listener = (e: Event) => {
+        const target = e.target as Element;
+        
+        // 1. Find the closest ancestor (or self) that matches the selector
+        const match = target.closest ? target.closest(selector) : null;
+
+        // 2. Ensure the match exists AND is actually inside our root container
+        // (Prevents edge cases with disconnected nodes or Shadow DOM)
+        if (match && root.contains(match)) {
+          // @ts-ignore - TS inference here is complex but safe due to ParseSelector
+          handler(e as HTMLElementEventMap[K], match as ParseSelector<S>);
+        }
+      };
+
+      root.addEventListener(eventType, listener, options);
+      return () => root.removeEventListener(eventType, listener, options);
     };
-
-    root.addEventListener(eventType, listener, options);
-    return () => root.removeEventListener(eventType, listener, options);
   };
 };
 
@@ -7310,7 +7316,29 @@ export const bind = {
 // =============================================================================
 // 40. VIEW FACTORY & BINDER GENERATOR
 // =============================================================================
-
+/**
+ * Helper to bind multiple events to refs in one go.
+ * 
+ * @example
+ * bindEvents(refs, {
+ *   btn: { click: handleClick },
+ *   input: { input: handleInput, keydown: handleKey }
+ * })
+ */
+export const bindEvents = <K extends string>(
+  refs: Record<K, HTMLElement>, 
+  map: Partial<Record<K, Record<string, (e: Event, el: HTMLElement) => void>>>
+) => {
+  Object.entries(map).forEach(([refKey, events]) => {
+    const el = refs[refKey as K];
+    if (!el) return;
+    
+    Object.entries(events as Record<string, any>).forEach(([evtName, handler]) => {
+      // Uses our standard 'on' function
+      on(el)(evtName as any, (e) => handler(e, el));
+    });
+  });
+};
 /**
  * Defines the shape of the Refs object returned by `view()`.
  * Use a generic to specify keys: `view<'title' | 'button'>`
