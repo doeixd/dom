@@ -3605,161 +3605,6 @@ export declare const Cookie: {
  * );
  * ```
  */
-export declare const Http: {
-    /**
-     * Performs a GET request.
-     *
-     * **Response Type**: Automatically parses JSON response. For non-JSON responses,
-     * use native fetch() instead.
-     *
-     * **Error Handling**: Throws Error with status code and text on non-2xx responses.
-     *
-     * @template T - The expected response type
-     * @param url - The URL to fetch from
-     * @param headers - Optional request headers
-     * @returns Promise resolving to parsed JSON response
-     * @throws Error if response is not ok (non-2xx status)
-     *
-     * @example
-     * ```typescript
-     * // Basic GET
-     * const users = await Http.get<User[]>('/api/users');
-     *
-     * // With custom headers
-     * const data = await Http.get<Data>('/api/data', {
-     *   'Authorization': 'Bearer token',
-     *   'Accept-Language': 'en-US'
-     * });
-     *
-     * // Error handling
-     * try {
-     *   const user = await Http.get<User>('/api/user/999');
-     * } catch (error) {
-     *   // Error message: "Http.get 404: Not Found"
-     *   console.error(error);
-     * }
-     *
-     * // With query parameters (use Params utility)
-     * const query = Params.encode({ page: 1, limit: 10 });
-     * const results = await Http.get<Results>(`/api/search?${query}`);
-     * ```
-     */
-    get: <T>(url: string, headers?: Record<string, string>) => Promise<T>;
-    /**
-     * Performs a POST request with JSON body.
-     *
-     * **Curried API**: Takes URL first, then body, then optional headers.
-     * This allows partial application for reusable endpoints.
-     *
-     * **Content-Type**: Automatically sets 'application/json'. Override in headers if needed.
-     *
-     * @template T - The expected response type
-     * @param url - The URL to post to
-     * @returns A curried function accepting body
-     *
-     * @example
-     * ```typescript
-     * // Basic POST
-     * const user = await Http.post('/api/users')
-     *   ({ name: 'John', email: 'john@example.com' })
-     *   ();
-     *
-     * // With auth headers
-     * const response = await Http.post('/api/login')
-     *   ({ username: 'admin', password: 'secret' })
-     *   ({ 'X-CSRF-Token': csrfToken });
-     *
-     * // Partial application for reusable endpoint
-     * const createUser = Http.post('/api/users');
-     * const user1 = await createUser({ name: 'Alice' })();
-     * const user2 = await createUser({ name: 'Bob' })();
-     *
-     * // Form submission
-     * const formData = Form.serialize(form);
-     * const result = await Http.post('/api/submit')
-     *   (formData)
-     *   ({ 'Authorization': `Bearer ${token}` });
-     *
-     * // Error handling with response body
-     * try {
-     *   await Http.post('/api/users')({ email: 'invalid' })();
-     * } catch (error) {
-     *   // Server returned 400: Bad Request
-     *   console.error('Validation failed:', error);
-     * }
-     * ```
-     */
-    post: (url: string) => <T>(body: any) => (headers?: Record<string, string>) => Promise<T>;
-    /**
-     * Performs a PUT request with JSON body.
-     *
-     * **Use Case**: Typically used for updating existing resources.
-     *
-     * **Curried API**: Same pattern as POST - url -> body -> headers.
-     *
-     * @template T - The expected response type
-     * @param url - The URL to put to
-     * @returns A curried function accepting body
-     *
-     * @example
-     * ```typescript
-     * // Update user
-     * const updated = await Http.put('/api/users/123')
-     *   ({ name: 'John Updated', email: 'new@example.com' })
-     *   ({ 'Authorization': `Bearer ${token}` });
-     *
-     * // Partial application
-     * const updateUser = (id: number) => Http.put(`/api/users/${id}`);
-     * await updateUser(123)({ name: 'Alice' })();
-     *
-     * // Optimistic update pattern
-     * const originalData = { ...userData };
-     * modify(userElement)({ text: newName }); // Update UI immediately
-     * try {
-     *   await Http.put(`/api/users/${id}`)({ name: newName })();
-     * } catch (error) {
-     *   modify(userElement)({ text: originalData.name }); // Revert on error
-     * }
-     * ```
-     */
-    put: (url: string) => <T>(body: any) => (headers?: Record<string, string>) => Promise<T>;
-    /**
-     * Performs a DELETE request.
-     *
-     * **Response**: Many DELETE endpoints return empty responses or confirmation objects.
-     *
-     * @template T - The expected response type (often void or { success: boolean })
-     * @param url - The URL to delete
-     * @param headers - Optional request headers
-     * @returns Promise resolving to parsed JSON response
-     *
-     * @example
-     * ```typescript
-     * // Delete resource
-     * await Http.delete('/api/users/123', {
-     *   'Authorization': `Bearer ${token}`
-     * });
-     *
-     * // With confirmation
-     * const result = await Http.delete<{ success: boolean }>(
-     *   '/api/posts/456',
-     *   { 'Authorization': `Bearer ${token}` }
-   * );
-     * if (result.success) {
-     *   remove(postElement);
-     * }
-     *
-     * // Error handling
-     * try {
-     *   await Http.delete(`/api/items/${id}`);
-     *   remove(itemElement);
-     * } catch (error) {
-     *   alert('Failed to delete item');
-     * }
-     * ```
-     */
-    delete: <T>(url: string, headers?: Record<string, string>) => Promise<T>;
-};
 /**
  * Service Worker utilities for Progressive Web Apps (PWAs).
  *
@@ -5887,5 +5732,424 @@ export declare const view: <K extends string = string>(htmlString: string) => ()
  * ui.active(true);
  */
 export declare const binder: <R extends Record<string, HTMLElement>, Schema extends { [Key in keyof R]?: (el: HTMLElement) => Setter<any>; }>(refs: R, schema: Schema) => { [Key in keyof Schema]: Schema[Key] extends (el: any) => infer S ? S : never; };
+/**
+ * HTTP request method type.
+ */
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS';
+/**
+ * HTTP response status code.
+ */
+export type HttpStatus = 200 | 201 | 204 | 400 | 401 | 403 | 404 | 405 | 409 | 422 | 429 | 500 | 502 | 503 | (number & {});
+/**
+ * Flexible request init configuration.
+ * Supports any standard Fetch API options plus custom extensions.
+ *
+ * @template T - Custom header type overrides
+ */
+export interface HttpRequestInit extends Omit<RequestInit, 'body'> {
+    /** Request body - auto-stringified if object */
+    body?: BodyInit | Record<string, any> | null;
+    /** Base URL to prepend (overrides Http defaults) */
+    baseURL?: string;
+    /** Query parameters to append */
+    params?: Record<string, string | number | boolean | null | undefined>;
+    /** Custom timeout in ms (0 = no timeout) */
+    timeout?: number;
+    /** Retry count on network failure (default: 0) */
+    retries?: number;
+    /** Delay between retries in ms (default: 1000) */
+    retryDelay?: number;
+    /** Transform response before returning */
+    transform?: (data: any) => any;
+}
+/**
+ * HTTP response wrapper with metadata.
+ *
+ * @template T - The response data type
+ *
+ * @example
+ * ```typescript
+ * const res: HttpResponse<User> = await http.get('/users/1')({});
+ * if (res.ok) console.log(res.data); // User
+ * else console.error(res.statusText, res.error);
+ * ```
+ */
+export interface HttpResponse<T = any> {
+    /** True if status is 2xx */
+    ok: boolean;
+    /** HTTP status code */
+    status: HttpStatus;
+    /** Status text (e.g., "OK", "Not Found") */
+    statusText: string;
+    /** Response data (parsed JSON, text, blob, etc.) */
+    data: T | null;
+    /** Error object if request failed */
+    error: Error | null;
+    /** Raw Fetch Response object */
+    response: globalThis.Response;
+}
+/**
+ * HTTP client configuration.
+ * Defines defaults for all requests made by this client.
+ *
+ * @template H - Custom header keys type
+ */
+export interface HttpConfig<H extends string = string> {
+    /** Base URL for all requests (e.g., "https://api.example.com") */
+    baseURL?: string;
+    /** Default headers for all requests */
+    headers?: Record<H | string, string>;
+    /** Default timeout in ms (0 = no timeout) */
+    timeout?: number;
+    /** Retry policy for network failures */
+    retries?: number;
+    /** Delay between retries */
+    retryDelay?: number;
+    /** Request interceptor (runs before fetch) */
+    interceptRequest?: (init: HttpRequestInit) => HttpRequestInit | Promise<HttpRequestInit>;
+    /** Response interceptor (runs after fetch) */
+    interceptResponse?: <T = any>(res: HttpResponse<T>) => HttpResponse<T> | Promise<HttpResponse<T>>;
+}
+/**
+ * Creates a type-safe HTTP client with flexible configuration.
+ *
+ * Advanced HTTP factory with full control: configure defaults per client,
+ * override per-request, automatic retries, timeouts, interceptors, and more.
+ *
+ * Features:
+ * - Fully type-safe with generics for request/response
+ * - Automatic JSON serialization/deserialization
+ * - Query parameter support with smart merging
+ * - Configurable defaults (baseURL, headers, timeout, retries)
+ * - Request/response interceptors (async support)
+ * - Timeout support with AbortController
+ * - Automatic retry on network failure
+ * - Content-type detection (JSON, text, blob, etc.)
+ * - Returns typed response object with metadata + helper methods
+ *
+ * @template H - Custom header keys (e.g., 'Authorization', 'X-Custom')
+ * @param config - HTTP client configuration
+ * @returns A configured Http client factory with GET, POST, PUT, DELETE, PATCH methods
+ *
+ * @example
+ * ```typescript
+ * // ===== BASIC SETUP =====
+ * const api = HttpFactory.create({
+ *   baseURL: 'https://api.example.com',
+ *   headers: { 'X-API-Key': 'secret' },
+ *   timeout: 5000,
+ *   retries: 2
+ * });
+ *
+ * // ===== TYPE-SAFE REQUESTS =====
+ * interface User { id: number; name: string }
+ * interface CreateUserPayload { name: string; email: string }
+ *
+ * // GET with automatic type inference
+ * const res = await api.get<User>('/users/123')({});
+ * if (res.ok) console.log(res.data.id); // data is User
+ *
+ * // POST with body and query params
+ * const created = await api.post<User>('/users')({
+ *   body: { name: 'Alice', email: 'alice@example.com' },
+ *   params: { notify: true },
+ *   timeout: 3000
+ * });
+ *
+ * // ===== PER-REQUEST OVERRIDES =====
+ * // Override baseURL for specific request
+ * await api.get('/status')({
+ *   baseURL: 'https://status.example.com'
+ * });
+ *
+ * // Override timeout for slow endpoint
+ * await api.get<Data>('/expensive-operation')({
+ *   timeout: 30000,
+ *   retries: 3
+ * });
+ *
+ * // ===== INTERCEPTORS (AUTH, LOGGING, ERROR HANDLING) =====
+ * const api = HttpFactory.create({
+ *   baseURL: 'https://api.example.com',
+ *   interceptRequest: async (init) => {
+ *     // Add auth token dynamically
+ *     const token = await getAuthToken();
+ *     return {
+ *       ...init,
+ *       headers: {
+ *         ...init.headers,
+ *         'Authorization': `Bearer ${token}`
+ *       }
+ *     };
+ *   },
+ *   interceptResponse: async (res) => {
+ *     // Global error handling
+ *     if (res.status === 401) {
+ *       await refreshAuth();
+ *       // Retry logic would go here
+ *     }
+ *     return res;
+ *   }
+ * });
+ *
+ * // ===== RESPONSE HELPERS =====
+ * const res = await api.get<User[]>('/users')({});
+ *
+ * // Check success
+ * if (api.isOk(res)) {
+ *   console.log(res.data); // Narrowed to User[]
+ * }
+ *
+ * // Unwrap or throw
+ * const users = api.unwrap(res); // throws if not ok
+ *
+ * // Unwrap with fallback
+ * const users = api.unwrapOr(res, []); // returns [] if error
+ *
+ * // ===== TRANSFORMATION =====
+ * await api.get<string[]>('/tags')({
+ *   transform: (data) => data.map((t: any) => t.name) // Transform JSON before returning
+ * });
+ * ```
+ */
+export declare const Http: {
+    /**
+     * Creates a configured HTTP client with defaults.
+     *
+     * Use this for applications that need centralized configuration, interceptors,
+     * or per-client defaults (baseURL, timeout, retries, custom headers).
+     *
+     * For simple one-off requests, use the static methods: Http.get, Http.post, etc.
+     *
+     * @template H - Custom header keys type
+     * @param config - Client configuration
+     * @returns An Http client factory
+     *
+     * @example
+     * ```typescript
+     * const api = Http.create({
+     *   baseURL: 'https://api.example.com',
+     *   headers: { 'X-API-Key': 'secret' },
+     *   timeout: 5000,
+     *   retries: 2,
+     *   interceptRequest: async (init) => {
+     *     const token = await getAuthToken();
+     *     return {
+     *       ...init,
+     *       headers: { ...init.headers, 'Authorization': `Bearer ${token}` }
+     *     };
+     *   }
+     * });
+     *
+     * const user = await api.get<User>('/users/123')({});
+     * ```
+     */
+    create: <H extends string = string>(config?: HttpConfig<H>) => {
+        /**
+         * Performs a GET request.
+         *
+         * @template T - Response data type
+         * @param path - Endpoint path (e.g., '/users/123')
+         * @returns A curried function that accepts request config
+         *
+         * @example
+         * ```typescript
+         * const res = await http.get<User>('/users/123')({});
+         * ```
+         */
+        get: <T = any>(path: string) => (init?: HttpRequestInit) => Promise<HttpResponse<T>>;
+        /**
+         * Performs a POST request.
+         *
+         * @template T - Response data type
+         * @param path - Endpoint path
+         * @returns A curried function that accepts request config with body
+         *
+         * @example
+         * ```typescript
+         * const res = await http.post<Created>('/users')({
+         *   body: { name: 'John' }
+         * });
+         * ```
+         */
+        post: <T = any>(path: string) => (init?: HttpRequestInit) => Promise<HttpResponse<T>>;
+        /**
+         * Performs a PUT request.
+         *
+         * @template T - Response data type
+         * @param path - Endpoint path
+         * @returns A curried function that accepts request config with body
+         */
+        put: <T = any>(path: string) => (init?: HttpRequestInit) => Promise<HttpResponse<T>>;
+        /**
+         * Performs a DELETE request.
+         *
+         * @template T - Response data type
+         * @param path - Endpoint path
+         * @returns A curried function that accepts request config
+         */
+        delete: <T = any>(path: string) => (init?: HttpRequestInit) => Promise<HttpResponse<T>>;
+        /**
+         * Performs a PATCH request.
+         *
+         * @template T - Response data type
+         * @param path - Endpoint path
+         * @returns A curried function that accepts request config with body
+         */
+        patch: <T = any>(path: string) => (init?: HttpRequestInit) => Promise<HttpResponse<T>>;
+        /**
+         * Checks if an HTTP response is successful (2xx).
+         *
+         * @example
+         * ```typescript
+         * const res = await http.get('/users')({});
+         * if (http.isOk(res)) {
+         *   // res.data is guaranteed to be of the generic type
+         * }
+         * ```
+         */
+        isOk: <T = any>(res: HttpResponse<T>) => res is HttpResponse<T> & {
+            data: T;
+        };
+        /**
+         * Unwraps response data or throws on error.
+         *
+         * @example
+         * ```typescript
+         * const users = http.unwrap(await http.get<User[]>('/users')({}));
+         * ```
+         */
+        unwrap: <T = any>(res: HttpResponse<T>) => T;
+        /**
+         * Unwraps response data or returns fallback on error.
+         *
+         * @example
+         * ```typescript
+         * const users = http.unwrapOr(
+         *   await http.get<User[]>('/users')({}),
+         *   []
+         * );
+         * ```
+         */
+        unwrapOr: <T = any>(res: HttpResponse<T>, fallback: T) => T;
+    };
+    /**
+     * Performs a simple GET request without client configuration.
+     *
+     * Throws an error if the response is not ok (non-2xx status).
+     *
+     * **Error Handling**: Error message includes status code and text.
+     *
+     * @template T - The expected response type
+     * @param url - The URL to fetch from
+     * @param headers - Optional request headers
+     * @returns Promise resolving to parsed JSON response
+     * @throws Error if response is not ok
+     *
+     * @example
+     * ```typescript
+     * // Basic GET
+     * const users = await Http.get<User[]>('/api/users');
+     *
+     * // With custom headers
+     * const data = await Http.get<Data>('/api/data', {
+     *   'Authorization': 'Bearer token',
+     *   'Accept-Language': 'en-US'
+     * });
+     *
+     * // Error handling
+     * try {
+     *   const user = await Http.get<User>('/api/user/999');
+     * } catch (error) {
+     *   // Error message: "Http.get 404: Not Found"
+     *   console.error(error);
+     * }
+     * ```
+     */
+    get: <T>(url: string, headers?: Record<string, string>) => Promise<T>;
+    /**
+     * Performs a simple POST request without client configuration.
+     *
+     * **Curried API**: url -> body -> headers for composition and reusability.
+     *
+     * Throws an error if the response is not ok.
+     *
+     * @template T - The expected response type
+     * @param url - The URL to post to
+     * @returns A curried function accepting body then headers
+     *
+     * @example
+     * ```typescript
+     * // Basic POST
+     * const user = await Http.post('/api/users')
+     *   ({ name: 'John', email: 'john@example.com' })
+     *   ();
+     *
+     * // With auth headers
+     * const response = await Http.post('/api/login')
+     *   ({ username: 'admin', password: 'secret' })
+     *   ({ 'X-CSRF-Token': csrfToken });
+     *
+     * // Partial application
+     * const createUser = Http.post('/api/users');
+     * const user1 = await createUser({ name: 'Alice' })();
+     * const user2 = await createUser({ name: 'Bob' })();
+     * ```
+     */
+    post: (url: string) => <T>(body: any) => (headers?: Record<string, string>) => Promise<T>;
+    /**
+     * Performs a simple PUT request without client configuration.
+     *
+     * **Curried API**: url -> body -> headers for composition and reusability.
+     *
+     * Throws an error if the response is not ok.
+     *
+     * @template T - The expected response type
+     * @param url - The URL to put to
+     * @returns A curried function accepting body then headers
+     *
+     * @example
+     * ```typescript
+     * // Update resource
+     * const updated = await Http.put('/api/users/123')
+     *   ({ name: 'John Updated', email: 'new@example.com' })
+     *   ({ 'Authorization': `Bearer ${token}` });
+     *
+     * // Partial application
+     * const updateUser = (id: number) => Http.put(`/api/users/${id}`);
+     * await updateUser(123)({ name: 'Alice' })();
+     * ```
+     */
+    put: (url: string) => <T>(body: any) => (headers?: Record<string, string>) => Promise<T>;
+    /**
+     * Performs a simple DELETE request without client configuration.
+     *
+     * Throws an error if the response is not ok.
+     *
+     * @template T - The expected response type (often void or { success: boolean })
+     * @param url - The URL to delete
+     * @param headers - Optional request headers
+     * @returns Promise resolving to parsed JSON response
+     * @throws Error if response is not ok
+     *
+     * @example
+     * ```typescript
+     * // Delete resource
+     * await Http.delete('/api/users/123', {
+     *   'Authorization': `Bearer ${token}`
+     * });
+     *
+     * // With confirmation
+     * const result = await Http.delete<{ success: boolean }>(
+     *   '/api/posts/456',
+     *   { 'Authorization': `Bearer ${token}` }
+     * );
+     * if (result.success) {
+     *   remove(postElement);
+     * }
+     * ```
+     */
+    delete: <T>(url: string, headers?: Record<string, string>) => Promise<T>;
+};
 export {};
 //# sourceMappingURL=index.d.ts.map

@@ -1398,185 +1398,6 @@ var Cookie = {
     Cookie.set(name)("")({ days: -1 });
   }
 };
-var Http = {
-  /**
-   * Performs a GET request.
-   * 
-   * **Response Type**: Automatically parses JSON response. For non-JSON responses,
-   * use native fetch() instead.
-   * 
-   * **Error Handling**: Throws Error with status code and text on non-2xx responses.
-   * 
-   * @template T - The expected response type
-   * @param url - The URL to fetch from
-   * @param headers - Optional request headers
-   * @returns Promise resolving to parsed JSON response
-   * @throws Error if response is not ok (non-2xx status)
-   * 
-   * @example
-   * ```typescript
-   * // Basic GET
-   * const users = await Http.get<User[]>('/api/users');
-   * 
-   * // With custom headers
-   * const data = await Http.get<Data>('/api/data', {
-   *   'Authorization': 'Bearer token',
-   *   'Accept-Language': 'en-US'
-   * });
-   * 
-   * // Error handling
-   * try {
-   *   const user = await Http.get<User>('/api/user/999');
-   * } catch (error) {
-   *   // Error message: "Http.get 404: Not Found"
-   *   console.error(error);
-   * }
-   * 
-   * // With query parameters (use Params utility)
-   * const query = Params.encode({ page: 1, limit: 10 });
-   * const results = await Http.get<Results>(`/api/search?${query}`);
-   * ```
-   */
-  get: async (url, headers = {}) => {
-    const res = await fetch(url, { headers });
-    if (!res.ok) throw new Error(`Http.get ${res.status}: ${res.statusText}`);
-    return res.json();
-  },
-  /**
-   * Performs a POST request with JSON body.
-   * 
-   * **Curried API**: Takes URL first, then body, then optional headers.
-   * This allows partial application for reusable endpoints.
-   * 
-   * **Content-Type**: Automatically sets 'application/json'. Override in headers if needed.
-   * 
-   * @template T - The expected response type
-   * @param url - The URL to post to
-   * @returns A curried function accepting body
-   * 
-   * @example
-   * ```typescript
-   * // Basic POST
-   * const user = await Http.post('/api/users')
-   *   ({ name: 'John', email: 'john@example.com' })
-   *   ();
-   * 
-   * // With auth headers
-   * const response = await Http.post('/api/login')
-   *   ({ username: 'admin', password: 'secret' })
-   *   ({ 'X-CSRF-Token': csrfToken });
-   * 
-   * // Partial application for reusable endpoint
-   * const createUser = Http.post('/api/users');
-   * const user1 = await createUser({ name: 'Alice' })();
-   * const user2 = await createUser({ name: 'Bob' })();
-   * 
-   * // Form submission
-   * const formData = Form.serialize(form);
-   * const result = await Http.post('/api/submit')
-   *   (formData)
-   *   ({ 'Authorization': `Bearer ${token}` });
-   * 
-   * // Error handling with response body
-   * try {
-   *   await Http.post('/api/users')({ email: 'invalid' })();
-   * } catch (error) {
-   *   // Server returned 400: Bad Request
-   *   console.error('Validation failed:', error);
-   * }
-   * ```
-   */
-  post: (url) => (body) => async (headers = {}) => {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...headers },
-      body: JSON.stringify(body)
-    });
-    if (!res.ok) throw new Error(`Http.post ${res.status}: ${res.statusText}`);
-    return res.json();
-  },
-  /**
-   * Performs a PUT request with JSON body.
-   * 
-   * **Use Case**: Typically used for updating existing resources.
-   * 
-   * **Curried API**: Same pattern as POST - url -> body -> headers.
-   * 
-   * @template T - The expected response type
-   * @param url - The URL to put to
-   * @returns A curried function accepting body
-   * 
-   * @example
-   * ```typescript
-   * // Update user
-   * const updated = await Http.put('/api/users/123')
-   *   ({ name: 'John Updated', email: 'new@example.com' })
-   *   ({ 'Authorization': `Bearer ${token}` });
-   * 
-   * // Partial application
-   * const updateUser = (id: number) => Http.put(`/api/users/${id}`);
-   * await updateUser(123)({ name: 'Alice' })();
-   * 
-   * // Optimistic update pattern
-   * const originalData = { ...userData };
-   * modify(userElement)({ text: newName }); // Update UI immediately
-   * try {
-   *   await Http.put(`/api/users/${id}`)({ name: newName })();
-   * } catch (error) {
-   *   modify(userElement)({ text: originalData.name }); // Revert on error
-   * }
-   * ```
-   */
-  put: (url) => (body) => async (headers = {}) => {
-    const res = await fetch(url, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", ...headers },
-      body: JSON.stringify(body)
-    });
-    if (!res.ok) throw new Error(`Http.put ${res.status}: ${res.statusText}`);
-    return res.json();
-  },
-  /**
-    * Performs a DELETE request.
-    * 
-    * **Response**: Many DELETE endpoints return empty responses or confirmation objects.
-    * 
-    * @template T - The expected response type (often void or { success: boolean })
-    * @param url - The URL to delete
-    * @param headers - Optional request headers
-    * @returns Promise resolving to parsed JSON response
-    * 
-    * @example
-    * ```typescript
-    * // Delete resource
-    * await Http.delete('/api/users/123', {
-    *   'Authorization': `Bearer ${token}`
-    * });
-    * 
-    * // With confirmation
-    * const result = await Http.delete<{ success: boolean }>(
-    *   '/api/posts/456',
-    *   { 'Authorization': `Bearer ${token}` }
-  * );
-    * if (result.success) {
-    *   remove(postElement);
-    * }
-    * 
-    * // Error handling
-    * try {
-    *   await Http.delete(`/api/items/${id}`);
-    *   remove(itemElement);
-    * } catch (error) {
-    *   alert('Failed to delete item');
-    * }
-    * ```
-    */
-  delete: async (url, headers = {}) => {
-    const res = await fetch(url, { method: "DELETE", headers });
-    if (!res.ok) throw new Error(`Http.delete ${res.status}: ${res.statusText}`);
-    return res.json();
-  }
-};
 var SW = {
   /**
    * Registers a service worker script.
@@ -3686,6 +3507,403 @@ var binder = (refs2, schema) => {
     }
   }
   return binders;
+};
+var _mergeHeaders = (base, override) => {
+  return { ...base, ...override };
+};
+var _buildUrl = (path, baseURL, params) => {
+  let url = baseURL ? `${baseURL}${path}` : path;
+  if (params) {
+    const search = new URLSearchParams();
+    for (const [key, val] of Object.entries(params)) {
+      if (val !== null && val !== void 0) {
+        search.set(key, String(val));
+      }
+    }
+    const qs = search.toString();
+    if (qs) url += `${url.includes("?") ? "&" : "?"}${qs}`;
+  }
+  return url;
+};
+var _encodeBody = (body) => {
+  if (body === null || body === void 0) return null;
+  if (typeof body === "string") return body;
+  if (body instanceof Blob) return body;
+  if (body instanceof FormData) return body;
+  if (body instanceof ArrayBuffer) return body;
+  return JSON.stringify(body);
+};
+var _parseResponse = async (response, transform) => {
+  const contentType = response.headers.get("content-type") || "";
+  let data;
+  if (contentType.includes("application/json")) {
+    try {
+      data = await response.json();
+    } catch (e) {
+      data = await response.text();
+    }
+  } else if (contentType.includes("text")) {
+    data = await response.text();
+  } else if (contentType.includes("image") || contentType.includes("video") || contentType.includes("audio")) {
+    data = await response.blob();
+  } else {
+    data = await response.arrayBuffer();
+  }
+  return transform ? transform(data) : data;
+};
+var _fetchWithRetry = async (url, init, retries = 0, retryDelay = 1e3, timeout = 0) => {
+  const controller = new AbortController();
+  const timeoutId = timeout > 0 ? setTimeout(() => controller.abort(), timeout) : void 0;
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (timeoutId !== void 0) clearTimeout(timeoutId);
+    if (retries > 0 && (error instanceof TypeError || error instanceof DOMException)) {
+      await new Promise((resolve) => setTimeout(resolve, retryDelay));
+      return _fetchWithRetry(url, init, retries - 1, retryDelay, timeout);
+    }
+    throw error;
+  } finally {
+    if (timeoutId !== void 0) clearTimeout(timeoutId);
+  }
+};
+var Http = {
+  /**
+   * Creates a configured HTTP client with defaults.
+   * 
+   * Use this for applications that need centralized configuration, interceptors,
+   * or per-client defaults (baseURL, timeout, retries, custom headers).
+   * 
+   * For simple one-off requests, use the static methods: Http.get, Http.post, etc.
+   * 
+   * @template H - Custom header keys type
+   * @param config - Client configuration
+   * @returns An Http client factory
+   * 
+   * @example
+   * ```typescript
+   * const api = Http.create({
+   *   baseURL: 'https://api.example.com',
+   *   headers: { 'X-API-Key': 'secret' },
+   *   timeout: 5000,
+   *   retries: 2,
+   *   interceptRequest: async (init) => {
+   *     const token = await getAuthToken();
+   *     return {
+   *       ...init,
+   *       headers: { ...init.headers, 'Authorization': `Bearer ${token}` }
+   *     };
+   *   }
+   * });
+   * 
+   * const user = await api.get<User>('/users/123')({});
+   * ```
+   */
+  create: (config = {}) => {
+    const {
+      baseURL: defaultBaseURL,
+      headers: defaultHeaders,
+      timeout: defaultTimeout = 0,
+      retries: defaultRetries = 0,
+      retryDelay: defaultRetryDelay = 1e3,
+      interceptRequest,
+      interceptResponse
+    } = config;
+    const _request = async (method, path, init = {}) => {
+      const {
+        body,
+        baseURL = defaultBaseURL,
+        params,
+        timeout = defaultTimeout,
+        retries = defaultRetries,
+        retryDelay = defaultRetryDelay,
+        transform,
+        ...restInit
+      } = init;
+      const headers = _mergeHeaders(
+        defaultHeaders,
+        restInit.headers
+      );
+      if (body && typeof body === "object" && !Array.isArray(body) && !(body instanceof FormData)) {
+        headers["Content-Type"] = "application/json";
+      }
+      let fetchInit = {
+        ...restInit,
+        method,
+        headers
+      };
+      if (body !== void 0 && body !== null) {
+        fetchInit.body = _encodeBody(body);
+      }
+      if (interceptRequest) {
+        const intercepted = await interceptRequest(init);
+        fetchInit = { ...fetchInit, ...intercepted };
+      }
+      const url = _buildUrl(path, baseURL, params);
+      let response;
+      try {
+        response = await _fetchWithRetry(url, fetchInit, retries, retryDelay, timeout);
+      } catch (error) {
+        const httpRes2 = {
+          ok: false,
+          status: 0,
+          statusText: "Network Error",
+          data: null,
+          error: error instanceof Error ? error : new Error(String(error)),
+          response: null
+        };
+        return interceptResponse ? await interceptResponse(httpRes2) : httpRes2;
+      }
+      let data = null;
+      try {
+        data = await _parseResponse(response, transform);
+      } catch (error) {
+        console.error("Failed to parse response:", error);
+      }
+      const httpRes = {
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        data,
+        error: null,
+        response
+      };
+      return interceptResponse ? await interceptResponse(httpRes) : httpRes;
+    };
+    return {
+      /**
+       * Performs a GET request.
+       * 
+       * @template T - Response data type
+       * @param path - Endpoint path (e.g., '/users/123')
+       * @returns A curried function that accepts request config
+       * 
+       * @example
+       * ```typescript
+       * const res = await http.get<User>('/users/123')({});
+       * ```
+       */
+      get: (path) => (init = {}) => _request("GET", path, init),
+      /**
+       * Performs a POST request.
+       * 
+       * @template T - Response data type
+       * @param path - Endpoint path
+       * @returns A curried function that accepts request config with body
+       * 
+       * @example
+       * ```typescript
+       * const res = await http.post<Created>('/users')({
+       *   body: { name: 'John' }
+       * });
+       * ```
+       */
+      post: (path) => (init = {}) => _request("POST", path, init),
+      /**
+       * Performs a PUT request.
+       * 
+       * @template T - Response data type
+       * @param path - Endpoint path
+       * @returns A curried function that accepts request config with body
+       */
+      put: (path) => (init = {}) => _request("PUT", path, init),
+      /**
+       * Performs a DELETE request.
+       * 
+       * @template T - Response data type
+       * @param path - Endpoint path
+       * @returns A curried function that accepts request config
+       */
+      delete: (path) => (init = {}) => _request("DELETE", path, init),
+      /**
+       * Performs a PATCH request.
+       * 
+       * @template T - Response data type
+       * @param path - Endpoint path
+       * @returns A curried function that accepts request config with body
+       */
+      patch: (path) => (init = {}) => _request("PATCH", path, init),
+      /**
+       * Checks if an HTTP response is successful (2xx).
+       * 
+       * @example
+       * ```typescript
+       * const res = await http.get('/users')({});
+       * if (http.isOk(res)) {
+       *   // res.data is guaranteed to be of the generic type
+       * }
+       * ```
+       */
+      isOk: (res) => res.ok,
+      /**
+       * Unwraps response data or throws on error.
+       * 
+       * @example
+       * ```typescript
+       * const users = http.unwrap(await http.get<User[]>('/users')({}));
+       * ```
+       */
+      unwrap: (res) => {
+        if (!res.ok) throw res.error || new Error(`HTTP ${res.status}: ${res.statusText}`);
+        return res.data;
+      },
+      /**
+       * Unwraps response data or returns fallback on error.
+       * 
+       * @example
+       * ```typescript
+       * const users = http.unwrapOr(
+       *   await http.get<User[]>('/users')({}),
+       *   []
+       * );
+       * ```
+       */
+      unwrapOr: (res, fallback) => {
+        return res.ok ? res.data : fallback;
+      }
+    };
+  },
+  /**
+   * Performs a simple GET request without client configuration.
+   * 
+   * Throws an error if the response is not ok (non-2xx status).
+   * 
+   * **Error Handling**: Error message includes status code and text.
+   * 
+   * @template T - The expected response type
+   * @param url - The URL to fetch from
+   * @param headers - Optional request headers
+   * @returns Promise resolving to parsed JSON response
+   * @throws Error if response is not ok
+   * 
+   * @example
+   * ```typescript
+   * // Basic GET
+   * const users = await Http.get<User[]>('/api/users');
+   * 
+   * // With custom headers
+   * const data = await Http.get<Data>('/api/data', {
+   *   'Authorization': 'Bearer token',
+   *   'Accept-Language': 'en-US'
+   * });
+   * 
+   * // Error handling
+   * try {
+   *   const user = await Http.get<User>('/api/user/999');
+   * } catch (error) {
+   *   // Error message: "Http.get 404: Not Found"
+   *   console.error(error);
+   * }
+   * ```
+   */
+  get: async (url, headers = {}) => {
+    const res = await fetch(url, { headers });
+    if (!res.ok) throw new Error(`Http.get ${res.status}: ${res.statusText}`);
+    return res.json();
+  },
+  /**
+   * Performs a simple POST request without client configuration.
+   * 
+   * **Curried API**: url -> body -> headers for composition and reusability.
+   * 
+   * Throws an error if the response is not ok.
+   * 
+   * @template T - The expected response type
+   * @param url - The URL to post to
+   * @returns A curried function accepting body then headers
+   * 
+   * @example
+   * ```typescript
+   * // Basic POST
+   * const user = await Http.post('/api/users')
+   *   ({ name: 'John', email: 'john@example.com' })
+   *   ();
+   * 
+   * // With auth headers
+   * const response = await Http.post('/api/login')
+   *   ({ username: 'admin', password: 'secret' })
+   *   ({ 'X-CSRF-Token': csrfToken });
+   * 
+   * // Partial application
+   * const createUser = Http.post('/api/users');
+   * const user1 = await createUser({ name: 'Alice' })();
+   * const user2 = await createUser({ name: 'Bob' })();
+   * ```
+   */
+  post: (url) => (body) => async (headers = {}) => {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(`Http.post ${res.status}: ${res.statusText}`);
+    return res.json();
+  },
+  /**
+   * Performs a simple PUT request without client configuration.
+   * 
+   * **Curried API**: url -> body -> headers for composition and reusability.
+   * 
+   * Throws an error if the response is not ok.
+   * 
+   * @template T - The expected response type
+   * @param url - The URL to put to
+   * @returns A curried function accepting body then headers
+   * 
+   * @example
+   * ```typescript
+   * // Update resource
+   * const updated = await Http.put('/api/users/123')
+   *   ({ name: 'John Updated', email: 'new@example.com' })
+   *   ({ 'Authorization': `Bearer ${token}` });
+   * 
+   * // Partial application
+   * const updateUser = (id: number) => Http.put(`/api/users/${id}`);
+   * await updateUser(123)({ name: 'Alice' })();
+   * ```
+   */
+  put: (url) => (body) => async (headers = {}) => {
+    const res = await fetch(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(`Http.put ${res.status}: ${res.statusText}`);
+    return res.json();
+  },
+  /**
+   * Performs a simple DELETE request without client configuration.
+   * 
+   * Throws an error if the response is not ok.
+   * 
+   * @template T - The expected response type (often void or { success: boolean })
+   * @param url - The URL to delete
+   * @param headers - Optional request headers
+   * @returns Promise resolving to parsed JSON response
+   * @throws Error if response is not ok
+   * 
+   * @example
+   * ```typescript
+   * // Delete resource
+   * await Http.delete('/api/users/123', {
+   *   'Authorization': `Bearer ${token}`
+   * });
+   * 
+   * // With confirmation
+   * const result = await Http.delete<{ success: boolean }>(
+   *   '/api/posts/456',
+   *   { 'Authorization': `Bearer ${token}` }
+   * );
+   * if (result.success) {
+   *   remove(postElement);
+   * }
+   * ```
+   */
+  delete: async (url, headers = {}) => {
+    const res = await fetch(url, { method: "DELETE", headers });
+    if (!res.ok) throw new Error(`Http.delete ${res.status}: ${res.statusText}`);
+    return res.json();
+  }
 };
 export {
   $,
