@@ -16,11 +16,11 @@
  * -----------------------------------------------------------------------------
  *
  * 🟢 DOM CORE
- *    1. Querying ......... find, findAll, closest
- *    2. Events ........... on, onDelegated, dispatch
- *    3. Manipulation ..... modify, css, tempStyle
- *    4. Structure ........ append, prepend, after, before, remove, wrap
- *    5. Creation ......... el, html, htmlMany, clone
+  *    1. Querying ......... find, findAll, closest
+  *    2. Events ........... on, onDelegated, dispatch
+  *    3. Manipulation ..... modify, css, tempStyle
+  *    4. Structure ........ append, prepend, after, before, remove, wrap, mount
+  *    5. Creation ......... el, html, htmlMany, clone
  *
  * 🔵 STATE & ATTRIBUTES
  *    6. Classes .......... cls (add/remove/toggle), watchClass
@@ -37,7 +37,7 @@
  *    26. Signals ......... Signal (AbortController wrappers)
  *
  * 🟣 LAYOUT & NAVIGATION
- *    10. Navigation ...... Traverse (parent, children, siblings, next, prev)
+ *    10. Navigation ...... Traverse (parent, children, siblings, next, prev, parents, nextAll, prevAll, closestAll)
  *    11. CSS Utils ....... CssVar, computed, injectStyles, waitTransition
  *    15. Color ........... toColorSpace (Color mix utils)
  *    18. Geometry ........ rect, offset, isVisible
@@ -1197,6 +1197,71 @@ export const wrap = def((target: HTMLElement | null, wrapper: HTMLElement) => {
     wrapper.appendChild(target);
   }
   return wrapper;
+});
+
+/**
+ * Mounts a child element into a parent container.
+ *
+ * Appends the child to the parent and returns a cleanup function to remove it.
+ * Useful for dynamic DOM updates, modals, popovers, and temporary UI elements.
+ *
+ * Supports two call styles:
+ * 1. `mount(parent, child)` — Imperative (cleaner DX)
+ * 2. `mount(parent)(child)` — Curried (pipeline friendly)
+ *
+ * @overload
+ * @param parent - Parent element or selector (null-safe)
+ * @param child - Child element to mount (or null for curried)
+ * @returns Cleanup function to unmount the child, or no-op if parent not found
+ *
+ * @example
+ * ```typescript
+ * // Imperative style
+ * const modal = document.createElement('div');
+ * modal.textContent = 'Hello World';
+ * const cleanup = mount(document.body, modal);
+ *
+ * // Later: remove the element
+ * cleanup();
+ *
+ * // Using selector-first API
+ * const popup = el('div')({ class: { popup: true } })(['Content']);
+ * const remove = mount(".container")(popup);
+ *
+ * // Mounting multiple elements
+ * const list = document.querySelector('ul');
+ * const items = [el('li')({})(['Item 1']), el('li')({})(['Item 2'])];
+ * const cleanups = items.map(item => mount(list)(item));
+ *
+ * // With temporary modal
+ * const showModal = (content: string) => {
+ *   const modal = el('div')({
+ *     class: { modal: true },
+ *     attr: { role: 'dialog' }
+ *   })([content]);
+ *
+ *   const cleanup = mount(document.body)(modal);
+ *
+ *   // Auto-cleanup on button click
+ *   modal.addEventListener('click', () => cleanup());
+ *   return cleanup;
+ * };
+ * ```
+ */
+export const mount = def((parent: Element | string | null, child: Element | null): Unsubscribe => {
+  if (!child) return () => { };
+
+  const parentEl = typeof parent === 'string' ? document.querySelector(parent) : parent;
+  if (!parentEl) return () => { };
+
+  parentEl.appendChild(child);
+
+  // Return cleanup function
+  return () => {
+    if (child.parentNode === parentEl) {
+      parentEl.removeChild(child);
+    }
+  };
 });
 
 // =============================================================================
@@ -2811,28 +2876,135 @@ export const Traverse = {
   },
 
   /**
-   * Get sibling elements (excluding the original element).
-   *
-   * @example
-   * Traverse.siblings(el);
-   * Traverse.siblings("#active");
-   * Traverse.siblings(el)(".item");
-   */
-  siblings(elOrSelector?: Element | string | null) {
-    if (typeof elOrSelector === "string") {
-      const el = document.querySelector(elOrSelector);
-      if (!el?.parentElement) return [];
-      return Array.from(el.parentElement.children).filter(c => c !== el);
-    }
+    * Get sibling elements (excluding the original element).
+    *
+    * @example
+    * Traverse.siblings(el);
+    * Traverse.siblings("#active");
+    * Traverse.siblings(el)(".item");
+    */
+   siblings(elOrSelector?: Element | string | null) {
+     if (typeof elOrSelector === "string") {
+       const el = document.querySelector(elOrSelector);
+       if (!el?.parentElement) return [];
+       return Array.from(el.parentElement.children).filter(c => c !== el);
+     }
 
-    const el = elOrSelector ?? null;
-    return (selector?: string): Element[] => {
-      if (!el?.parentElement) return [];
-      const sibs = Array.from(el.parentElement.children).filter(s => s !== el);
-      return selector ? sibs.filter(s => s.matches(selector)) : sibs;
-    };
-  }
-};
+     const el = elOrSelector ?? null;
+     return (selector?: string): Element[] => {
+       if (!el?.parentElement) return [];
+       const sibs = Array.from(el.parentElement.children).filter(s => s !== el);
+       return selector ? sibs.filter(s => s.matches(selector)) : sibs;
+     };
+   },
+
+   /**
+    * Get all ancestor elements up to the document root.
+    *
+    * Optionally stops at an element matching a selector.
+    *
+    * @example
+    * Traverse.parents(el);                  // All ancestors
+    * Traverse.parents("#child");            // Ancestors of #child
+    * Traverse.parents(el, ".section");      // Ancestors until .section match
+    * Traverse.parents(el)(".container");    // Curried: ancestors matching .container
+    */
+   parents(elOrSelector?: Element | string | null, until?: string | ((el: Element) => boolean)): Element[] {
+     const el = typeof elOrSelector === "string" ? document.querySelector(elOrSelector) : elOrSelector ?? null;
+     const result: Element[] = [];
+     let current = el?.parentElement ?? null;
+
+     while (current) {
+       // If until is a string selector
+       if (typeof until === "string" && current.matches(until)) {
+         break;
+       }
+       // If until is a function predicate
+       if (typeof until === "function" && until(current)) {
+         break;
+       }
+       result.push(current);
+       current = current.parentElement;
+     }
+
+     return result;
+   },
+
+   /**
+    * Get all following sibling elements.
+    *
+    * Optionally filtered by a selector.
+    *
+    * @example
+    * Traverse.nextAll(el);           // All following siblings
+    * Traverse.nextAll(".selected");  // Following siblings of .selected
+    * Traverse.nextAll(el)(".item");  // Following siblings matching .item
+    */
+   nextAll(elOrSelector?: Element | string | null, selector?: string): Element[] {
+     const el = typeof elOrSelector === "string" ? document.querySelector(elOrSelector) : elOrSelector ?? null;
+     const result: Element[] = [];
+     let current = el?.nextElementSibling ?? null;
+
+     while (current) {
+       if (!selector || current.matches(selector)) {
+         result.push(current);
+       }
+       current = current.nextElementSibling;
+     }
+
+     return result;
+   },
+
+   /**
+    * Get all preceding sibling elements.
+    *
+    * Optionally filtered by a selector.
+    *
+    * @example
+    * Traverse.prevAll(el);           // All preceding siblings
+    * Traverse.prevAll(".selected");  // Preceding siblings of .selected
+    * Traverse.prevAll(el)(".item");  // Preceding siblings matching .item
+    */
+   prevAll(elOrSelector?: Element | string | null, selector?: string): Element[] {
+     const el = typeof elOrSelector === "string" ? document.querySelector(elOrSelector) : elOrSelector ?? null;
+     const result: Element[] = [];
+     let current = el?.previousElementSibling ?? null;
+
+     while (current) {
+       if (!selector || current.matches(selector)) {
+         result.push(current);
+       }
+       current = current.previousElementSibling;
+     }
+
+     return result;
+   },
+
+   /**
+    * Get all ancestors including the element itself, up to document root.
+    *
+    * Optionally filtered by a selector.
+    *
+    * @example
+    * Traverse.closestAll(el);            // Element + all ancestors
+    * Traverse.closestAll("#child");      // Self + ancestors of #child
+    * Traverse.closestAll(el)(".box");    // Self + ancestors matching .box
+    */
+   closestAll(elOrSelector?: Element | string | null, selector?: string): Element[] {
+     const el = typeof elOrSelector === "string" ? document.querySelector(elOrSelector) : elOrSelector ?? null;
+     const result: Element[] = [];
+     let current: Element | null = el;
+
+     while (current) {
+       if (!selector || current.matches(selector)) {
+         result.push(current);
+       }
+       current = current.parentElement;
+     }
+
+     return result;
+   }
+  };
 
 
 // =============================================================================
