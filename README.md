@@ -1,4 +1,4 @@
-# @doeixd/dom
+# DOM
 
 A lightweight, functional DOM manipulation library with **hybrid calling patterns** and full TypeScript support. Think jQuery meets functional programming with modern TypeScript ergonomics - use imperative, curried, or fluent styles!
 
