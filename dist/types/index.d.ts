@@ -193,6 +193,30 @@ export type DeepPartial<T> = {
     [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
 };
 /**
+ * Hybrid Function Builder.
+ * Creates a function that supports both Curried and Imperative usage.
+ *
+ * @template T - The Target type (Element, string, etc)
+ * @template A - The Arguments tuple type
+ * @template R - The Return type
+ *
+ * @example
+ * const add = def((el: HTMLElement, cls: string) => el.classList.add(cls));
+ *
+ * // Usage 1: Imperative (Cleaner DX)
+ * add(div, 'active');
+ *
+ * // Usage 2: Curried (Pipeline friendly)
+ * pipe(
+ *   find('.btn'),
+ *   el => add(el)('active')
+ * );
+ */
+export declare const def: <T, A extends any[], R>(fn: (target: T | null, ...args: A) => R) => {
+    (target: T | null, ...args: A): R;
+    (target: T | null): (...args: A) => R;
+};
+/**
  * Finds the first element matching the selector within a root.
  *
  * Returns `null` if no element is found. The return type is automatically
@@ -342,51 +366,42 @@ export declare const closest: (element: Element | null) => <S extends string>(se
  */
 export declare const on: <T extends EventTarget = EventTarget>(target: T | null) => <K extends keyof HTMLElementEventMap>(eventType: K, handler: (event: HTMLElementEventMap[K], target: T) => void, options?: boolean | AddEventListenerOptions) => Unsubscribe;
 /**
- * Attaches a delegated event listener using event bubbling.
+ * Attaches a **Delegated Event Listener** using event bubbling.
  *
- * The handler only fires if the event target (or an ancestor) matches the
- * selector. This is more efficient than attaching listeners to many elements.
- * The matched element type is inferred from the selector.
+ * 🧠 **Architecture**: `Root -> Selector -> Event`
+ * This ordering allows you to group interactions by the target element type.
  *
- * @template K - The event type key from HTMLElementEventMap
- * @template S - The CSS selector string for matching targets
- * @param root - The root element to attach the listener to (typically a container)
- * @returns A curried function that accepts event type, selector, handler, and options
+ * 🛡️ **Type Safety**:
+ * - The `match` argument is inferred from the CSS selector (e.g. `'button'` -> `HTMLButtonElement`).
+ * - The `event` argument is inferred from the event name (e.g. `'click'` -> `MouseEvent`).
+ *
+ * @param root - The container element (e.g. `<ul>`, `form`, `document`).
  *
  * @example
  * ```typescript
- * // Delegate clicks on list items
- * const list = document.querySelector('ul');
- * const cleanup = onDelegated(list)('click', 'li', (e, listItem) => {
- *   console.log('Clicked item:', listItem.textContent);
- *   // listItem is typed as HTMLLIElement
+ * // 1. Define the scope (e.g. a User Table)
+ * const table = find(document)('#user-table');
+ * const onTable = onDelegated(table);
+ *
+ * // 2. Define interactions for specific child elements
+ * // Type inference knows 'tr' is HTMLTableRowElement
+ * const onRow = onTable('tr');
+ *
+ * onRow('click', (e, row) => {
+ *   console.log('Row clicked', row.dataset.id);
+ *   cls.toggle(row)('selected');
  * });
  *
- * // Delegate to buttons with a class
- * onDelegated(document)('click', 'button.delete', (e, btn) => {
- *   e.preventDefault();
+ * // 3. Define interactions for buttons
+ * // Type inference knows 'button.delete' is HTMLButtonElement
+ * onTable('button.delete')('click', (e, btn) => {
+ *   e.stopPropagation();
  *   const id = btn.dataset.id;
- *   deleteItem(id);
+ *   api.delete(id);
  * });
- *
- * // Form input delegation
- * const form = document.querySelector('form');
- * onDelegated(form)('input', 'input[type="text"]', (e, input) => {
- *   console.log('Input changed:', input.value);
- * });
- *
- * // Works with complex selectors
- * onDelegated(document)('click', '.card .btn-primary', (e, btn) => {
- *   // Handler only fires for .btn-primary inside .card
- * });
- *
- * // Performance benefit: One listener handles all current AND future elements
- * // Great for dynamically added content
- * onDelegated(document)('click', '.dynamic-button', handler);
- * // New buttons added later will automatically work
  * ```
  */
-export declare const onDelegated: (root: HTMLElement | Document | null) => <K extends keyof HTMLElementEventMap, S extends string>(eventType: K, selector: S, handler: (event: HTMLElementEventMap[K], match: ParseSelector<S>) => void, options?: boolean | AddEventListenerOptions) => Unsubscribe;
+export declare const onDelegated: (root?: ParentNode | null) => <S extends string>(selector: S) => <K extends keyof HTMLElementEventMap>(eventType: K, handler: (event: HTMLElementEventMap[K], match: ParseSelector<S>) => void, options?: boolean | AddEventListenerOptions) => Unsubscribe;
 /**
  * Dispatches a CustomEvent from the target element.
  *
@@ -447,7 +462,10 @@ export declare const dispatch: (target: EventTarget | null) => <T = any>(eventNa
  * ```typescript
  * const button = document.querySelector('button');
  *
- * // Set text content (safer than innerHTML)
+ * // Imperative (cleaner DX)
+ * modify(button, { text: 'Click me!' });
+ *
+ * // Curried (pipeline friendly)
  * modify(button)({ text: 'Click me!' });
  *
  * // Multiple properties at once
@@ -489,7 +507,18 @@ export declare const dispatch: (target: EventTarget | null) => <T = any>(eventNa
  * modify(null)({ text: 'test' }); // null
  * ```
  */
-export declare const modify: <T extends HTMLElement>(element: T | null) => (props: ElementProps) => T | null;
+export declare const modify: {
+    (target: HTMLElement | null, props: ElementProps): HTMLElement | null;
+    (target: HTMLElement | null): (props: ElementProps) => HTMLElement | null;
+};
+/**
+ * Sets properties on an element.
+ *  @alias modify
+ */
+export declare const set: {
+    (target: HTMLElement | null, props: ElementProps): HTMLElement | null;
+    (target: HTMLElement | null): (props: ElementProps) => HTMLElement | null;
+};
 /**
  * Applies inline CSS styles to an element.
  *
@@ -503,7 +532,10 @@ export declare const modify: <T extends HTMLElement>(element: T | null) => (prop
  * ```typescript
  * const div = document.querySelector('div');
  *
- * // Basic styling
+ * // Imperative (cleaner DX)
+ * css(div, { color: 'red', fontSize: '16px' });
+ *
+ * // Curried (pipeline friendly)
  * css(div)({
  *   color: 'red',
  *   fontSize: '16px',
@@ -531,7 +563,10 @@ export declare const modify: <T extends HTMLElement>(element: T | null) => (prop
  * css(element)({ color: 'blue' });
  * ```
  */
-export declare const css: (element: HTMLElement | null) => (styles: Partial<CSSStyleDeclaration>) => HTMLElement | null;
+export declare const css: {
+    (target: HTMLElement | null, styles: Partial<CSSStyleDeclaration>): HTMLElement | null;
+    (target: HTMLElement | null): (styles: Partial<CSSStyleDeclaration>) => HTMLElement | null;
+};
 /**
  * Applies styles temporarily and returns a revert function.
  *
@@ -591,12 +626,15 @@ export declare const tempStyle: (element: HTMLElement | null) => (styles: Partia
  * ```typescript
  * const list = document.querySelector('ul');
  *
+ * // Imperative (cleaner DX)
+ * append(list, item1, item2, item3);
+ *
+ * // Curried (pipeline friendly)
+ * append(list)(item1, item2, item3);
+ *
  * // Append a single element
  * const item = document.createElement('li');
  * append(list)(item);
- *
- * // Append multiple items at once
- * append(list)(item1, item2, item3);
  *
  * // Mix elements and text
  * append(container)(heading, 'Some text', paragraph);
@@ -612,7 +650,10 @@ export declare const tempStyle: (element: HTMLElement | null) => (styles: Partia
  * append(parent)(child2);
  * ```
  */
-export declare const append: (parent: HTMLElement | null) => (...content: (string | Node | null | undefined)[]) => HTMLElement | null;
+export declare const append: {
+    (target: HTMLElement | null, ...args: (string | Node | null | undefined)[]): HTMLElement | null;
+    (target: HTMLElement | null): (...args: (string | Node | null | undefined)[]) => HTMLElement | null;
+};
 /**
  * Prepends content to the start of the target element.
  *
@@ -626,8 +667,10 @@ export declare const append: (parent: HTMLElement | null) => (...content: (strin
  * ```typescript
  * const list = document.querySelector('ul');
  *
- * // Prepend to start of list
- * const firstItem = document.createElement('li');
+ * // Imperative (cleaner DX)
+ * prepend(list, firstItem);
+ *
+ * // Curried (pipeline friendly)
  * prepend(list)(firstItem);
  *
  * // Add header before content
@@ -636,7 +679,10 @@ export declare const append: (parent: HTMLElement | null) => (...content: (strin
  * prepend(container)(header);
  * ```
  */
-export declare const prepend: (parent: HTMLElement | null) => (...content: (string | Node | null | undefined)[]) => HTMLElement | null;
+export declare const prepend: {
+    (target: HTMLElement | null, ...args: (string | Node | null | undefined)[]): HTMLElement | null;
+    (target: HTMLElement | null): (...args: (string | Node | null | undefined)[]) => HTMLElement | null;
+};
 /**
  * Inserts content AFTER the target element as siblings.
  *
@@ -651,14 +697,20 @@ export declare const prepend: (parent: HTMLElement | null) => (...content: (stri
  * const header = document.querySelector('h1');
  * const banner = document.createElement('div');
  *
- * // Insert banner after header
+ * // Imperative (cleaner DX)
+ * after(header, banner, notice, alert);
+ *
+ * // Curried (pipeline friendly)
  * after(header)(banner);
  *
  * // Insert multiple elements
  * after(header)(banner, notice, alert);
  * ```
  */
-export declare const after: (target: Element | null) => (...content: (string | Node | null | undefined)[]) => Element | null;
+export declare const after: {
+    (target: Element | null, ...args: (string | Node | null | undefined)[]): Element | null;
+    (target: Element | null): (...args: (string | Node | null | undefined)[]) => Element | null;
+};
 /**
  * Inserts content BEFORE the target element as siblings.
  *
@@ -672,11 +724,17 @@ export declare const after: (target: Element | null) => (...content: (string | N
  * const footer = document.querySelector('footer');
  * const disclaimer = document.createElement('p');
  *
- * // Insert disclaimer before footer
+ * // Imperative (cleaner DX)
+ * before(footer, disclaimer);
+ *
+ * // Curried (pipeline friendly)
  * before(footer)(disclaimer);
  * ```
  */
-export declare const before: (target: Element | null) => (...content: (string | Node | null | undefined)[]) => Element | null;
+export declare const before: {
+    (target: Element | null, ...args: (string | Node | null | undefined)[]): Element | null;
+    (target: Element | null): (...args: (string | Node | null | undefined)[]) => Element | null;
+};
 /**
  * Removes the target element from the DOM.
  *
@@ -735,7 +793,10 @@ export declare const empty: (target: Element | null) => Element | null;
  * const img = document.querySelector('img');
  * const figure = document.createElement('figure');
  *
- * // Wrap image in figure
+ * // Imperative (cleaner DX)
+ * wrap(img, figure);
+ *
+ * // Curried (pipeline friendly)
  * wrap(img)(figure);
  * // DOM: <figure><img /></figure>
  *
@@ -747,7 +808,10 @@ export declare const empty: (target: Element | null) => Element | null;
  * append(wrapper)(el('figcaption')({})(['Image caption']));
  * ```
  */
-export declare const wrap: (target: HTMLElement | null) => (wrapper: HTMLElement) => HTMLElement;
+export declare const wrap: {
+    (target: HTMLElement | null, wrapper: HTMLElement): HTMLElement;
+    (target: HTMLElement | null): (wrapper: HTMLElement) => HTMLElement;
+};
 /**
  * Creates a DOM element with full type inference.
  *
@@ -951,6 +1015,12 @@ export declare const cls: {
      *
      * @example
      * ```typescript
+     * // Imperative (cleaner DX)
+     * cls.add(btn, 'active', 'shadow');
+     *
+     * // Curried (pipeline friendly)
+     * cls.add(btn)('active', 'shadow');
+     *
      * // Add single class
      * cls.add(div)('active');
      *
@@ -961,7 +1031,10 @@ export declare const cls: {
      * cls.add(null)('active'); // Returns null
      * ```
      */
-    add: (el: Element | null) => (...classes: string[]) => Element | null;
+    add: {
+        (target: Element | null, ...args: string[]): Element | null;
+        (target: Element | null): (...args: string[]) => Element | null;
+    };
     /**
      * Removes one or more CSS classes from the element.
      *
@@ -970,6 +1043,12 @@ export declare const cls: {
      *
      * @example
      * ```typescript
+     * // Imperative (cleaner DX)
+     * cls.remove(btn, 'active', 'shadow');
+     *
+     * // Curried (pipeline friendly)
+     * cls.remove(btn)('active', 'shadow');
+     *
      * // Remove single class
      * cls.remove(div)('active');
      *
@@ -980,7 +1059,10 @@ export declare const cls: {
      * cls.remove(div)('nonexistent'); // No error
      * ```
      */
-    remove: (el: Element | null) => (...classes: string[]) => Element | null;
+    remove: {
+        (target: Element | null, ...args: string[]): Element | null;
+        (target: Element | null): (...args: string[]) => Element | null;
+    };
     /**
      * Toggles a CSS class on the element.
      *
@@ -989,20 +1071,23 @@ export declare const cls: {
      *
      * @example
      * ```typescript
-     * // Basic toggle
-     * cls.toggle(div)('active'); // Adds if absent, removes if present
+     * // Imperative (cleaner DX)
+     * cls.toggle(btn, 'active');
+     * cls.toggle(btn, 'active', true); // Force add
      *
-     * // Force add
-     * cls.toggle(div)('active', true); // Always adds
-     *
-     * // Force remove
-     * cls.toggle(div)('active', false); // Always removes
+     * // Curried (pipeline friendly)
+     * cls.toggle(btn)('active'); // Adds if absent, removes if present
+     * cls.toggle(btn)('active', true); // Always adds
+     * cls.toggle(btn)('active', false); // Always removes
      *
      * // Conditional toggle
      * cls.toggle(button)('disabled', isLoading);
      * ```
      */
-    toggle: (el: Element | null) => (className: string, force?: boolean) => Element | null;
+    toggle: {
+        (target: Element | null, className: string, force?: boolean | undefined): Element | null;
+        (target: Element | null): (className: string, force?: boolean | undefined) => Element | null;
+    };
     /**
      * Replaces an old class with a new class.
      *
@@ -1011,17 +1096,23 @@ export declare const cls: {
      *
      * @example
      * ```typescript
+     * // Imperative (cleaner DX)
+     * cls.replace(btn, 'btn-primary', 'btn-secondary');
+     *
+     * // Curried (pipeline friendly)
+     * cls.replace(btn)('btn-primary', 'btn-secondary');
+     *
      * // Replace theme class
      * cls.replace(div)('theme-light', 'theme-dark');
-     *
-     * // Replace state class
-     * cls.replace(button)('btn-primary', 'btn-secondary');
      *
      * // No effect if old class doesn't exist
      * cls.replace(div)('nonexistent', 'new'); // No change
      * ```
      */
-    replace: (el: Element | null) => (oldClass: string, newClass: string) => Element | null;
+    replace: {
+        (target: Element | null, oldClass: string, newClass: string): Element | null;
+        (target: Element | null): (oldClass: string, newClass: string) => Element | null;
+    };
     /**
      * Checks if the element has a specific class.
      *
@@ -1063,7 +1154,18 @@ export declare const cls: {
  * ```typescript
  * const modal = document.querySelector('.modal');
  *
- * // Watch for 'open' class changes
+ * // Imperative (cleaner DX)
+ * const cleanup = watchClass(modal, 'open', (isPresent, el) => {
+ *   if (isPresent) {
+ *     console.log('Modal opened');
+ *     document.body.style.overflow = 'hidden';
+ *   } else {
+ *     console.log('Modal closed');
+ *     document.body.style.overflow = '';
+ *   }
+ * });
+ *
+ * // Curried (pipeline friendly)
  * const cleanup = watchClass(modal)('open', (isPresent, el) => {
  *   if (isPresent) {
  *     console.log('Modal opened');
@@ -1091,7 +1193,10 @@ export declare const cls: {
  * const noop = watchClass(null)('active', callback); // () => {}
  * ```
  */
-export declare const watchClass: (target: Element | null) => (className: string, callback: (isPresent: boolean, el: Element) => void) => Unsubscribe;
+export declare const watchClass: {
+    (target: Element | null, className: string, callback: (isPresent: boolean, el: Element) => void): Unsubscribe;
+    (target: Element | null): (className: string, callback: (isPresent: boolean, el: Element) => void) => Unsubscribe;
+};
 /**
  * Utilities for working with data attributes (data-*).
  *
@@ -1165,7 +1270,10 @@ export declare const Data: {
      * ```typescript
      * const div = document.querySelector('div');
      *
-     * // Set string
+     * // Imperative (cleaner DX)
+     * Data.set(div, 'userId', '123');
+     *
+     * // Curried (pipeline friendly)
      * Data.set(div)('userId', '123');
      *
      * // Set number (converted to string)
@@ -1189,7 +1297,10 @@ export declare const Data: {
      * Data.set(div)('name', 'Item');
      * ```
      */
-    set: (el: HTMLElement | null) => (key: string, val: any) => HTMLElement | null;
+    set: {
+        (target: HTMLElement | null, key: string, val: any): HTMLElement | null;
+        (target: HTMLElement | null): (key: string, val: any) => HTMLElement | null;
+    };
     /**
      * Reads a data attribute with automatic type inference.
      *
@@ -1249,7 +1360,12 @@ export declare const Data: {
      * ```typescript
      * const div = document.querySelector('div');
      *
-     * // Watch for changes
+     * // Imperative (cleaner DX)
+     * const cleanup = Data.bind(div, 'count', (value, el) => {
+     *   console.log('Count is now:', value);
+     * });
+     *
+     * // Curried (pipeline friendly)
      * const cleanup = Data.bind(div)('count', (value, el) => {
      *   console.log('Count is now:', value);
      *   // Fires immediately with current value
@@ -1278,7 +1394,10 @@ export declare const Data: {
      * const noop = Data.bind(null)('key', callback); // () => {}
      * ```
      */
-    bind: (el: HTMLElement | null) => (key: string, callback: (val: any, el: HTMLElement) => void) => Unsubscribe;
+    bind: {
+        (target: HTMLElement | null, key: string, callback: (val: any, el: HTMLElement) => void): Unsubscribe;
+        (target: HTMLElement | null): (key: string, callback: (val: any, el: HTMLElement) => void) => Unsubscribe;
+    };
 };
 /**
  * Observes changes to one or more attributes on an element.
@@ -1297,7 +1416,12 @@ export declare const Data: {
  * ```typescript
  * const input = document.querySelector('input');
  *
- * // Watch single attribute
+ * // Imperative (cleaner DX)
+ * const cleanup = watchAttr(input, 'disabled', (value, attrName) => {
+ *   console.log(`${attrName} changed to:`, value);
+ * });
+ *
+ * // Curried (pipeline friendly)
  * const cleanup = watchAttr(input)('disabled', (value, attrName) => {
  *   console.log(`${attrName} changed to:`, value);
  *   // value is the new attribute value (string | null)
@@ -1329,7 +1453,10 @@ export declare const Data: {
  * const noop = watchAttr(null)('disabled', callback); // () => {}
  * ```
  */
-export declare const watchAttr: (target: Element | null) => (attrs: string | string[], callback: (val: string | null, attr: string) => void) => Unsubscribe;
+export declare const watchAttr: {
+    (target: Element | null, attrs: string | string[], callback: (val: string | null, attr: string) => void): Unsubscribe;
+    (target: Element | null): (attrs: string | string[], callback: (val: string | null, attr: string) => void) => Unsubscribe;
+};
 /**
  * Observes changes to the text content of an element.
  *
@@ -1347,7 +1474,12 @@ export declare const watchAttr: (target: Element | null) => (attrs: string | str
  * ```typescript
  * const div = document.querySelector('div');
  *
- * // Watch for text changes
+ * // Imperative (cleaner DX)
+ * const cleanup = watchText(div, (newText) => {
+ *   console.log('Text changed to:', newText);
+ * });
+ *
+ * // Curried (pipeline friendly)
  * const cleanup = watchText(div)((newText) => {
  *   console.log('Text changed to:', newText);
  * });
@@ -1366,7 +1498,10 @@ export declare const watchAttr: (target: Element | null) => (attrs: string | str
  * const noop = watchText(null)(callback); // () => {}
  * ```
  */
-export declare const watchText: (target: Element | null) => (callback: (text: string) => void) => Unsubscribe;
+export declare const watchText: {
+    (target: Element | null, callback: (text: string) => void): Unsubscribe;
+    (target: Element | null): (callback: (text: string) => void) => Unsubscribe;
+};
 /**
  * Executes a callback when the DOM is fully loaded and parsed.
  *
@@ -1443,7 +1578,13 @@ export declare const onReady: (fn: () => void) => void;
  *
  * @example
  * ```typescript
- * // Initialize modals as they appear
+ * // Imperative (cleaner DX)
+ * const cleanup = onMount('.modal', (modal) => {
+ *   console.log('Modal added:', modal);
+ *   modal.classList.add('initialized');
+ * });
+ *
+ * // Curried (pipeline friendly)
  * const cleanup = onMount('.modal')((modal) => {
  *   console.log('Modal added:', modal);
  *   modal.classList.add('initialized');
@@ -1492,7 +1633,10 @@ export declare const onReady: (fn: () => void) => void;
  * });
  * ```
  */
-export declare const onMount: (selector: string) => (handler: (el: Element) => void, root?: ParentNode, once?: boolean) => Unsubscribe;
+export declare const onMount: {
+    (target: string | null, handler: (el: Element) => void, root?: ParentNode | undefined, once?: any): Unsubscribe;
+    (target: string | null): (handler: (el: Element) => void, root?: ParentNode | undefined, once?: any) => Unsubscribe;
+};
 /**
  * Waits for a condition to become true on an element.
  *
@@ -1504,7 +1648,7 @@ export declare const onMount: (selector: string) => (handler: (el: Element) => v
  * infinite waiting:
  * ```typescript
  * Promise.race([
- *   waitFor(el)(predicate),
+ *   waitFor(el, predicate),
  *   wait(5000).then(() => { throw new Error('Timeout'); })
  * ]);
  * ```
@@ -1520,7 +1664,11 @@ export declare const onMount: (selector: string) => (handler: (el: Element) => v
  * ```typescript
  * const button = document.querySelector('button');
  *
- * // Wait for element to have a class
+ * // Imperative (cleaner DX)
+ * await waitFor(button, (el) => el.classList.contains('ready'));
+ * console.log('Button is ready!');
+ *
+ * // Curried (pipeline friendly)
  * await waitFor(button)((el) => el.classList.contains('ready'));
  * console.log('Button is ready!');
  *
@@ -1561,7 +1709,10 @@ export declare const onMount: (selector: string) => (handler: (el: Element) => v
  * console.log('All required fields filled');
  * ```
  */
-export declare const waitFor: (target: Element | null) => (predicate: (el: Element) => boolean) => Promise<Element>;
+export declare const waitFor: {
+    (target: Element | null, predicate: (el: Element) => boolean): Promise<Element>;
+    (target: Element | null): (predicate: (el: Element) => boolean) => Promise<Element>;
+};
 /**
  * Utilities for working with URL query parameters.
  *
@@ -1756,18 +1907,24 @@ export declare const Form: {
      * ```typescript
      * const form = document.querySelector('form');
      *
-     * // Load saved data
-     * const savedData = Local.get('formData');
-     * if (savedData) Form.populate(form)(savedData);
+     * // Imperative (cleaner DX)
+     * Form.populate(form, {
+     *   username: 'john',
+     *   email: 'john@example.com',
+     *   notifications: true
+     * });
      *
-     * // Load user profile
-     * const user = await Http.get('/api/user');
+     * // Curried (pipeline friendly)
      * Form.populate(form)({
      *   username: user.username,
      *   email: user.email,
      *   bio: user.bio,
      *   notifications: user.preferences.notifications
      * });
+     *
+     * // Load saved data
+     * const savedData = Local.get('formData');
+     * if (savedData) Form.populate(form)(savedData);
      *
      * // Reset form to defaults
      * Form.populate(form)({
@@ -1777,7 +1934,10 @@ export declare const Form: {
      * });
      * ```
      */
-    populate: (root: HTMLElement | null) => (data: Record<string, any>) => HTMLElement | null;
+    populate: {
+        (target: HTMLElement | null, data: Record<string, any>): HTMLElement | null;
+        (target: HTMLElement | null): (data: Record<string, any>) => HTMLElement | null;
+    };
 };
 /**
  * Waits for a specified number of milliseconds.
@@ -5700,6 +5860,16 @@ export declare const bind: {
      */
     list: <T>(container: HTMLElement | null, renderItem: (item: T, index: number) => Node) => (data: T[]) => void;
 };
+/**
+ * Helper to bind multiple events to refs in one go.
+ *
+ * @example
+ * bindEvents(refs, {
+ *   btn: { click: handleClick },
+ *   input: { input: handleInput, keydown: handleKey }
+ * })
+ */
+export declare const bindEvents: <K extends string>(refs: Record<K, HTMLElement>, map: Partial<Record<K, Record<string, (e: Event, el: HTMLElement) => void>>>) => void;
 /**
  * Defines the shape of the Refs object returned by `view()`.
  * Use a generic to specify keys: `view<'title' | 'button'>`

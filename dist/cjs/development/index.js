@@ -50,6 +50,7 @@ __export(src_exports, {
   batch: () => batch,
   before: () => before,
   bind: () => bind,
+  bindEvents: () => bindEvents,
   binder: () => binder,
   blur: () => blur,
   clone: () => clone,
@@ -65,6 +66,7 @@ __export(src_exports, {
   cssTemplate: () => cssTemplate,
   cycleClass: () => cycleClass,
   debounce: () => debounce,
+  def: () => def,
   dispatch: () => dispatch,
   el: () => el,
   empty: () => empty,
@@ -91,6 +93,7 @@ __export(src_exports, {
   refs: () => refs,
   remove: () => remove,
   scrollInto: () => scrollInto,
+  set: () => set,
   store: () => store,
   stripListeners: () => stripListeners,
   tempStyle: () => tempStyle,
@@ -107,6 +110,15 @@ __export(src_exports, {
 });
 module.exports = __toCommonJS(src_exports);
 var _nodes = (args) => args.flat().filter((x) => x != null && x !== false).map((x) => x instanceof Node ? x : document.createTextNode(String(x)));
+var def = (fn) => {
+  function wrapper(target, ...args) {
+    if (args.length > 0) {
+      return fn(target, ...args);
+    }
+    return (...lateArgs) => fn(target, ...lateArgs);
+  }
+  return wrapper;
+};
 var find = (root = document) => {
   return (selector) => {
     return root.querySelector(selector);
@@ -131,20 +143,21 @@ var on = (target) => {
     return () => target.removeEventListener(eventType, listener, options);
   };
 };
-var onDelegated = (root) => {
-  return (eventType, selector, handler, options = false) => {
-    if (!root) return () => {
+var onDelegated = (root = document) => {
+  return (selector) => {
+    return (eventType, handler, options = false) => {
+      if (!root) return () => {
+      };
+      const listener = (e) => {
+        const target = e.target;
+        const match = target.closest ? target.closest(selector) : null;
+        if (match && root.contains(match)) {
+          handler(e, match);
+        }
+      };
+      root.addEventListener(eventType, listener, options);
+      return () => root.removeEventListener(eventType, listener, options);
     };
-    const listener = (e) => {
-      var _a;
-      const target = e.target;
-      const match = (_a = target == null ? void 0 : target.closest) == null ? void 0 : _a.call(target, selector);
-      if (match && root.contains(match)) {
-        handler(e, match);
-      }
-    };
-    root.addEventListener(eventType, listener, options);
-    return () => root.removeEventListener(eventType, listener, options);
   };
 };
 var dispatch = (target) => {
@@ -155,38 +168,35 @@ var dispatch = (target) => {
     return target;
   };
 };
-var modify = (element) => {
-  return (props) => {
-    if (!element) return null;
-    if (props.text !== void 0) element.innerText = props.text;
-    if (props.html !== void 0) element.innerHTML = props.html;
-    if (props.value !== void 0) element.value = props.value;
-    if (props.disabled !== void 0) element.disabled = props.disabled;
-    if (props.style) Object.assign(element.style, props.style);
-    if (props.dataset) {
-      Object.entries(props.dataset).forEach(([k, v]) => {
-        if (v === void 0) return;
-        element.dataset[k] = v === null ? void 0 : String(v);
-      });
-    }
-    if (props.class) {
-      Object.entries(props.class).forEach(([k, v]) => element.classList.toggle(k, !!v));
-    }
-    if (props.attr) {
-      Object.entries(props.attr).forEach(([k, v]) => {
-        if (v === false || v === null || v === void 0) element.removeAttribute(k);
-        else element.setAttribute(k, String(v));
-      });
-    }
-    return element;
-  };
-};
-var css = (element) => {
-  return (styles) => {
-    if (element) Object.assign(element.style, styles);
-    return element;
-  };
-};
+var modify = def((element, props) => {
+  if (!element) return null;
+  if (props.text !== void 0) element.innerText = props.text;
+  if (props.html !== void 0) element.innerHTML = props.html;
+  if (props.value !== void 0) element.value = props.value;
+  if (props.disabled !== void 0) element.disabled = props.disabled;
+  if (props.style) Object.assign(element.style, props.style);
+  if (props.dataset) {
+    Object.entries(props.dataset).forEach(([k, v]) => {
+      if (v === void 0) return;
+      element.dataset[k] = v === null ? void 0 : String(v);
+    });
+  }
+  if (props.class) {
+    Object.entries(props.class).forEach(([k, v]) => element.classList.toggle(k, !!v));
+  }
+  if (props.attr) {
+    Object.entries(props.attr).forEach(([k, v]) => {
+      if (v === false || v === null || v === void 0) element.removeAttribute(k);
+      else element.setAttribute(k, String(v));
+    });
+  }
+  return element;
+});
+var set = modify;
+var css = def((element, styles) => {
+  if (element) Object.assign(element.style, styles);
+  return element;
+});
 var tempStyle = (element) => {
   return (styles) => {
     if (!element) return () => {
@@ -199,30 +209,22 @@ var tempStyle = (element) => {
     return () => Object.assign(element.style, original);
   };
 };
-var append = (parent) => {
-  return (...content) => {
-    parent == null ? void 0 : parent.append(..._nodes(content));
-    return parent;
-  };
-};
-var prepend = (parent) => {
-  return (...content) => {
-    parent == null ? void 0 : parent.prepend(..._nodes(content));
-    return parent;
-  };
-};
-var after = (target) => {
-  return (...content) => {
-    target == null ? void 0 : target.after(..._nodes(content));
-    return target;
-  };
-};
-var before = (target) => {
-  return (...content) => {
-    target == null ? void 0 : target.before(..._nodes(content));
-    return target;
-  };
-};
+var append = def((parent, ...content) => {
+  parent == null ? void 0 : parent.append(..._nodes(content));
+  return parent;
+});
+var prepend = def((parent, ...content) => {
+  parent == null ? void 0 : parent.prepend(..._nodes(content));
+  return parent;
+});
+var after = def((target, ...content) => {
+  target == null ? void 0 : target.after(..._nodes(content));
+  return target;
+});
+var before = def((target, ...content) => {
+  target == null ? void 0 : target.before(..._nodes(content));
+  return target;
+});
 var remove = (target) => {
   target == null ? void 0 : target.remove();
   return null;
@@ -231,15 +233,13 @@ var empty = (target) => {
   if (target) target.replaceChildren();
   return target;
 };
-var wrap = (target) => {
-  return (wrapper) => {
-    if (target && wrapper && target.parentNode) {
-      target.parentNode.insertBefore(wrapper, target);
-      wrapper.appendChild(target);
-    }
-    return wrapper;
-  };
-};
+var wrap = def((target, wrapper) => {
+  if (target && wrapper && target.parentNode) {
+    target.parentNode.insertBefore(wrapper, target);
+    wrapper.appendChild(target);
+  }
+  return wrapper;
+});
 var el = (tag) => {
   return (props = {}) => {
     return (children = []) => {
@@ -278,95 +278,110 @@ var clone = (node) => {
 var cls = {
   /**
    * Adds one or more CSS classes to the element.
-   * 
+   *
    * @param el - The element to add classes to (null-safe)
    * @returns A curried function that accepts class names and returns the element
-   * 
+   *
    * @example
    * ```typescript
+   * // Imperative (cleaner DX)
+   * cls.add(btn, 'active', 'shadow');
+   *
+   * // Curried (pipeline friendly)
+   * cls.add(btn)('active', 'shadow');
+   *
    * // Add single class
    * cls.add(div)('active');
-   * 
+   *
    * // Add multiple classes
    * cls.add(div)('card', 'shadow', 'rounded');
-   * 
+   *
    * // Null-safe
    * cls.add(null)('active'); // Returns null
    * ```
    */
-  add: (el2) => (...classes) => {
+  add: def((el2, ...classes) => {
     el2 == null ? void 0 : el2.classList.add(...classes);
     return el2;
-  },
+  }),
   /**
    * Removes one or more CSS classes from the element.
-   * 
+   *
    * @param el - The element to remove classes from (null-safe)
    * @returns A curried function that accepts class names and returns the element
-   * 
+   *
    * @example
    * ```typescript
+   * // Imperative (cleaner DX)
+   * cls.remove(btn, 'active', 'shadow');
+   *
+   * // Curried (pipeline friendly)
+   * cls.remove(btn)('active', 'shadow');
+   *
    * // Remove single class
    * cls.remove(div)('active');
-   * 
+   *
    * // Remove multiple classes
    * cls.remove(div)('loading', 'disabled', 'error');
-   * 
+   *
    * // Safe if class doesn't exist
    * cls.remove(div)('nonexistent'); // No error
    * ```
    */
-  remove: (el2) => (...classes) => {
+  remove: def((el2, ...classes) => {
     el2 == null ? void 0 : el2.classList.remove(...classes);
     return el2;
-  },
+  }),
   /**
    * Toggles a CSS class on the element.
-   * 
+   *
    * @param el - The element to toggle the class on (null-safe)
    * @returns A curried function that accepts class name and optional force flag
-   * 
+   *
    * @example
    * ```typescript
-   * // Basic toggle
-   * cls.toggle(div)('active'); // Adds if absent, removes if present
-   * 
-   * // Force add
-   * cls.toggle(div)('active', true); // Always adds
-   * 
-   * // Force remove
-   * cls.toggle(div)('active', false); // Always removes
-   * 
+   * // Imperative (cleaner DX)
+   * cls.toggle(btn, 'active');
+   * cls.toggle(btn, 'active', true); // Force add
+   *
+   * // Curried (pipeline friendly)
+   * cls.toggle(btn)('active'); // Adds if absent, removes if present
+   * cls.toggle(btn)('active', true); // Always adds
+   * cls.toggle(btn)('active', false); // Always removes
+   *
    * // Conditional toggle
    * cls.toggle(button)('disabled', isLoading);
    * ```
    */
-  toggle: (el2) => (className, force) => {
+  toggle: def((el2, className, force) => {
     el2 == null ? void 0 : el2.classList.toggle(className, force);
     return el2;
-  },
+  }),
   /**
    * Replaces an old class with a new class.
-   * 
+   *
    * @param el - The element to modify (null-safe)
    * @returns A curried function that accepts old and new class names
-   * 
+   *
    * @example
    * ```typescript
+   * // Imperative (cleaner DX)
+   * cls.replace(btn, 'btn-primary', 'btn-secondary');
+   *
+   * // Curried (pipeline friendly)
+   * cls.replace(btn)('btn-primary', 'btn-secondary');
+   *
    * // Replace theme class
    * cls.replace(div)('theme-light', 'theme-dark');
-   * 
-   * // Replace state class
-   * cls.replace(button)('btn-primary', 'btn-secondary');
-   * 
+   *
    * // No effect if old class doesn't exist
    * cls.replace(div)('nonexistent', 'new'); // No change
    * ```
    */
-  replace: (el2) => (oldClass, newClass) => {
+  replace: def((el2, oldClass, newClass) => {
     el2 == null ? void 0 : el2.classList.replace(oldClass, newClass);
     return el2;
-  },
+  }),
   /**
    * Checks if the element has a specific class.
    * 
@@ -393,22 +408,20 @@ var cls = {
     return !!el2 && el2.classList.contains(className);
   }
 };
-var watchClass = (target) => {
-  return (className, callback) => {
-    if (!target) return () => {
-    };
-    let was = target.classList.contains(className);
-    const obs = new MutationObserver(() => {
-      const is = target.classList.contains(className);
-      if (is !== was) {
-        was = is;
-        callback(is, target);
-      }
-    });
-    obs.observe(target, { attributes: true, attributeFilter: ["class"] });
-    return () => obs.disconnect();
+var watchClass = def((target, className, callback) => {
+  if (!target) return () => {
   };
-};
+  let was = target.classList.contains(className);
+  const obs = new MutationObserver(() => {
+    const is = target.classList.contains(className);
+    if (is !== was) {
+      was = is;
+      callback(is, target);
+    }
+  });
+  obs.observe(target, { attributes: true, attributeFilter: ["class"] });
+  return () => obs.disconnect();
+});
 var toDataAttr = (str) => "data-" + str.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase());
 var Data = {
   /**
@@ -441,48 +454,51 @@ var Data = {
   get: (el2) => (key) => el2 == null ? void 0 : el2.dataset[key],
   /**
    * Sets a data attribute value.
-   * 
+   *
    * Automatically converts objects to JSON strings and handles null/undefined
    * by removing the attribute. CamelCase keys are converted to kebab-case.
-   * 
+   *
    * @template T - The element type (inferred)
    * @param el - The element to set data on (null-safe)
    * @returns A curried function that accepts key and value, returns the element
-   * 
+   *
    * @example
    * ```typescript
    * const div = document.querySelector('div');
-   * 
-   * // Set string
+   *
+   * // Imperative (cleaner DX)
+   * Data.set(div, 'userId', '123');
+   *
+   * // Curried (pipeline friendly)
    * Data.set(div)('userId', '123');
-   * 
+   *
    * // Set number (converted to string)
    * Data.set(div)('count', 42); // data-count="42"
-   * 
+   *
    * // Set boolean
    * Data.set(div)('isActive', true); // data-is-active="true"
-   * 
+   *
    * // Set object (JSON stringified)
    * Data.set(div)('config', { theme: 'dark', size: 'lg' });
    * // data-config='{"theme":"dark","size":"lg"}'
-   * 
+   *
    * // Remove attribute (null or undefined)
    * Data.set(div)('userId', null); // Removes data-user-id
-   * 
+   *
    * // CamelCase to kebab-case
    * Data.set(div)('userName', 'John'); // Sets data-user-name="John"
-   * 
+   *
    * // Chaining
    * Data.set(div)('id', 1);
    * Data.set(div)('name', 'Item');
    * ```
    */
-  set: (el2) => (key, val) => {
+  set: def((el2, key, val) => {
     if (!el2) return el2;
     if (val == null) delete el2.dataset[key];
     else el2.dataset[key] = typeof val === "object" ? JSON.stringify(val) : String(val);
     return el2;
-  },
+  }),
   /**
    * Reads a data attribute with automatic type inference.
    * 
@@ -541,29 +557,34 @@ var Data = {
   },
   /**
    * Observes changes to a data attribute and fires a callback.
-   * 
+   *
    * Uses MutationObserver to watch for attribute changes. The callback fires
    * immediately with the current value, then on every change. Values are
    * automatically parsed using `Data.read()`.
-   * 
+   *
    * @template T - The expected value type
    * @param el - The element to observe (null-safe)
    * @returns A curried function that accepts key and callback, returns cleanup function
-   * 
+   *
    * @example
    * ```typescript
    * const div = document.querySelector('div');
-   * 
-   * // Watch for changes
+   *
+   * // Imperative (cleaner DX)
+   * const cleanup = Data.bind(div, 'count', (value, el) => {
+   *   console.log('Count is now:', value);
+   * });
+   *
+   * // Curried (pipeline friendly)
    * const cleanup = Data.bind(div)('count', (value, el) => {
    *   console.log('Count is now:', value);
    *   // Fires immediately with current value
    *   // Then fires on every change
    * });
-   * 
+   *
    * // Later: stop watching
    * cleanup();
-   * 
+   *
    * // Form validation example
    * Data.bind(input)('validationError', (error) => {
    *   if (error) {
@@ -573,17 +594,17 @@ var Data = {
    *     errorDisplay.style.display = 'none';
    *   }
    * });
-   * 
+   *
    * // Sync state between components
    * Data.bind(slider)('value', (value) => {
    *   valueDisplay.textContent = String(value);
    * });
-   * 
+   *
    * // Null-safe: returns no-op cleanup
    * const noop = Data.bind(null)('key', callback); // () => {}
    * ```
    */
-  bind: (el2) => (key, callback) => {
+  bind: def((el2, key, callback) => {
     if (!el2) return () => {
     };
     const attr = toDataAttr(key);
@@ -594,80 +615,74 @@ var Data = {
     });
     obs.observe(el2, { attributes: true, attributeFilter: [attr] });
     return () => obs.disconnect();
-  }
+  })
 };
-var watchAttr = (target) => {
-  return (attrs, callback) => {
-    if (!target) return () => {
-    };
-    const obs = new MutationObserver((muts) => muts.forEach((m) => {
-      if (m.attributeName) callback(target.getAttribute(m.attributeName), m.attributeName);
-    }));
-    obs.observe(target, { attributes: true, attributeFilter: Array.isArray(attrs) ? attrs : [attrs] });
-    return () => obs.disconnect();
+var watchAttr = def((target, attrs, callback) => {
+  if (!target) return () => {
   };
-};
-var watchText = (target) => {
-  return (callback) => {
-    if (!target) return () => {
-    };
-    const obs = new MutationObserver(() => {
-      callback(target.textContent || "");
-    });
-    obs.observe(target, { characterData: true, childList: true, subtree: true });
-    return () => obs.disconnect();
+  const obs = new MutationObserver((muts) => muts.forEach((m) => {
+    if (m.attributeName) callback(target.getAttribute(m.attributeName), m.attributeName);
+  }));
+  obs.observe(target, { attributes: true, attributeFilter: Array.isArray(attrs) ? attrs : [attrs] });
+  return () => obs.disconnect();
+});
+var watchText = def((target, callback) => {
+  if (!target) return () => {
   };
-};
+  const obs = new MutationObserver(() => {
+    callback(target.textContent || "");
+  });
+  obs.observe(target, { characterData: true, childList: true, subtree: true });
+  return () => obs.disconnect();
+});
 var onReady = (fn) => {
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", fn, { once: true });
   else fn();
 };
-var onMount = (selector) => {
-  return (handler, root = document, once = false) => {
-    const seen = /* @__PURE__ */ new WeakSet();
-    let foundAny = false;
-    const check = (node) => {
-      if (seen.has(node)) return;
-      if (node.matches(selector)) {
-        seen.add(node);
-        handler(node);
+var onMount = def((selector, handler, root = document, once = false) => {
+  if (!selector) return () => {
+  };
+  const seen = /* @__PURE__ */ new WeakSet();
+  let foundAny = false;
+  const check = (node) => {
+    if (seen.has(node)) return;
+    if (node.matches(selector)) {
+      seen.add(node);
+      handler(node);
+      foundAny = true;
+    }
+    node.querySelectorAll(selector).forEach((c) => {
+      if (!seen.has(c)) {
+        seen.add(c);
+        handler(c);
         foundAny = true;
       }
-      node.querySelectorAll(selector).forEach((c) => {
-        if (!seen.has(c)) {
-          seen.add(c);
-          handler(c);
-          foundAny = true;
-        }
-      });
-    };
-    root.querySelectorAll(selector).forEach(check);
-    const obs = new MutationObserver((muts) => muts.forEach((m) => {
-      m.addedNodes.forEach((n) => {
-        if (n.nodeType === 1) check(n);
-      });
-    }));
-    if (once && foundAny) return () => {
-    };
-    obs.observe(root, { childList: true, subtree: true });
-    return () => obs.disconnect();
-  };
-};
-var waitFor = (target) => {
-  return (predicate) => {
-    return new Promise((resolve) => {
-      if (!target) return;
-      if (predicate(target)) return resolve(target);
-      const obs = new MutationObserver(() => {
-        if (predicate(target)) {
-          obs.disconnect();
-          resolve(target);
-        }
-      });
-      obs.observe(target, { attributes: true, childList: true, subtree: true, characterData: true });
     });
   };
-};
+  root.querySelectorAll(selector).forEach(check);
+  const obs = new MutationObserver((muts) => muts.forEach((m) => {
+    m.addedNodes.forEach((n) => {
+      if (n.nodeType === 1) check(n);
+    });
+  }));
+  if (once && foundAny) return () => {
+  };
+  obs.observe(root, { childList: true, subtree: true });
+  return () => obs.disconnect();
+});
+var waitFor = def((target, predicate) => {
+  return new Promise((resolve) => {
+    if (!target) return;
+    if (predicate(target)) return resolve(target);
+    const obs = new MutationObserver(() => {
+      if (predicate(target)) {
+        obs.disconnect();
+        resolve(target);
+      }
+    });
+    obs.observe(target, { attributes: true, childList: true, subtree: true, characterData: true });
+  });
+});
 var Params = {
   /**
    * Gets a single query parameter value.
@@ -798,29 +813,35 @@ var Form = {
   },
   /**
    * Populates form inputs from a plain object.
-   * 
+   *
    * Matches object keys to input `name` attributes and sets values accordingly.
-   * 
+   *
    * @param root - The form or container element
    * @returns A curried function that accepts data object and returns the root
-   * 
+   *
    * @example
    * ```typescript
    * const form = document.querySelector('form');
-   * 
-   * // Load saved data
-   * const savedData = Local.get('formData');
-   * if (savedData) Form.populate(form)(savedData);
-   * 
-   * // Load user profile
-   * const user = await Http.get('/api/user');
+   *
+   * // Imperative (cleaner DX)
+   * Form.populate(form, {
+   *   username: 'john',
+   *   email: 'john@example.com',
+   *   notifications: true
+   * });
+   *
+   * // Curried (pipeline friendly)
    * Form.populate(form)({
    *   username: user.username,
    *   email: user.email,
    *   bio: user.bio,
    *   notifications: user.preferences.notifications
    * });
-   * 
+   *
+   * // Load saved data
+   * const savedData = Local.get('formData');
+   * if (savedData) Form.populate(form)(savedData);
+   *
    * // Reset form to defaults
    * Form.populate(form)({
    *   theme: 'light',
@@ -829,7 +850,7 @@ var Form = {
    * });
    * ```
    */
-  populate: (root) => (data) => {
+  populate: def((root, data) => {
     if (!root) return root;
     Object.entries(data).forEach(([k, v]) => {
       const el2 = root.querySelector(`[name="${k}"]`);
@@ -838,7 +859,7 @@ var Form = {
       else el2.value = String(v);
     });
     return root;
-  }
+  })
 };
 var wait = (ms) => new Promise((r) => setTimeout(r, ms));
 var nextFrame = () => new Promise((r) => requestAnimationFrame(r));
@@ -3591,6 +3612,15 @@ var bind = {
       container.replaceChildren(fragment);
     };
   }
+};
+var bindEvents = (refs2, map) => {
+  Object.entries(map).forEach(([refKey, events]) => {
+    const el2 = refs2[refKey];
+    if (!el2) return;
+    Object.entries(events).forEach(([evtName, handler]) => {
+      on(el2)(evtName, (e) => handler(e, el2));
+    });
+  });
 };
 var view = (htmlString) => {
   const tpl = document.createElement("template");

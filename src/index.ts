@@ -398,16 +398,16 @@ export const closest = (element: Element | null) => {
 
 /**
  * Attaches an event listener to the target element.
- * 
+ *
  * Returns a cleanup function to remove the listener. Supports all standard
  * DOM events with full type inference. The handler receives both the event
  * and the target element for convenience.
- * 
+ *
  * @template T - The event target type (EventTarget or more specific)
  * @template K - The event type key from HTMLElementEventMap
  * @param target - The element to attach the listener to (null-safe)
  * @returns A curried function that accepts event type, handler, and options
- * 
+ *
  * @example
  * ```typescript
  * // Basic click handler
@@ -416,27 +416,27 @@ export const closest = (element: Element | null) => {
  *   console.log('Clicked!', target); // target is typed as the button
  *   e.preventDefault();
  * });
- * 
+ *
  * // Later: remove the listener
  * cleanup();
- * 
+ *
  * // Input events with type inference
  * const input = document.querySelector('input');
  * on(input)('input', (e) => {
  *   console.log(e.target.value); // e is InputEvent
  * });
- * 
+ *
  * // Keyboard events
  * on(document)('keydown', (e) => {
  *   if (e.key === 'Escape') {
  *     console.log('Escape pressed');
  *   }
  * });
- * 
+ *
  * // With options (capture, once, passive)
  * on(window)('scroll', handler, { passive: true });
  * on(button)('click', handler, { once: true });
- * 
+ *
  * // Null-safe: returns no-op cleanup if target is null
  * const missing = document.querySelector('.missing');
  * const noop = on(missing)('click', handler); // Safe, returns () => {}
@@ -589,22 +589,25 @@ export const dispatch = (target: EventTarget | null) => {
 
 /**
  * Declaratively modifies an element's properties.
- * 
+ *
  * Provides a unified API for setting text, HTML, styles, classes, attributes,
  * and dataset values. All modifications are applied in a single call. Returns
  * the element for chaining.
- * 
+ *
  * @template T - The HTML element type
  * @param element - The element to modify (null-safe)
  * @returns A curried function that accepts props and returns the modified element
- * 
+ *
  * @example
  * ```typescript
  * const button = document.querySelector('button');
- * 
- * // Set text content (safer than innerHTML)
+ *
+ * // Imperative (cleaner DX)
+ * modify(button, { text: 'Click me!' });
+ *
+ * // Curried (pipeline friendly)
  * modify(button)({ text: 'Click me!' });
- * 
+ *
  * // Multiple properties at once
  * modify(button)({
  *   text: 'Submit',
@@ -613,7 +616,7 @@ export const dispatch = (target: EventTarget | null) => {
  *   style: { backgroundColor: 'blue', color: 'white' },
  *   attr: { 'aria-label': 'Submit form', type: 'submit' }
  * });
- * 
+ *
  * // Form inputs
  * const input = document.querySelector('input');
  * modify(input)({
@@ -621,7 +624,7 @@ export const dispatch = (target: EventTarget | null) => {
  *   disabled: false,
  *   attr: { placeholder: 'Enter name', required: true }
  * });
- * 
+ *
  * // Conditional classes
  * modify(element)({
  *   class: {
@@ -630,7 +633,7 @@ export const dispatch = (target: EventTarget | null) => {
  *     success: isSuccess
  *   }
  * });
- * 
+ *
  * // Data attributes (auto-converts to kebab-case)
  * modify(element)({
  *   dataset: {
@@ -639,43 +642,41 @@ export const dispatch = (target: EventTarget | null) => {
  *     config: { a: 1 }    // becomes data-config='{"a":1}'
  *   }
  * });
- * 
+ *
  * // Null-safe: returns null if element is null
  * modify(null)({ text: 'test' }); // null
  * ```
  */
-export const modify = <T extends HTMLElement>(element: T | null) => {
-  return (props: ElementProps): T | null => {
-    if (!element) return null;
+export const modify = def(<T extends HTMLElement>(element: T | null, props: ElementProps): T | null => {
+  if (!element) return null;
 
-    if (props.text !== undefined) element.innerText = props.text;
-    if (props.html !== undefined) element.innerHTML = props.html;
-    if (props.value !== undefined) (element as any).value = props.value;
-    if (props.disabled !== undefined) (element as any).disabled = props.disabled;
+  if (props.text !== undefined) element.innerText = props.text;
+  if (props.html !== undefined) element.innerHTML = props.html;
+  if (props.value !== undefined) (element as any).value = props.value;
+  if (props.disabled !== undefined) (element as any).disabled = props.disabled;
 
-    if (props.style) Object.assign(element.style, props.style);
+  if (props.style) Object.assign(element.style, props.style);
 
-    if (props.dataset) {
-      Object.entries(props.dataset).forEach(([k, v]) => {
-        if (v === undefined) return;
-        element.dataset[k] = v === null ? undefined : String(v);
-      });
-    }
+  if (props.dataset) {
+    Object.entries(props.dataset).forEach(([k, v]) => {
+      if (v === undefined) return;
+      element.dataset[k] = v === null ? undefined : String(v);
+    });
+  }
 
-    if (props.class) {
-      Object.entries(props.class).forEach(([k, v]) => element.classList.toggle(k, !!v));
-    }
+  if (props.class) {
+    Object.entries(props.class).forEach(([k, v]) => element.classList.toggle(k, !!v));
+  }
 
-    if (props.attr) {
-      Object.entries(props.attr).forEach(([k, v]) => {
-        if (v === false || v === null || v === undefined) element.removeAttribute(k);
-        else element.setAttribute(k, String(v));
-      });
-    }
+  if (props.attr) {
+    Object.entries(props.attr).forEach(([k, v]) => {
+      if (v === false || v === null || v === undefined) element.removeAttribute(k);
+      else element.setAttribute(k, String(v));
+    });
+  }
 
-    return element;
-  };
-};
+  return element;
+});
 
 /** 
  * Sets properties on an element.
@@ -685,51 +686,52 @@ export const set = modify
 
 /**
  * Applies inline CSS styles to an element.
- * 
+ *
  * Merges the provided styles with existing inline styles. For removing styles,
  * set the property to empty string. Returns the element for chaining.
- * 
+ *
  * @param element - The element to style (null-safe)
  * @returns A curried function that accepts styles and returns the element
- * 
+ *
  * @example
  * ```typescript
  * const div = document.querySelector('div');
- * 
- * // Basic styling
+ *
+ * // Imperative (cleaner DX)
+ * css(div, { color: 'red', fontSize: '16px' });
+ *
+ * // Curried (pipeline friendly)
  * css(div)({
  *   color: 'red',
  *   fontSize: '16px',
  *   marginTop: '10px'
  * });
- * 
+ *
  * // CSS custom properties (variables)
  * css(div)({
  *   '--primary-color': '#007bff',
  *   '--spacing': '1rem'
  * } as any);
- * 
+ *
  * // Remove a style (set to empty string)
  * css(div)({ display: '' });
- * 
+ *
  * // Animation and transitions
  * css(div)({
  *   transition: 'all 0.3s ease',
  *   transform: 'translateX(100px)',
  *   opacity: '0.5'
  * });
- * 
+ *
  * // Chaining with modify
  * const element = modify(div)({ text: 'Hello' });
  * css(element)({ color: 'blue' });
  * ```
  */
-export const css = (element: HTMLElement | null) => {
-  return (styles: Partial<CSSStyleDeclaration>) => {
-    if (element) Object.assign(element.style, styles);
-    return element;
-  };
-};
+export const css = def((element: HTMLElement | null, styles: Partial<CSSStyleDeclaration>) => {
+  if (element) Object.assign(element.style, styles);
+  return element;
+});
 
 /**
  * Applies styles temporarily and returns a revert function.
@@ -798,127 +800,130 @@ export const tempStyle = (element: HTMLElement | null) => {
 
 /**
  * Appends content to the end of the target element.
- * 
+ *
  * Accepts multiple arguments of mixed types (strings, Nodes, null, undefined).
  * Strings are automatically converted to text nodes. Null/undefined values are
  * filtered out. Returns the parent for chaining.
- * 
+ *
  * @param parent - The parent element to append to (null-safe)
  * @returns A curried function that accepts content and returns the parent
- * 
+ *
  * @example
  * ```typescript
  * const list = document.querySelector('ul');
- * 
+ *
+ * // Imperative (cleaner DX)
+ * append(list, item1, item2, item3);
+ *
+ * // Curried (pipeline friendly)
+ * append(list)(item1, item2, item3);
+ *
  * // Append a single element
  * const item = document.createElement('li');
  * append(list)(item);
- * 
- * // Append multiple items at once
- * append(list)(item1, item2, item3);
- * 
+ *
  * // Mix elements and text
  * append(container)(heading, 'Some text', paragraph);
- * 
+ *
  * // Append text nodes
  * append(div)('Hello', ' ', 'World');
- * 
+ *
  * // Null values are safely ignored
  * append(list)(item1, null, item2, undefined); // Only appends item1 and item2
- * 
+ *
  * // Chaining
  * const parent = append(container)(child1);
  * append(parent)(child2);
  * ```
  */
-export const append = (parent: HTMLElement | null) => {
-  return (...content: (string | Node | null | undefined)[]) => {
-    parent?.append(..._nodes(content));
-    return parent;
-  };
-};
+export const append = def((parent: HTMLElement | null, ...content: (string | Node | null | undefined)[]) => {
+  parent?.append(..._nodes(content));
+  return parent;
+});
 
 /**
  * Prepends content to the start of the target element.
- * 
+ *
  * Inserts content at the beginning, before any existing children. Accepts
  * multiple arguments of mixed types. Returns the parent for chaining.
- * 
+ *
  * @param parent - The parent element to prepend to (null-safe)
  * @returns A curried function that accepts content and returns the parent
- * 
+ *
  * @example
  * ```typescript
  * const list = document.querySelector('ul');
- * 
- * // Prepend to start of list
- * const firstItem = document.createElement('li');
+ *
+ * // Imperative (cleaner DX)
+ * prepend(list, firstItem);
+ *
+ * // Curried (pipeline friendly)
  * prepend(list)(firstItem);
- * 
+ *
  * // Add header before content
  * const container = document.querySelector('.container');
  * const header = document.createElement('h1');
  * prepend(container)(header);
  * ```
  */
-export const prepend = (parent: HTMLElement | null) => {
-  return (...content: (string | Node | null | undefined)[]) => {
-    parent?.prepend(..._nodes(content));
-    return parent;
-  };
-};
+export const prepend = def((parent: HTMLElement | null, ...content: (string | Node | null | undefined)[]) => {
+  parent?.prepend(..._nodes(content));
+  return parent;
+});
 
 /**
  * Inserts content AFTER the target element as siblings.
- * 
+ *
  * The content is inserted after the target in the DOM tree, at the same level.
  * Useful for inserting elements without modifying the target's children.
- * 
+ *
  * @param target - The reference element (null-safe)
  * @returns A curried function that accepts content and returns the target
- * 
+ *
  * @example
  * ```typescript
  * const header = document.querySelector('h1');
  * const banner = document.createElement('div');
- * 
- * // Insert banner after header
+ *
+ * // Imperative (cleaner DX)
+ * after(header, banner, notice, alert);
+ *
+ * // Curried (pipeline friendly)
  * after(header)(banner);
- * 
+ *
  * // Insert multiple elements
  * after(header)(banner, notice, alert);
  * ```
  */
-export const after = (target: Element | null) => {
-  return (...content: (string | Node | null | undefined)[]) => {
-    target?.after(..._nodes(content));
-    return target;
-  };
-};
+export const after = def((target: Element | null, ...content: (string | Node | null | undefined)[]) => {
+  target?.after(..._nodes(content));
+  return target;
+});
 
 /**
  * Inserts content BEFORE the target element as siblings.
- * 
+ *
  * The content is inserted before the target in the DOM tree, at the same level.
- * 
+ *
  * @param target - The reference element (null-safe)
  * @returns A curried function that accepts content and returns the target
- * 
+ *
  * @example
  * ```typescript
  * const footer = document.querySelector('footer');
  * const disclaimer = document.createElement('p');
- * 
- * // Insert disclaimer before footer
+ *
+ * // Imperative (cleaner DX)
+ * before(footer, disclaimer);
+ *
+ * // Curried (pipeline friendly)
  * before(footer)(disclaimer);
  * ```
  */
-export const before = (target: Element | null) => {
-  return (...content: (string | Node | null | undefined)[]) => {
-    target?.before(..._nodes(content));
-    return target;
-  };
-};
+export const before = def((target: Element | null, ...content: (string | Node | null | undefined)[]) => {
+  target?.before(..._nodes(content));
+  return target;
+});
 
 /**
  * Removes the target element from the DOM.
@@ -973,40 +978,41 @@ export const empty = (target: Element | null) => {
 
 /**
  * Wraps the target element with a wrapper element.
- * 
+ *
  * Inserts the wrapper before the target in the DOM, then moves the target
  * inside the wrapper. Useful for adding container elements around existing
  * content.
- * 
+ *
  * @param target - The element to wrap (null-safe)
  * @returns A curried function that accepts a wrapper and returns it
- * 
+ *
  * @example
  * ```typescript
  * const img = document.querySelector('img');
  * const figure = document.createElement('figure');
- * 
- * // Wrap image in figure
+ *
+ * // Imperative (cleaner DX)
+ * wrap(img, figure);
+ *
+ * // Curried (pipeline friendly)
  * wrap(img)(figure);
  * // DOM: <figure><img /></figure>
- * 
+ *
  * // Using el() helper
  * wrap(img)(el('figure')({})([]));
- * 
+ *
  * // Add caption to wrapper
  * const wrapper = wrap(img)(figure);
  * append(wrapper)(el('figcaption')({})(['Image caption']));
  * ```
  */
-export const wrap = (target: HTMLElement | null) => {
-  return (wrapper: HTMLElement) => {
-    if (target && wrapper && target.parentNode) {
-      target.parentNode.insertBefore(wrapper, target);
-      wrapper.appendChild(target);
-    }
-    return wrapper;
-  };
-};
+export const wrap = def((target: HTMLElement | null, wrapper: HTMLElement) => {
+  if (target && wrapper && target.parentNode) {
+    target.parentNode.insertBefore(wrapper, target);
+    wrapper.appendChild(target);
+  }
+  return wrapper;
+});
 
 // =============================================================================
 // 5. CREATION & TEMPLATES
@@ -1241,100 +1247,115 @@ export const clone = <T extends Node>(node: T | null) => {
  * ```
  */
 export const cls = {
-  /**
-   * Adds one or more CSS classes to the element.
-   * 
-   * @param el - The element to add classes to (null-safe)
-   * @returns A curried function that accepts class names and returns the element
-   * 
-   * @example
-   * ```typescript
-   * // Add single class
-   * cls.add(div)('active');
-   * 
-   * // Add multiple classes
-   * cls.add(div)('card', 'shadow', 'rounded');
-   * 
-   * // Null-safe
-   * cls.add(null)('active'); // Returns null
-   * ```
-   */
-  add: (el: Element | null) => (...classes: string[]) => {
-    el?.classList.add(...classes);
-    return el;
-  },
+   /**
+    * Adds one or more CSS classes to the element.
+    *
+    * @param el - The element to add classes to (null-safe)
+    * @returns A curried function that accepts class names and returns the element
+    *
+    * @example
+    * ```typescript
+    * // Imperative (cleaner DX)
+    * cls.add(btn, 'active', 'shadow');
+    *
+    * // Curried (pipeline friendly)
+    * cls.add(btn)('active', 'shadow');
+    *
+    * // Add single class
+    * cls.add(div)('active');
+    *
+    * // Add multiple classes
+    * cls.add(div)('card', 'shadow', 'rounded');
+    *
+    * // Null-safe
+    * cls.add(null)('active'); // Returns null
+    * ```
+    */
+   add: def((el: Element | null, ...classes: string[]) => {
+     el?.classList.add(...classes);
+     return el;
+   }),
 
-  /**
-   * Removes one or more CSS classes from the element.
-   * 
-   * @param el - The element to remove classes from (null-safe)
-   * @returns A curried function that accepts class names and returns the element
-   * 
-   * @example
-   * ```typescript
-   * // Remove single class
-   * cls.remove(div)('active');
-   * 
-   * // Remove multiple classes
-   * cls.remove(div)('loading', 'disabled', 'error');
-   * 
-   * // Safe if class doesn't exist
-   * cls.remove(div)('nonexistent'); // No error
-   * ```
-   */
-  remove: (el: Element | null) => (...classes: string[]) => {
-    el?.classList.remove(...classes);
-    return el;
-  },
+   /**
+    * Removes one or more CSS classes from the element.
+    *
+    * @param el - The element to remove classes from (null-safe)
+    * @returns A curried function that accepts class names and returns the element
+    *
+    * @example
+    * ```typescript
+    * // Imperative (cleaner DX)
+    * cls.remove(btn, 'active', 'shadow');
+    *
+    * // Curried (pipeline friendly)
+    * cls.remove(btn)('active', 'shadow');
+    *
+    * // Remove single class
+    * cls.remove(div)('active');
+    *
+    * // Remove multiple classes
+    * cls.remove(div)('loading', 'disabled', 'error');
+    *
+    * // Safe if class doesn't exist
+    * cls.remove(div)('nonexistent'); // No error
+    * ```
+    */
+   remove: def((el: Element | null, ...classes: string[]) => {
+     el?.classList.remove(...classes);
+     return el;
+   }),
 
-  /**
-   * Toggles a CSS class on the element.
-   * 
-   * @param el - The element to toggle the class on (null-safe)
-   * @returns A curried function that accepts class name and optional force flag
-   * 
-   * @example
-   * ```typescript
-   * // Basic toggle
-   * cls.toggle(div)('active'); // Adds if absent, removes if present
-   * 
-   * // Force add
-   * cls.toggle(div)('active', true); // Always adds
-   * 
-   * // Force remove
-   * cls.toggle(div)('active', false); // Always removes
-   * 
-   * // Conditional toggle
-   * cls.toggle(button)('disabled', isLoading);
-   * ```
-   */
-  toggle: (el: Element | null) => (className: string, force?: boolean) => {
-    el?.classList.toggle(className, force);
-    return el;
-  },
+   /**
+    * Toggles a CSS class on the element.
+    *
+    * @param el - The element to toggle the class on (null-safe)
+    * @returns A curried function that accepts class name and optional force flag
+    *
+    * @example
+    * ```typescript
+    * // Imperative (cleaner DX)
+    * cls.toggle(btn, 'active');
+    * cls.toggle(btn, 'active', true); // Force add
+    *
+    * // Curried (pipeline friendly)
+    * cls.toggle(btn)('active'); // Adds if absent, removes if present
+    * cls.toggle(btn)('active', true); // Always adds
+    * cls.toggle(btn)('active', false); // Always removes
+    *
+    * // Conditional toggle
+    * cls.toggle(button)('disabled', isLoading);
+    * ```
+    */
+   toggle: def((el: Element | null, className: string, force?: boolean) => {
+     el?.classList.toggle(className, force);
+     return el;
+   }),
 
-  /**
-   * Replaces an old class with a new class.
-   * 
-   * @param el - The element to modify (null-safe)
-   * @returns A curried function that accepts old and new class names
-   * 
-   * @example
-   * ```typescript
-   * // Replace theme class
-   * cls.replace(div)('theme-light', 'theme-dark');
-   * 
-   * // Replace state class
-   * cls.replace(button)('btn-primary', 'btn-secondary');
-   * 
-   * // No effect if old class doesn't exist
-   * cls.replace(div)('nonexistent', 'new'); // No change
-   * ```
-   */
-  replace: (el: Element | null) => (oldClass: string, newClass: string) => {
-    el?.classList.replace(oldClass, newClass);
-    return el;
-  },
+   /**
+    * Replaces an old class with a new class.
+    *
+    * @param el - The element to modify (null-safe)
+    * @returns A curried function that accepts old and new class names
+    *
+    * @example
+    * ```typescript
+    * // Imperative (cleaner DX)
+    * cls.replace(btn, 'btn-primary', 'btn-secondary');
+    *
+    * // Curried (pipeline friendly)
+    * cls.replace(btn)('btn-primary', 'btn-secondary');
+    *
+    * // Replace theme class
+    * cls.replace(div)('theme-light', 'theme-dark');
+    *
+    * // No effect if old class doesn't exist
+    * cls.replace(div)('nonexistent', 'new'); // No change
+    * ```
+    */
+   replace: def((el: Element | null, oldClass: string, newClass: string) => {
+     el?.classList.replace(oldClass, newClass);
+     return el;
+   }),
 
   /**
    * Checks if the element has a specific class.
@@ -1365,22 +1386,33 @@ export const cls = {
 
 /**
  * Observes changes to a specific class on an element.
- * 
+ *
  * Uses MutationObserver to watch for class attribute changes. The callback
  * fires only when the specified class is added or removed (not on other class
  * changes). Returns a cleanup function to stop observing.
- * 
+ *
  * **Performance**: Uses attribute filtering for efficiency. Consider debouncing
  * the callback if rapid changes are expected.
- * 
+ *
  * @param target - The element to observe (null-safe)
  * @returns A curried function that accepts class name and callback, returns cleanup function
- * 
+ *
  * @example
  * ```typescript
  * const modal = document.querySelector('.modal');
- * 
- * // Watch for 'open' class changes
+ *
+ * // Imperative (cleaner DX)
+ * const cleanup = watchClass(modal, 'open', (isPresent, el) => {
+ *   if (isPresent) {
+ *     console.log('Modal opened');
+ *     document.body.style.overflow = 'hidden';
+ *   } else {
+ *     console.log('Modal closed');
+ *     document.body.style.overflow = '';
+ *   }
+ * });
+ *
+ * // Curried (pipeline friendly)
  * const cleanup = watchClass(modal)('open', (isPresent, el) => {
  *   if (isPresent) {
  *     console.log('Modal opened');
@@ -1390,36 +1422,34 @@ export const cls = {
  *     document.body.style.overflow = '';
  *   }
  * });
- * 
+ *
  * // Later: stop watching
  * cleanup();
- * 
+ *
  * // Watch loading state
  * watchClass(button)('loading', (isLoading) => {
  *   button.disabled = isLoading;
  * });
- * 
+ *
  * // Sync state between elements
  * watchClass(sidebar)('collapsed', (isCollapsed) => {
  *   cls.toggle(mainContent)('expanded', isCollapsed);
  * });
- * 
+ *
  * // Null-safe: returns no-op cleanup
  * const noop = watchClass(null)('active', callback); // () => {}
  * ```
  */
-export const watchClass = (target: Element | null) => {
-  return (className: string, callback: (isPresent: boolean, el: Element) => void): Unsubscribe => {
-    if (!target) return () => { };
-    let was = target.classList.contains(className);
-    const obs = new MutationObserver(() => {
-      const is = target.classList.contains(className);
-      if (is !== was) { was = is; callback(is, target); }
-    });
-    obs.observe(target, { attributes: true, attributeFilter: ['class'] });
-    return () => obs.disconnect();
-  };
-};
+export const watchClass = def((target: Element | null, className: string, callback: (isPresent: boolean, el: Element) => void): Unsubscribe => {
+  if (!target) return () => { };
+  let was = target.classList.contains(className);
+  const obs = new MutationObserver(() => {
+    const is = target.classList.contains(className);
+    if (is !== was) { was = is; callback(is, target); }
+  });
+  obs.observe(target, { attributes: true, attributeFilter: ['class'] });
+  return () => obs.disconnect();
+});
 
 
 // =============================================================================
@@ -1488,50 +1518,53 @@ export const Data = {
    */
   get: (el: HTMLElement | null) => (key: string) => el?.dataset[key],
 
-  /**
-   * Sets a data attribute value.
-   * 
-   * Automatically converts objects to JSON strings and handles null/undefined
-   * by removing the attribute. CamelCase keys are converted to kebab-case.
-   * 
-   * @template T - The element type (inferred)
-   * @param el - The element to set data on (null-safe)
-   * @returns A curried function that accepts key and value, returns the element
-   * 
-   * @example
-   * ```typescript
-   * const div = document.querySelector('div');
-   * 
-   * // Set string
-   * Data.set(div)('userId', '123');
-   * 
-   * // Set number (converted to string)
-   * Data.set(div)('count', 42); // data-count="42"
-   * 
-   * // Set boolean
-   * Data.set(div)('isActive', true); // data-is-active="true"
-   * 
-   * // Set object (JSON stringified)
-   * Data.set(div)('config', { theme: 'dark', size: 'lg' });
-   * // data-config='{"theme":"dark","size":"lg"}'
-   * 
-   * // Remove attribute (null or undefined)
-   * Data.set(div)('userId', null); // Removes data-user-id
-   * 
-   * // CamelCase to kebab-case
-   * Data.set(div)('userName', 'John'); // Sets data-user-name="John"
-   * 
-   * // Chaining
-   * Data.set(div)('id', 1);
-   * Data.set(div)('name', 'Item');
-   * ```
-   */
-  set: (el: HTMLElement | null) => (key: string, val: any) => {
-    if (!el) return el;
-    if (val == null) delete el.dataset[key];
-    else el.dataset[key] = typeof val === 'object' ? JSON.stringify(val) : String(val);
-    return el;
-  },
+   /**
+    * Sets a data attribute value.
+    *
+    * Automatically converts objects to JSON strings and handles null/undefined
+    * by removing the attribute. CamelCase keys are converted to kebab-case.
+    *
+    * @template T - The element type (inferred)
+    * @param el - The element to set data on (null-safe)
+    * @returns A curried function that accepts key and value, returns the element
+    *
+    * @example
+    * ```typescript
+    * const div = document.querySelector('div');
+    *
+    * // Imperative (cleaner DX)
+    * Data.set(div, 'userId', '123');
+    *
+    * // Curried (pipeline friendly)
+    * Data.set(div)('userId', '123');
+    *
+    * // Set number (converted to string)
+    * Data.set(div)('count', 42); // data-count="42"
+    *
+    * // Set boolean
+    * Data.set(div)('isActive', true); // data-is-active="true"
+    *
+    * // Set object (JSON stringified)
+    * Data.set(div)('config', { theme: 'dark', size: 'lg' });
+    * // data-config='{"theme":"dark","size":"lg"}'
+    *
+    * // Remove attribute (null or undefined)
+    * Data.set(div)('userId', null); // Removes data-user-id
+    *
+    * // CamelCase to kebab-case
+    * Data.set(div)('userName', 'John'); // Sets data-user-name="John"
+    *
+    * // Chaining
+    * Data.set(div)('id', 1);
+    * Data.set(div)('name', 'Item');
+    * ```
+    */
+   set: def((el: HTMLElement | null, key: string, val: any) => {
+     if (!el) return el;
+     if (val == null) delete el.dataset[key];
+     else el.dataset[key] = typeof val === 'object' ? JSON.stringify(val) : String(val);
+     return el;
+   }),
 
   /**
    * Reads a data attribute with automatic type inference.
@@ -1586,92 +1619,102 @@ export const Data = {
     try { return JSON.parse(val); } catch { return val; }
   },
 
-  /**
-   * Observes changes to a data attribute and fires a callback.
-   * 
-   * Uses MutationObserver to watch for attribute changes. The callback fires
-   * immediately with the current value, then on every change. Values are
-   * automatically parsed using `Data.read()`.
-   * 
-   * @template T - The expected value type
-   * @param el - The element to observe (null-safe)
-   * @returns A curried function that accepts key and callback, returns cleanup function
-   * 
-   * @example
-   * ```typescript
-   * const div = document.querySelector('div');
-   * 
-   * // Watch for changes
-   * const cleanup = Data.bind(div)('count', (value, el) => {
-   *   console.log('Count is now:', value);
-   *   // Fires immediately with current value
-   *   // Then fires on every change
-   * });
-   * 
-   * // Later: stop watching
-   * cleanup();
-   * 
-   * // Form validation example
-   * Data.bind(input)('validationError', (error) => {
-   *   if (error) {
-   *     errorDisplay.textContent = error;
-   *     errorDisplay.style.display = 'block';
-   *   } else {
-   *     errorDisplay.style.display = 'none';
-   *   }
-   * });
-   * 
-   * // Sync state between components
-   * Data.bind(slider)('value', (value) => {
-   *   valueDisplay.textContent = String(value);
-   * });
-   * 
-   * // Null-safe: returns no-op cleanup
-   * const noop = Data.bind(null)('key', callback); // () => {}
-   * ```
-   */
-  bind: (el: HTMLElement | null) => (key: string, callback: (val: any, el: HTMLElement) => void): Unsubscribe => {
-    if (!el) return () => { };
-    const attr = toDataAttr(key);
-    const update = () => callback(Data.read(el)(key), el);
+   /**
+    * Observes changes to a data attribute and fires a callback.
+    *
+    * Uses MutationObserver to watch for attribute changes. The callback fires
+    * immediately with the current value, then on every change. Values are
+    * automatically parsed using `Data.read()`.
+    *
+    * @template T - The expected value type
+    * @param el - The element to observe (null-safe)
+    * @returns A curried function that accepts key and callback, returns cleanup function
+    *
+    * @example
+    * ```typescript
+    * const div = document.querySelector('div');
+    *
+    * // Imperative (cleaner DX)
+    * const cleanup = Data.bind(div, 'count', (value, el) => {
+    *   console.log('Count is now:', value);
+    * });
+    *
+    * // Curried (pipeline friendly)
+    * const cleanup = Data.bind(div)('count', (value, el) => {
+    *   console.log('Count is now:', value);
+    *   // Fires immediately with current value
+    *   // Then fires on every change
+    * });
+    *
+    * // Later: stop watching
+    * cleanup();
+    *
+    * // Form validation example
+    * Data.bind(input)('validationError', (error) => {
+    *   if (error) {
+    *     errorDisplay.textContent = error;
+    *     errorDisplay.style.display = 'block';
+    *   } else {
+    *     errorDisplay.style.display = 'none';
+    *   }
+    * });
+    *
+    * // Sync state between components
+    * Data.bind(slider)('value', (value) => {
+    *   valueDisplay.textContent = String(value);
+    * });
+    *
+    * // Null-safe: returns no-op cleanup
+    * const noop = Data.bind(null)('key', callback); // () => {}
+    * ```
+    */
+   bind: def((el: HTMLElement | null, key: string, callback: (val: any, el: HTMLElement) => void): Unsubscribe => {
+     if (!el) return () => { };
+     const attr = toDataAttr(key);
+     const update = () => callback(Data.read(el)(key), el);
 
-    update(); // Initial
-    const obs = new MutationObserver((m) => {
-      if (m.some(x => x.attributeName === attr)) update();
-    });
-    obs.observe(el, { attributes: true, attributeFilter: [attr] });
-    return () => obs.disconnect();
-  }
+     update(); // Initial
+     const obs = new MutationObserver((m) => {
+       if (m.some(x => x.attributeName === attr)) update();
+     });
+     obs.observe(el, { attributes: true, attributeFilter: [attr] });
+     return () => obs.disconnect();
+   })
 };
 
 /**
  * Observes changes to one or more attributes on an element.
- * 
+ *
  * Uses MutationObserver to watch for attribute changes. The callback fires
  * whenever any of the specified attributes change, receiving the new value
  * and attribute name. Returns a cleanup function to stop observing.
- * 
+ *
  * **Performance**: Uses attribute filtering for efficiency. The observer only
  * watches the specified attributes, not all attribute changes.
- * 
+ *
  * @param target - The element to observe (null-safe)
  * @returns A curried function that accepts attributes and callback, returns cleanup function
- * 
+ *
  * @example
  * ```typescript
  * const input = document.querySelector('input');
- * 
- * // Watch single attribute
+ *
+ * // Imperative (cleaner DX)
+ * const cleanup = watchAttr(input, 'disabled', (value, attrName) => {
+ *   console.log(`${attrName} changed to:`, value);
+ * });
+ *
+ * // Curried (pipeline friendly)
  * const cleanup = watchAttr(input)('disabled', (value, attrName) => {
  *   console.log(`${attrName} changed to:`, value);
  *   // value is the new attribute value (string | null)
  * });
- * 
+ *
  * // Watch multiple attributes
  * watchAttr(input)(['value', 'placeholder', 'type'], (value, attrName) => {
  *   console.log(`${attrName} = ${value}`);
  * });
- * 
+ *
  * // Form validation
  * watchAttr(input)('aria-invalid', (value) => {
  *   if (value === 'true') {
@@ -1680,76 +1723,77 @@ export const Data = {
  *     input.classList.remove('error');
  *   }
  * });
- * 
+ *
  * // Sync attributes between elements
  * watchAttr(sourceElement)('title', (value) => {
  *   if (value) targetElement.setAttribute('title', value);
  * });
- * 
+ *
  * // Later: stop watching
  * cleanup();
- * 
+ *
  * // Null-safe: returns no-op cleanup
  * const noop = watchAttr(null)('disabled', callback); // () => {}
  * ```
  */
-export const watchAttr = (target: Element | null) => {
-  return (attrs: string | string[], callback: (val: string | null, attr: string) => void): Unsubscribe => {
-    if (!target) return () => { };
-    const obs = new MutationObserver((muts) => muts.forEach(m => {
-      if (m.attributeName) callback(target.getAttribute(m.attributeName), m.attributeName);
-    }));
-    obs.observe(target, { attributes: true, attributeFilter: Array.isArray(attrs) ? attrs : [attrs] });
-    return () => obs.disconnect();
-  };
-};
+export const watchAttr = def((target: Element | null, attrs: string | string[], callback: (val: string | null, attr: string) => void): Unsubscribe => {
+  if (!target) return () => { };
+  const obs = new MutationObserver((muts) => muts.forEach(m => {
+    if (m.attributeName) callback(target.getAttribute(m.attributeName), m.attributeName);
+  }));
+  obs.observe(target, { attributes: true, attributeFilter: Array.isArray(attrs) ? attrs : [attrs] });
+  return () => obs.disconnect();
+});
 
 /**
  * Observes changes to the text content of an element.
- * 
+ *
  * Uses MutationObserver to watch for text content changes. The callback fires
  * whenever the element's textContent changes, receiving the new text value.
  * Returns a cleanup function to stop observing.
- * 
+ *
  * **Performance**: Watches both characterData (direct text node changes) and
  * childList (when text nodes are added/removed) with subtree enabled.
- * 
+ *
  * @param target - The element to observe (null-safe)
  * @returns A curried function that accepts a callback, returns cleanup function
- * 
+ *
  * @example
  * ```typescript
  * const div = document.querySelector('div');
- * 
- * // Watch for text changes
+ *
+ * // Imperative (cleaner DX)
+ * const cleanup = watchText(div, (newText) => {
+ *   console.log('Text changed to:', newText);
+ * });
+ *
+ * // Curried (pipeline friendly)
  * const cleanup = watchText(div)((newText) => {
  *   console.log('Text changed to:', newText);
  * });
- * 
+ *
  * // Later: stop watching
  * cleanup();
- * 
+ *
  * // Use in reactive UI
  * const counter = document.querySelector('#counter');
  * watchText(counter)((text) => {
  *   const count = parseInt(text);
  *   if (count > 100) alert('Limit exceeded!');
  * });
- * 
+ *
  * // Null-safe: returns no-op cleanup
  * const noop = watchText(null)(callback); // () => {}
  * ```
  */
-export const watchText = (target: Element | null) => {
-  return (callback: (text: string) => void): Unsubscribe => {
-    if (!target) return () => { };
-    const obs = new MutationObserver(() => {
-      callback(target.textContent || '');
-    });
-    obs.observe(target, { characterData: true, childList: true, subtree: true });
-    return () => obs.disconnect();
-  };
-};
+export const watchText = def((target: Element | null, callback: (text: string) => void): Unsubscribe => {
+  if (!target) return () => { };
+  const obs = new MutationObserver(() => {
+    callback(target.textContent || '');
+  });
+  obs.observe(target, { characterData: true, childList: true, subtree: true });
+  return () => obs.disconnect();
+});
 
 
 // =============================================================================
@@ -1816,60 +1860,66 @@ export const onReady = (fn: () => void): void => {
 
 /**
  * Observes when elements matching a selector are added to the DOM.
- * 
+ *
  * Uses MutationObserver to watch for new elements. The handler fires for:
  * 1. Elements already in the DOM (initial check)
  * 2. Elements added dynamically after setup
- * 
+ *
  * Each element is tracked using WeakSet to prevent duplicate handler calls.
  * Returns a cleanup function to stop observing.
- * 
+ *
  * **Performance**: Uses WeakSet for O(1) duplicate checking without memory leaks.
  * The observer watches the entire subtree by default.
- * 
+ *
  * **SPA Navigation**: Perfect for handling dynamically loaded content in single-page
  * applications where elements appear/disappear without full page reloads.
- * 
+ *
  * @template S - The CSS selector string
  * @param selector - CSS selector to match elements
  * @returns A curried function that accepts handler, root, and once flag
- * 
+ *
  * @example
  * ```typescript
- * // Initialize modals as they appear
+ * // Imperative (cleaner DX)
+ * const cleanup = onMount('.modal', (modal) => {
+ *   console.log('Modal added:', modal);
+ *   modal.classList.add('initialized');
+ * });
+ *
+ * // Curried (pipeline friendly)
  * const cleanup = onMount('.modal')((modal) => {
  *   console.log('Modal added:', modal);
  *   modal.classList.add('initialized');
- *   
+ *
  *   // Setup modal-specific behavior
  *   const closeBtn = modal.querySelector('.close');
  *   on(closeBtn)('click', () => modal.remove());
  * });
- * 
+ *
  * // Later: stop observing
  * cleanup();
- * 
+ *
  * // Watch within a specific container
  * const container = document.querySelector('#app');
  * onMount('.dynamic-card')((card) => {
  *   console.log('Card added');
  * }, container);
- * 
+ *
  * // One-time handler (stops after first match)
  * onMount('#splash-screen')((splash) => {
  *   setTimeout(() => splash.remove(), 3000);
  * }, document, true); // once = true
- * 
+ *
  * // SPA route handling
  * onMount('[data-page]')((page) => {
  *   const pageName = page.getAttribute('data-page');
  *   console.log('Page loaded:', pageName);
- *   
+ *
  *   // Initialize page-specific features
  *   initializeAnalytics(pageName);
  *   loadPageData(pageName);
  * });
- * 
+ *
  * // Lazy-load images as they're added
  * onMount('img[data-src]')((img) => {
  *   const src = img.getAttribute('data-src');
@@ -1878,82 +1928,85 @@ export const onReady = (fn: () => void): void => {
  *     img.removeAttribute('data-src');
  *   }
  * });
- * 
+ *
  * // Component initialization pattern
  * onMount('[data-component="tooltip"]')((el) => {
  *   new Tooltip(el); // Initialize tooltip component
  * });
  * ```
  */
-export const onMount = (selector: string) => {
-  return (handler: (el: Element) => void, root: ParentNode = document, once = false): Unsubscribe => {
-    const seen = new WeakSet();
-    let foundAny = false;
-    const check = (node: Element) => {
-      if (seen.has(node)) return;
-      if (node.matches(selector)) { seen.add(node); handler(node); foundAny = true; }
-      node.querySelectorAll(selector).forEach(c => {
-        if (!seen.has(c)) { seen.add(c); handler(c); foundAny = true; }
-      });
-    };
-
-    // Initial check
-    root.querySelectorAll(selector).forEach(check);
-
-    const obs = new MutationObserver(muts => muts.forEach(m => {
-      m.addedNodes.forEach(n => { if (n.nodeType === 1) check(n as Element); });
-    }));
-
-    if (once && foundAny) return () => { }; // Already found
-    obs.observe(root, { childList: true, subtree: true });
-    return () => obs.disconnect();
+export const onMount = def((selector: string | null, handler: (el: Element) => void, root: ParentNode = document, once = false): Unsubscribe => {
+  if (!selector) return () => { };
+  const seen = new WeakSet();
+  let foundAny = false;
+  const check = (node: Element) => {
+    if (seen.has(node)) return;
+    if (node.matches(selector)) { seen.add(node); handler(node); foundAny = true; }
+    node.querySelectorAll(selector).forEach(c => {
+      if (!seen.has(c)) { seen.add(c); handler(c); foundAny = true; }
+    });
   };
-};
+
+  // Initial check
+  root.querySelectorAll(selector).forEach(check);
+
+  const obs = new MutationObserver(muts => muts.forEach(m => {
+    m.addedNodes.forEach(n => { if (n.nodeType === 1) check(n as Element); });
+  }));
+
+  if (once && foundAny) return () => { }; // Already found
+  obs.observe(root, { childList: true, subtree: true });
+  return () => obs.disconnect();
+});
 
 /**
  * Waits for a condition to become true on an element.
- * 
+ *
  * Returns a Promise that resolves when the predicate returns true. Uses
  * MutationObserver to watch for changes. The predicate is checked immediately,
  * then on every mutation until it returns true.
- * 
+ *
  * **Timeout Recommendation**: Consider adding a timeout wrapper to prevent
  * infinite waiting:
  * ```typescript
  * Promise.race([
- *   waitFor(el)(predicate),
+ *   waitFor(el, predicate),
  *   wait(5000).then(() => { throw new Error('Timeout'); })
  * ]);
  * ```
- * 
+ *
  * **Memory Leak Prevention**: The observer automatically disconnects when the
  * condition is met. If the element is null, the promise never resolves (consider
  * null-checking before calling).
- * 
+ *
  * @param target - The element to observe (null-unsafe: promise won't resolve if null)
  * @returns A curried function that accepts a predicate and returns a Promise
- * 
+ *
  * @example
  * ```typescript
  * const button = document.querySelector('button');
- * 
- * // Wait for element to have a class
+ *
+ * // Imperative (cleaner DX)
+ * await waitFor(button, (el) => el.classList.contains('ready'));
+ * console.log('Button is ready!');
+ *
+ * // Curried (pipeline friendly)
  * await waitFor(button)((el) => el.classList.contains('ready'));
  * console.log('Button is ready!');
- * 
+ *
  * // Wait for specific attribute value
  * await waitFor(input)((el) => el.getAttribute('data-loaded') === 'true');
  * console.log('Data loaded!');
- * 
+ *
  * // Wait for child count
  * const list = document.querySelector('ul');
  * await waitFor(list)((el) => el.children.length >= 10);
  * console.log('List has at least 10 items');
- * 
+ *
  * // Wait for text content
  * await waitFor(status)((el) => el.textContent?.includes('Complete'));
  * console.log('Status is complete');
- * 
+ *
  * // With timeout (recommended)
  * try {
  *   await Promise.race([
@@ -1964,12 +2017,12 @@ export const onMount = (selector: string) => {
  * } catch (e) {
  *   console.error('Timed out:', e);
  * }
- * 
+ *
  * // Animation completion
  * element.classList.add('animating');
  * await waitFor(element)((el) => !el.classList.contains('animating'));
  * console.log('Animation complete');
- * 
+ *
  * // Form validation
  * await waitFor(form)((el) => {
  *   const inputs = el.querySelectorAll('input[required]');
@@ -1978,18 +2031,16 @@ export const onMount = (selector: string) => {
  * console.log('All required fields filled');
  * ```
  */
-export const waitFor = (target: Element | null) => {
-  return (predicate: (el: Element) => boolean): Promise<Element> => {
-    return new Promise((resolve) => {
-      if (!target) return;
-      if (predicate(target)) return resolve(target);
-      const obs = new MutationObserver(() => {
-        if (predicate(target)) { obs.disconnect(); resolve(target); }
-      });
-      obs.observe(target, { attributes: true, childList: true, subtree: true, characterData: true });
+export const waitFor = def((target: Element | null, predicate: (el: Element) => boolean): Promise<Element> => {
+  return new Promise((resolve) => {
+    if (!target) return;
+    if (predicate(target)) return resolve(target);
+    const obs = new MutationObserver(() => {
+      if (predicate(target)) { obs.disconnect(); resolve(target); }
     });
-  };
-};
+    obs.observe(target, { attributes: true, childList: true, subtree: true, characterData: true });
+  });
+});
 
 
 // =============================================================================
@@ -2198,49 +2249,55 @@ export const Form = {
     return data;
   },
 
-  /**
-   * Populates form inputs from a plain object.
-   * 
-   * Matches object keys to input `name` attributes and sets values accordingly.
-   * 
-   * @param root - The form or container element
-   * @returns A curried function that accepts data object and returns the root
-   * 
-   * @example
-   * ```typescript
-   * const form = document.querySelector('form');
-   * 
-   * // Load saved data
-   * const savedData = Local.get('formData');
-   * if (savedData) Form.populate(form)(savedData);
-   * 
-   * // Load user profile
-   * const user = await Http.get('/api/user');
-   * Form.populate(form)({
-   *   username: user.username,
-   *   email: user.email,
-   *   bio: user.bio,
-   *   notifications: user.preferences.notifications
-   * });
-   * 
-   * // Reset form to defaults
-   * Form.populate(form)({
-   *   theme: 'light',
-   *   language: 'en',
-   *   notifications: true
-   * });
-   * ```
-   */
-  populate: (root: HTMLElement | null) => (data: Record<string, any>) => {
-    if (!root) return root;
-    Object.entries(data).forEach(([k, v]) => {
-      const el = root.querySelector(`[name="${k}"]`) as HTMLInputElement;
-      if (!el) return;
-      if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!v;
-      else el.value = String(v);
-    });
-    return root;
-  }
+   /**
+    * Populates form inputs from a plain object.
+    *
+    * Matches object keys to input `name` attributes and sets values accordingly.
+    *
+    * @param root - The form or container element
+    * @returns A curried function that accepts data object and returns the root
+    *
+    * @example
+    * ```typescript
+    * const form = document.querySelector('form');
+    *
+    * // Imperative (cleaner DX)
+    * Form.populate(form, {
+    *   username: 'john',
+    *   email: 'john@example.com',
+    *   notifications: true
+    * });
+    *
+    * // Curried (pipeline friendly)
+    * Form.populate(form)({
+    *   username: user.username,
+    *   email: user.email,
+    *   bio: user.bio,
+    *   notifications: user.preferences.notifications
+    * });
+    *
+    * // Load saved data
+    * const savedData = Local.get('formData');
+    * if (savedData) Form.populate(form)(savedData);
+    *
+    * // Reset form to defaults
+    * Form.populate(form)({
+    *   theme: 'light',
+    *   language: 'en',
+    *   notifications: true
+    * });
+    * ```
+    */
+   populate: def((root: HTMLElement | null, data: Record<string, any>) => {
+     if (!root) return root;
+     Object.entries(data).forEach(([k, v]) => {
+       const el = root.querySelector(`[name="${k}"]`) as HTMLInputElement;
+       if (!el) return;
+       if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!v;
+       else el.value = String(v);
+     });
+     return root;
+   })
 };
 
 /**
