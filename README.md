@@ -132,8 +132,8 @@ $('button').modify({ text: 'Click' }).addClass('active');
 | `css` | Apply inline styles. | `css(el)({ color: 'red', opacity: '1' })` |
 | `tempStyle` | Apply styles temporarily, returns revert function. | `const revert = tempStyle(el)({ opacity: '0.5' });` |
 | `el` | Create a new element with props and children. | `el('div')({ class:{box:1} })([child])` |
-| `html` | Create an element from a template literal. | `const div = html\`<div>${name}</div>\`;` |
-| `htmlMany` | Create a DocumentFragment from HTML. | `const frag = htmlMany\`<li>A</li><li>B</li>\`;` |
+| `html` | Create an element from a template literal. | ```const div = html`<div>${name}</div>`;``` |
+| `htmlMany` | Create a DocumentFragment from HTML. | ```const frag = htmlMany`<li>A</li><li>B</li>`;``` |
 | `append` | Append nodes or text to an element. | `append(parent)(child1, 'text')` |
 | `prepend` | Prepend nodes or text to an element. | `prepend(list)(newItem)` |
 | `after` | Insert content after an element as siblings. | `after(el)(newSibling)` |
