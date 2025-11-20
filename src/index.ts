@@ -226,6 +226,49 @@ const _nodes = (args: any[]): Node[] =>
     .filter(x => x != null && x !== false)
     .map(x => x instanceof Node ? x : document.createTextNode(String(x)));
 
+/**
+ * Hybrid Function Builder.
+ * Creates a function that supports both Curried and Imperative usage.
+ * 
+ * @template T - The Target type (Element, string, etc)
+ * @template A - The Arguments tuple type
+ * @template R - The Return type
+ * 
+ * @example
+ * const add = def((el: HTMLElement, cls: string) => el.classList.add(cls));
+ * 
+ * // Usage 1: Imperative (Cleaner DX)
+ * add(div, 'active');
+ * 
+ * // Usage 2: Curried (Pipeline friendly)
+ * pipe(
+ *   find('.btn'),
+ *   el => add(el)('active')
+ * );
+ */
+export const def = <T, A extends any[], R>(
+  // The implementation function takes target + args all at once
+  fn: (target: T | null, ...args: A) => R
+) => {
+  // Overload 1: Called with arguments -> Execute immediately
+  function wrapper(target: T | null, ...args: A): R;
+
+  // Overload 2: Called with just target -> Return curried function
+  function wrapper(target: T | null): (...args: A) => R;
+
+  // Implementation
+  function wrapper(target: T | null, ...args: any[]) {
+    // If we have extra args, run immediately
+    if (args.length > 0) {
+      // @ts-ignore - spread is safe here due to generics
+      return fn(target, ...args);
+    }
+    // Otherwise return the closure
+    return (...lateArgs: A) => fn(target, ...lateArgs);
+  }
+
+  return wrapper;
+};
 
 // =============================================================================
 // 1. QUERYING
@@ -464,11 +507,11 @@ export const onDelegated = (root: ParentNode | null = document) => {
       handler: (event: HTMLElementEventMap[K], match: ParseSelector<S>) => void,
       options: boolean | AddEventListenerOptions = false
     ): Unsubscribe => {
-      if (!root) return () => {};
+      if (!root) return () => { };
 
       const listener = (e: Event) => {
         const target = e.target as Element;
-        
+
         // 1. Find the closest ancestor (or self) that matches the selector
         const match = target.closest ? target.closest(selector) : null;
 
@@ -633,6 +676,12 @@ export const modify = <T extends HTMLElement>(element: T | null) => {
     return element;
   };
 };
+
+/** 
+ * Sets properties on an element.
+ *  @alias modify 
+ */
+export const set = modify
 
 /**
  * Applies inline CSS styles to an element.
@@ -7292,13 +7341,13 @@ export const bind = {
    */
   list: <T>(container: HTMLElement | null, renderItem: (item: T, index: number) => Node) => {
     let currentData: T[] | undefined;
-    
+
     return (data: T[]) => {
       if (!container) return;
       if (data === currentData) return; // Ref check
-      
+
       currentData = data;
-      
+
       // Optimization: fast clear if empty
       if (data.length === 0) {
         if (container.firstChild) container.replaceChildren();
@@ -7326,13 +7375,13 @@ export const bind = {
  * })
  */
 export const bindEvents = <K extends string>(
-  refs: Record<K, HTMLElement>, 
+  refs: Record<K, HTMLElement>,
   map: Partial<Record<K, Record<string, (e: Event, el: HTMLElement) => void>>>
 ) => {
   Object.entries(map).forEach(([refKey, events]) => {
     const el = refs[refKey as K];
     if (!el) return;
-    
+
     Object.entries(events as Record<string, any>).forEach(([evtName, handler]) => {
       // Uses our standard 'on' function
       on(el)(evtName as any, (e) => handler(e, el));
@@ -7362,7 +7411,7 @@ export const view = <K extends string = string>(htmlString: string) => {
   return () => {
     const root = document.importNode(tpl.content, true);
     const refs = {} as Refs<K>;
-    
+
     root.querySelectorAll('[data-ref]').forEach(el => {
       const key = (el as HTMLElement).dataset.ref;
       if (key) refs[key as K] = el as HTMLElement;
@@ -7392,10 +7441,10 @@ export const view = <K extends string = string>(htmlString: string) => {
  * ui.active(true);
  */
 export const binder = <
-  R extends Record<string, HTMLElement>, 
+  R extends Record<string, HTMLElement>,
   Schema extends { [Key in keyof R]?: (el: HTMLElement) => Setter<any> }
 >(
-  refs: R, 
+  refs: R,
   schema: Schema
 ): { [Key in keyof Schema]: Schema[Key] extends (el: any) => infer S ? S : never } => {
   const binders = {} as any;
@@ -7512,7 +7561,7 @@ const _mergeHeaders = (
  */
 const _buildUrl = (path: string, baseURL?: string, params?: Record<string, any>): string => {
   let url = baseURL ? `${baseURL}${path}` : path;
-  
+
   if (params) {
     const search = new URLSearchParams();
     for (const [key, val] of Object.entries(params)) {
@@ -7523,7 +7572,7 @@ const _buildUrl = (path: string, baseURL?: string, params?: Record<string, any>)
     const qs = search.toString();
     if (qs) url += `${url.includes('?') ? '&' : '?'}${qs}`;
   }
-  
+
   return url;
 };
 
@@ -7547,7 +7596,7 @@ const _encodeBody = (body: any): BodyInit | null => {
  */
 const _parseResponse = async (response: globalThis.Response, transform?: (data: any) => any): Promise<any> => {
   const contentType = response.headers.get('content-type') || '';
-  
+
   let data: any;
   if (contentType.includes('application/json')) {
     try {
@@ -7562,7 +7611,7 @@ const _parseResponse = async (response: globalThis.Response, transform?: (data: 
   } else {
     data = await response.arrayBuffer();
   }
-  
+
   return transform ? transform(data) : data;
 };
 
@@ -7579,18 +7628,18 @@ const _fetchWithRetry = async (
 ): Promise<globalThis.Response> => {
   const controller = new AbortController();
   const timeoutId = timeout > 0 ? setTimeout(() => controller.abort(), timeout) : undefined;
-  
+
   try {
     return await fetch(url, { ...init, signal: controller.signal });
   } catch (error) {
     if (timeoutId !== undefined) clearTimeout(timeoutId);
-    
+
     // Retry on network error (not on HTTP error like 404)
     if (retries > 0 && (error instanceof TypeError || error instanceof DOMException)) {
       await new Promise(resolve => setTimeout(resolve, retryDelay));
       return _fetchWithRetry(url, init, retries - 1, retryDelay, timeout);
     }
-    
+
     throw error;
   } finally {
     if (timeoutId !== undefined) clearTimeout(timeoutId);
