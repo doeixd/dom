@@ -23,6 +23,29 @@ A modern utility library for the DOM and frontend development. It's a collection
 npm install @doeixd/dom
 ```
 
+### Or With ESM.sh (No Build Step)
+Use directly in the browser without npm or build tools:
+
+```html
+<script type="module">
+  // Import only what you need - automatic tree-shaking
+  import { find, modify, on } from 'https://esm.sh/@doeixd/dom';
+  
+  const button = find('button');
+  modify(button)({ text: 'Click me!' });
+  on(button)('click', () => alert('Clicked!'));
+</script>
+```
+
+#### Tree-Shaking with ESM.sh: Use the ?exports parameter to bundle only specific functions:
+
+```html
+<script type="module">
+  // Only bundles find, modify, and on (~2KB instead of ~15KB)
+  import { find, modify, on } from 'https://esm.sh/@doeixd/dom?exports=find,modify,on';
+</script>
+```
+
 <br />
 
 ## Quick Start
