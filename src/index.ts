@@ -274,6 +274,8 @@ export const def = <T, A extends any[], R>(
 // 1. QUERYING
 // =============================================================================
 
+
+
 /**
  * Finds the first element matching the selector.
  *
@@ -448,6 +450,43 @@ export function exists(arg: any) {
   };
 }
 
+/**
+ * Returns all siblings of an element (excluding the element itself).
+ *
+ * Overloads:
+ * 1. `siblings(node)` — returns its siblings
+ * 2. `siblings(root)(node)` — sibling list relative to a specific parent
+ *
+ * Null-safe: returns an empty array if `node` or parent is null.
+ *
+ * @example
+ * const btn = document.querySelector("button");
+ * const sibs = siblings(btn);   // Element[]
+ *
+ * @example
+ * const list = document.querySelector("ul");
+ * const sibsOf = siblings(list);
+ * sibsOf(list.querySelector("li"));
+ */
+export function siblings(node: Element | null): Element[];
+
+export function siblings(root: ParentNode | null):
+  (node: Element | null) => Element[];
+
+export function siblings(arg: any): any {
+  if (!(arg instanceof Element) && arg !== null) {
+    const root: ParentNode | null = arg;
+    return (node: Element | null): Element[] => {
+      if (!root || !node) return [];
+      return Array.from(root.children).filter(el => el !== node);
+    };
+  }
+
+  const node: Element | null = arg;
+  if (!node || !node.parentElement) return [];
+  return Array.from(node.parentElement.children).filter(el => el !== node);
+}
+
 
 /**
  * Checks whether a given element contains a descendant matching the selector.
@@ -534,43 +573,6 @@ export function index(arg: any): any {
   const node: Element | null = arg;
   if (!node || !node.parentElement) return -1;
   return Array.from(node.parentElement.children).indexOf(node);
-}
-
-/**
- * Returns all siblings of an element (excluding the element itself).
- *
- * Overloads:
- * 1. `siblings(node)` — returns its siblings
- * 2. `siblings(root)(node)` — sibling list relative to a specific parent
- *
- * Null-safe: returns an empty array if `node` or parent is null.
- *
- * @example
- * const btn = document.querySelector("button");
- * const sibs = siblings(btn);   // Element[]
- *
- * @example
- * const list = document.querySelector("ul");
- * const sibsOf = siblings(list);
- * sibsOf(list.querySelector("li"));
- */
-export function siblings(node: Element | null): Element[];
-
-export function siblings(root: ParentNode | null):
-  (node: Element | null) => Element[];
-
-export function siblings(arg: any): any {
-  if (!(arg instanceof Element) && arg !== null) {
-    const root: ParentNode | null = arg;
-    return (node: Element | null): Element[] => {
-      if (!root || !node) return [];
-      return Array.from(root.children).filter(el => el !== node);
-    };
-  }
-
-  const node: Element | null = arg;
-  if (!node || !node.parentElement) return [];
-  return Array.from(node.parentElement.children).filter(el => el !== node);
 }
 
 
@@ -1978,6 +1980,78 @@ export const watchText = def((target: Element | null, callback: (text: string) =
   return () => obs.disconnect();
 });
 
+/**
+ * Gets or sets an attribute on an element.
+ *
+ * Overloads:
+ * 1. attr("data-id") — gets attribute from documentElement
+ * 2. attr(el)("data-id") — gets attribute from the element
+ * 3. attr(el)("data-id", "123") — sets attribute
+ *
+ * Getter returns `string | null`
+ * Setter returns `void`
+ */
+export function attr(attribute: string): string | null;
+export function attr(el: Element | null):
+  (attribute: string) => string | null;
+export function attr(el: Element | null):
+  (attribute: string, value: string) => void;
+
+export function attr(a: any): any {
+  // Case 1: attr("data-id")
+  if (typeof a === "string") {
+    const attribute = a;
+    return document.documentElement.getAttribute(attribute);
+  }
+
+  // Curried case: attr(el)
+  const el: Element | null = a;
+  return (attribute: string, value?: string): any => {
+    if (!el) return value === undefined ? null : undefined;
+    if (value === undefined) {
+      return el.getAttribute(attribute);
+    }
+    el.setAttribute(attribute, value);
+  };
+}
+
+/**
+ * Gets or sets a DOM property.
+ *
+ * Works like `attr` but for real JS properties.
+ *
+ * Overloads:
+ * 1. prop("value") — gets from document.documentElement
+ * 2. prop(el)("value") — getter
+ * 3. prop(el)("value", newValue) — setter
+ *
+ * Getter: returns the property type of the element if known.
+ * Setter: void
+ */
+export function prop<K extends keyof HTMLElement>(prop: K): HTMLElement[K];
+export function prop<T extends HTMLElement, K extends keyof T>(
+  el: T | null
+): (prop: K) => T[K];
+export function prop<T extends HTMLElement, K extends keyof T>(
+  el: T | null
+): (prop: K, value: T[K]) => void;
+
+export function prop(a: any): any {
+  if (typeof a === "string") {
+    const key = a;
+    const el = document.documentElement as any;
+    return el[key];
+  }
+
+  const el = a as HTMLElement | null;
+
+  return (key: any, value?: any): any => {
+    if (!el) return undefined;
+    if (value === undefined) return (el as any)[key];
+    (el as any)[key] = value;
+  };
+}
+
 
 // =============================================================================
 // 8. LIFECYCLE
@@ -2039,6 +2113,62 @@ export const watchText = def((target: Element | null, callback: (text: string) =
 export const onReady = (fn: () => void): void => {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn, { once: true });
   else fn();
+};
+
+/**
+ * Promise-based DOM lifecycle utilities for different timing needs.
+ * 
+ * Type-safe, composable methods for waiting on specific lifecycle phases:
+ * - `dom()` — waits until DOM is parsed (DOMContentLoaded)
+ * - `micro()` — waits until microtask queue is empty
+ * - `raf()` — waits until next requestAnimationFrame
+ * 
+ * @example
+ * ```typescript
+ * // Wait for DOM to be parsed
+ * await ready.dom();
+ * const app = document.querySelector('#app');
+ * 
+ * // Wait for microtasks to flush
+ * await ready.micro();
+ * 
+ * // Wait for next paint
+ * await ready.raf();
+ * 
+ * // Chain multiple lifecycle waits
+ * await ready.dom();
+ * await ready.micro();
+ * await ready.raf();
+ * // Now safe to interact with layout
+ * ```
+ */
+export const ready = {
+  /**
+   * Waits until the DOM is parsed and interactive (DOMContentLoaded).
+   * Resolves immediately if DOM is already loaded.
+   * 
+   * @returns Promise that resolves when DOM is ready
+   */
+  dom: () => new Promise<void>(resolve => {
+    if (document.readyState !== "loading") resolve();
+    else document.addEventListener("DOMContentLoaded", () => resolve(), { once: true });
+  }),
+
+  /**
+   * Waits until the microtask queue is flushed (after current JS execution).
+   * Useful for ensuring Promise chains and MutationObserver callbacks have run.
+   * 
+   * @returns Promise that resolves on next microtask
+   */
+  micro: () => new Promise<void>(resolve => queueMicrotask(resolve)),
+
+  /**
+   * Waits until the next requestAnimationFrame (next paint cycle).
+   * Useful for deferring layout-dependent code.
+   * 
+   * @returns Promise that resolves on next frame
+   */
+  raf: () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
 };
 
 /**
@@ -2568,151 +2698,139 @@ export const cssTemplate = (strings: TemplateStringsArray, ...values: any[]) =>
 // =============================================================================
 
 /**
- * Utilities for DOM tree traversal.
- * 
- * Provides a functional API for navigating the DOM tree (parent, siblings, children).
- * All methods are null-safe and preserve element types where possible.
- * 
- * @example
- * ```typescript
- * const element = document.querySelector('.item');
- * 
- * // Navigate to parent
- * const parent = Traverse.parent(element);
- * 
- * // Get siblings
- * const siblings = Traverse.siblings(element);
- * siblings.forEach(sibling => sibling.classList.add('sibling'));
- * 
- * // Navigate to next/previous
- * const next = Traverse.next(element);
- * const prev = Traverse.prev(element);
- * 
- * // Get all children
- * const children = Traverse.children(element);
- * ```
+ * Flexible, type-aware DOM traversal utilities.
+ *
+ * Each method supports three invocation styles:
+ *
+ * 1. **Element-first** (immediate):
+ *    Traverse.next(el)                     → Element | null
+ *
+ * 2. **Selector-first**:
+ *    Traverse.next(".item")                → Element | null
+ *
+ * 3. **Curried**:
+ *    Traverse.next(el)("span.highlight")   → Element | null
+ *
+ * All operations are:
+ *   - **Null-safe**: All functions gracefully return `null` or `[]`.
+ *   - **Type-preserving**: Passing `HTMLDivElement` returns `HTMLDivElement | null`.
+ *   - **Selector-aware**: Passing a selector filters the returned element(s).
  */
 export const Traverse = {
   /**
-   * Gets the parent element.
-   * 
-   * @param el - The element to get the parent of
-   * @returns The parent element or null
-   * 
+   * Get the parent element, optionally filtered by a selector.
+   *
    * @example
-   * ```typescript
-   * const listItem = document.querySelector('li');
-   * const list = Traverse.parent(listItem); // <ul>
-   * 
-   * // Navigate up multiple levels
-   * const grandparent = Traverse.parent(Traverse.parent(element));
-   * 
-   * // Null-safe
-   * Traverse.parent(null); // null
-   * Traverse.parent(document.documentElement); // null (no parent)
-   * ```
+   * // Element-first
+   * const parent = Traverse.parent(el);       // <div> | null
+   *
+   * // Selector-first
+   * const parent = Traverse.parent("#child"); // parent of #child
+   *
+   * // Curried
+   * const specific = Traverse.parent(el)(".box");
    */
-  parent: (el: Element | null) => el?.parentElement || null,
+  parent(elOrSelector?: Element | string | null) {
+    if (typeof elOrSelector === "string") {
+      const el = document.querySelector(elOrSelector);
+      return el?.parentElement || null;
+    }
+
+    const el = elOrSelector ?? null;
+    return (selector?: string): Element | null => {
+      const parent = el?.parentElement ?? null;
+      if (!parent) return null;
+      return !selector || parent.matches(selector) ? parent : null;
+    };
+  },
 
   /**
-   * Gets the next sibling element.
-   * 
-   * @param el - The element to get the next sibling of
-   * @returns The next sibling element or null
-   * 
+   * Get the next sibling element.
+   *
    * @example
-   * ```typescript
-   * const first = document.querySelector('li:first-child');
-   * const second = Traverse.next(first);
-   * 
-   * // Iterate through siblings
-   * let current = firstElement;
-   * while (current) {
-   *   console.log(current);
-   *   current = Traverse.next(current);
-   * }
-   * 
-   * // Null-safe
-   * Traverse.next(null); // null
-   * Traverse.next(lastElement); // null (no next sibling)
-   * ```
+   * Traverse.next(el);            // <li> | null
+   * Traverse.next(".active");     // next of .active
+   * Traverse.next(el)("button");  // next button sibling
    */
-  next: (el: Element | null) => el?.nextElementSibling as HTMLElement | null,
+  next(elOrSelector?: Element | string | null) {
+    if (typeof elOrSelector === "string") {
+      const el = document.querySelector(elOrSelector);
+      return el?.nextElementSibling || null;
+    }
+
+    const el = elOrSelector ?? null;
+    return (selector?: string): Element | null => {
+      const next = el?.nextElementSibling ?? null;
+      if (!selector || !next) return next;
+      return next.matches(selector) ? next : null;
+    };
+  },
 
   /**
-   * Gets the previous sibling element.
-   * 
-   * @param el - The element to get the previous sibling of
-   * @returns The previous sibling element or null
-   * 
+   * Get the previous sibling element.
+   *
    * @example
-   * ```typescript
-   * const last = document.querySelector('li:last-child');
-   * const secondLast = Traverse.prev(last);
-   * 
-   * // Iterate backwards
-   * let current = lastElement;
-   * while (current) {
-   *   console.log(current);
-   *   current = Traverse.prev(current);
-   * }
-   * ```
+   * Traverse.prev(el);
+   * Traverse.prev(".selected");
+   * Traverse.prev(el)(".item");
    */
-  prev: (el: Element | null) => el?.previousElementSibling as HTMLElement | null,
+  prev(elOrSelector?: Element | string | null) {
+    if (typeof elOrSelector === "string") {
+      const el = document.querySelector(elOrSelector);
+      return el?.previousElementSibling || null;
+    }
+
+    const el = elOrSelector ?? null;
+    return (selector?: string): Element | null => {
+      const prev = el?.previousElementSibling ?? null;
+      if (!selector || !prev) return prev;
+      return prev.matches(selector) ? prev : null;
+    };
+  },
 
   /**
-   * Gets all child elements as an array.
-   * 
-   * @param el - The element to get children of
-   * @returns Array of child elements (empty if no children or null)
-   * 
+   * Get child elements, with optional selector filtering.
+   *
    * @example
-   * ```typescript
-   * const list = document.querySelector('ul');
-   * const items = Traverse.children(list); // Array of <li> elements
-   * 
-   * // Process children
-   * Traverse.children(container).forEach((child, index) => {
-   *   child.dataset.index = String(index);
-   * });
-   * 
-   * // Count children
-   * const childCount = Traverse.children(element).length;
-   * 
-   * // Null-safe
-   * Traverse.children(null); // []
-   * ```
+   * Traverse.children(el);         // Element[]
+   * Traverse.children(".list");    // children of element matching .list
+   * Traverse.children(el)("li");   // only <li> children
    */
-  children: (el: Element | null) => el ? Array.from(el.children) as HTMLElement[] : [],
+  children(elOrSelector?: Element | string | null) {
+    if (typeof elOrSelector === "string") {
+      const el = document.querySelector(elOrSelector);
+      return el ? Array.from(el.children) : [];
+    }
+
+    const el = elOrSelector ?? null;
+    return (selector?: string): Element[] => {
+      if (!el) return [];
+      const kids = Array.from(el.children);
+      return selector ? kids.filter(c => c.matches(selector)) : kids;
+    };
+  },
 
   /**
-   * Gets all sibling elements (excluding the element itself).
-   * 
-   * @param el - The element to get siblings of
-   * @returns Array of sibling elements (empty if no siblings or null)
-   * 
+   * Get sibling elements (excluding the original element).
+   *
    * @example
-   * ```typescript
-   * const activeItem = document.querySelector('.active');
-   * const siblings = Traverse.siblings(activeItem);
-   * 
-   * // Remove active class from siblings
-   * Traverse.siblings(activeItem).forEach(sibling => {
-   *   sibling.classList.remove('active');
-   * });
-   * 
-   * // Highlight siblings
-   * Traverse.siblings(element).forEach(sibling => {
-   *   sibling.style.opacity = '0.5';
-   * });
-   * 
-   * // Null-safe
-   * Traverse.siblings(null); // []
-   * ```
+   * Traverse.siblings(el);
+   * Traverse.siblings("#active");
+   * Traverse.siblings(el)(".item");
    */
-  siblings: (el: Element | null) => {
-    if (!el || !el.parentElement) return [];
-    return Array.from(el.parentElement.children).filter(c => c !== el) as HTMLElement[];
+  siblings(elOrSelector?: Element | string | null) {
+    if (typeof elOrSelector === "string") {
+      const el = document.querySelector(elOrSelector);
+      if (!el?.parentElement) return [];
+      return Array.from(el.parentElement.children).filter(c => c !== el);
+    }
+
+    const el = elOrSelector ?? null;
+    return (selector?: string): Element[] => {
+      if (!el?.parentElement) return [];
+      const sibs = Array.from(el.parentElement.children).filter(s => s !== el);
+      return selector ? sibs.filter(s => s.matches(selector)) : sibs;
+    };
   }
 };
 
@@ -8367,3 +8485,304 @@ export const Http = {
     return res.json();
   }
 };
+
+/**
+ * Narrows an element to a more specific type using a CSS selector.
+ *
+ * Usage:
+ *   const input = cast("input[type=email]")(el);
+ *
+ * Returns:
+ *   - el (narrowed) if it matches
+ *   - null otherwise
+ */
+export function cast<S extends string>(selector: S) {
+  return <T extends Element>(el: T | null): ParseSelector<S> | null => {
+    if (!el) return null;
+    return el.matches(selector)
+      ? (el as unknown as ParseSelector<S>)
+      : null;
+  };
+}
+
+/**
+ * Type guard: checks if a node is an Element.
+ */
+export function isElement(node: Node | null): node is Element {
+  return node instanceof Element;
+}
+
+/**
+ * Type guard: narrows an element to a specific tag type based on tag name.
+ *
+ * Example:
+ *   nodes.filter(isTag("button")) // HTMLButtonElement[]
+ */
+export function isTag<K extends keyof HTMLElementTagNameMap>(tag: K) {
+  return (el: Element | null): el is HTMLElementTagNameMap[K] => {
+    return !!el && el.tagName.toLowerCase() === tag.toLowerCase();
+  };
+}
+
+/**
+ * Checks whether an element is visible within the viewport or a custom scroll root.
+ *
+ * **Usage styles:**
+ *
+ * **1. Element-first**
+ * ```ts
+ * const visible = isInViewport(myDiv);
+ * ```
+ *
+ * **2. Selector-first**
+ * ```ts
+ * const visible = isInViewport(".item");
+ * ```
+ *
+ * **3. Curried**
+ * ```ts
+ * const check = isInViewport(".item");
+ * const visible = check({ partial: true });
+ * ```
+ *
+ * **4. Fully-Curried (element first, options later)**
+ * ```ts
+ * const withOptions = isInViewport(myDiv);
+ * const visible = withOptions({ threshold: 0.5 });
+ * ```
+ *
+ * ---
+ *
+ * **Visibility semantics**
+ *
+ * The function defaults to **full visibility**, meaning the element must be
+ * entirely inside the bounding box of the viewport (or of `root`, if provided).
+ *  
+ * Use options to relax or refine the check:
+ *
+ * - `partial?: boolean` — true if **any part** intersects the root.
+ * - `threshold?: number` — percentage of the element that must be visible (0–1).
+ *   Overrides `partial`/`full` semantics.
+ * - `margin?: number | { top?: number; right?: number; bottom?: number; left?: number }`
+ *   — expands or contracts the root bounds.
+ * - `root?: Element | Document` — custom scroll container; defaults to viewport.
+ *
+ * ---
+ *
+ * **Selector behavior**
+ *
+ * When passed a string selector, the function queries the element from
+ * `document`. If the selector does not match anything, the function returns
+ * `false`.
+ *
+ * ---
+ *
+ * **Examples**
+ *
+ * **Check if fully visible**
+ * ```ts
+ * isInViewport(myDiv); // true or false
+ * ```
+ *
+ * **Check if partially visible**
+ * ```ts
+ * isInViewport(myDiv, { partial: true });
+ * ```
+ *
+ * **Require at least 60% visibility**
+ * ```ts
+ * isInViewport(myDiv, { threshold: 0.6 });
+ * ```
+ *
+ * **Use margin to treat near-visibility as visible**
+ * ```ts
+ * isInViewport(myDiv, { margin: 50 });
+ * ```
+ *
+ * **Use another scroll root**
+ * ```ts
+ * const scroller = document.querySelector(".scroll-area")!;
+ * isInViewport(myDiv, { root: scroller });
+ * ```
+ *
+ * @template S - CSS selector literal used to type-narrow elements when
+ *               calling with a selector string.
+ */
+export function isInViewport<S extends string>(
+  elOrSelector?: Element | null | S
+):
+  | boolean
+  | ((
+      options?: {
+        /**
+         * Allow partial visibility.  
+         * default: false (element must be fully inside)
+         */
+        partial?: boolean;
+
+        /**
+         * Percentage of element that must be visible (0–1).  
+         * Overrides `partial`. default: 1 (fully visible)
+         */
+        threshold?: number;
+
+        /**
+         * Custom viewport root (e.g., a scroll container).
+         * default: window viewport
+         */
+        root?: Element | null;
+
+        /**
+         * Margin (CSS margin syntax: "10px", "10px 20px", etc.)
+         * Expands or contracts the effective viewport.
+         */
+        margin?: string;
+      }
+    ) => boolean) {
+  // --- Selector-first mode ---
+  if (typeof elOrSelector === "string") {
+    const el = document.querySelector(elOrSelector);
+    if (!el) return false;
+    return inViewport(el, {});
+  }
+
+  // --- Element-first or null-safe curried ---
+  const el = elOrSelector ?? null;
+
+  return (options?: {
+    partial?: boolean;
+    threshold?: number;
+    root?: Element | null;
+    margin?: string;
+  }): boolean => {
+    if (!el) return false;
+    return inViewport(el, options ?? {});
+  };
+}
+
+/**
+ * Internal utility performing the actual visibility check.
+ */
+function inViewport(
+  el: Element,
+  {
+    partial = false,
+    threshold,
+    root = null,
+    margin
+  }: {
+    partial?: boolean;
+    threshold?: number;
+    root?: Element | null;
+    margin?: string;
+  }
+): boolean {
+  const rect = el.getBoundingClientRect();
+
+  // Parse margin offsets
+  const margins = parseMargin(margin);
+
+  // Viewport or custom root bounds
+  const containerRect = root
+    ? root.getBoundingClientRect()
+    : {
+        top: 0,
+        left: 0,
+        right: window.innerWidth,
+        bottom: window.innerHeight
+      };
+
+  // Apply margin adjustments
+  const vp = {
+    top: containerRect.top + margins.top,
+    left: containerRect.left + margins.left,
+    right: containerRect.right - margins.right,
+    bottom: containerRect.bottom - margins.bottom
+  };
+
+  const elementArea = rect.width * rect.height;
+  if (elementArea === 0) return false;
+
+  const intersection = {
+    top: Math.max(rect.top, vp.top),
+    left: Math.max(rect.left, vp.left),
+    right: Math.min(rect.right, vp.right),
+    bottom: Math.min(rect.bottom, vp.bottom)
+  };
+
+  const intersectWidth = intersection.right - intersection.left;
+  const intersectHeight = intersection.bottom - intersection.top;
+
+  if (intersectWidth <= 0 || intersectHeight <= 0) return false;
+
+  const visibleArea = intersectWidth * intersectHeight;
+
+  // Threshold overrides all other options
+  if (typeof threshold === "number") {
+    return visibleArea / elementArea >= threshold;
+  }
+
+  // Full visibility (default)
+  if (!partial) {
+    return (
+      rect.top >= vp.top &&
+      rect.left >= vp.left &&
+      rect.right <= vp.right &&
+      rect.bottom <= vp.bottom
+    );
+  }
+
+  // Partial visibility
+  return visibleArea > 0;
+}
+
+/**
+ * Parses CSS-like margin strings ("10px 20px").
+ */
+function parseMargin(input?: string) {
+  if (!input) return { top: 0, left: 0, right: 0, bottom: 0 };
+
+  const parts = input.split(/\s+/).map(p => parseInt(p, 10) || 0);
+
+  switch (parts.length) {
+    case 1:
+      return { top: parts[0], right: parts[0], bottom: parts[0], left: parts[0] };
+    case 2:
+      return { top: parts[0], right: parts[1], bottom: parts[0], left: parts[1] };
+    case 3:
+      return { top: parts[0], right: parts[1], bottom: parts[2], left: parts[1] };
+    case 4:
+    default:
+      return {
+        top: parts[0],
+        right: parts[1],
+        bottom: parts[2],
+        left: parts[3]
+      };
+  }
+}
+
+/* --------------------------------------------------------
+ * Animation Helpers
+ * -------------------------------------------------------- */
+/**
+ * Animate an element using Web Animations API.
+ *
+ * Supports:
+ * - Selector or element input
+ * - Curried: animate(el)(keyframes, options)
+ *
+ * @example
+ * ```ts
+ * await animate(".box", { opacity: [0,1] }, { duration: 300 });
+ * await animate(document.querySelector(".box"))({ transform: ["scale(0)","scale(1)"] }, { duration: 500 });
+ * ```
+ */
+export function animate(elOrSelector?: Element | string | null) {
+  if (typeof elOrSelector === "string") {
+    const el = document.querySelector(elOrSelector);
+    return (keyframes:  Keyframe[], options?: KeyframeAnimationOptions) => el ? el.animate(keyframes, options).finished : Promise.resolve();
+  }
+  const el = elOrSelector ?? null;
+  return (keyframes: Keyframe[], options?: KeyframeAnimationOptions) => el ? el.animate(keyframes, options).finished : Promise.resolve();
+}
