@@ -1,9 +1,11 @@
-# fdom (Functional DOM)
+[![npm version](https://img.shields.io/npm/v/@doeixd/dom)](https://www.npmjs.com/package/@doeixd/dom)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/doeixd/dom)
+
+# DOM
 
 A comprehensive, type-safe, functional DOM library with 37+ utilities for modern web development.
 
-[![npm version](https://img.shields.io/npm/v/@doeixd/dom)](https://www.npmjs.com/package/@doeixd/dom)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ## Features
 
