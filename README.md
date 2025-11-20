@@ -1,6 +1,6 @@
 # @doeixd/dom
 
-A lightweight, functional DOM manipulation library with full TypeScript support. Think jQuery meets functional programming.
+A lightweight, functional DOM manipulation library with **hybrid calling patterns** and full TypeScript support. Think jQuery meets functional programming with modern TypeScript ergonomics - use imperative, curried, or fluent styles!
 
 ## Why Functional?
 
@@ -48,6 +48,34 @@ redText(element1); // Predictable
 redText(element2); // Reusable
 ```
 
+## Hybrid Calling Patterns
+
+**Choose your style** - imperative convenience or functional composition:
+
+```typescript
+import { modify, addClass, css } from '@doeixd/dom';
+
+const button = document.querySelector('button');
+
+// 🅰️ Imperative (clean & direct)
+modify(button, { text: 'Click me!' });
+addClass(button, 'primary', 'large');
+css(button, { color: 'blue' });
+
+// 🅱️ Curried (pipeline-friendly)
+modify(button)({ text: 'Click me!' });
+addClass(button)('primary', 'large');
+css(button)({ color: 'blue' });
+
+// 🅲️ Fluent (jQuery-like chaining)
+$(button)
+  .modify({ text: 'Click me!' })
+  .addClass('primary', 'large')
+  .css({ color: 'blue' });
+```
+
+**All patterns work everywhere** - mix and match based on context!
+
 ## Installation
 
 ### NPM
@@ -81,7 +109,18 @@ Use directly in the browser without npm or build tools:
 
 ## Quick Start
 
-### Functional Style (Recommended)
+### Imperative Style (New!)
+```typescript
+import { find, modify, addClass, on } from '@doeixd/dom';
+
+// Direct, clean calls - no extra parentheses!
+const button = find('button');
+modify(button, { text: 'Submit' });
+addClass(button, 'btn-primary');
+on(button, 'click', handleSubmit);
+```
+
+### Functional Style (Curried)
 ```typescript
 import { find, modify, addClass, on } from '@doeixd/dom';
 
@@ -221,36 +260,48 @@ findAll('.item')
 
 ## API Styles
 
-Choose the style that fits your needs:
+Choose the style that fits your needs - **all functions support multiple patterns**:
+
+### Imperative (Direct)
+```typescript
+import { modify, addClass, css } from '@doeixd/dom';
+
+// Clean, straightforward calls
+modify(button, { text: 'Click' });
+addClass(button, 'primary');
+css(button, { color: 'blue' });
+```
 
 ### Functional (Curried)
 ```typescript
-import { find, modify, on } from '@doeixd/dom';
+import { modify, addClass, css } from '@doeixd/dom';
 
-const button = find('button');
+// Perfect for composition and pipelines
 modify(button)({ text: 'Click' });
-on(button)('click', handler);
+addClass(button)('primary');
+css(button)({ color: 'blue' });
 ```
 
 ### Fluent (Chaining)
 ```typescript
 import { $ } from '@doeixd/dom';
 
+// jQuery-like method chaining
 $('button')
   .modify({ text: 'Click' })
-  .on('click', handler);
+  .addClass('primary')
+  .css({ color: 'blue' });
 ```
 
-### Imperative (Direct)
+### Custom Hybrid Functions
 ```typescript
 import { def } from '@doeixd/dom';
 
-// Use def() for hybrid functions
+// Create your own hybrid functions
 const setText = def((el, text) => el.innerText = text);
 
-setText(button, 'Click'); // Direct call
-// OR
-setText(button)('Click'); // Curried call
+setText(button, 'Click');     // Direct call
+setText(button)('Click');     // Curried call
 ```
 
 ## Browser Support
@@ -266,20 +317,79 @@ setText(button)('Click'); // Curried call
 - **Full library**: ~15KB minified + gzipped
 - **Tree-shaken**: As small as 1-2KB for basic utilities
 - **Zero dependencies**
+- **TypeScript-first**: Includes full type definitions
 
 ## TypeScript
 
-Full TypeScript support with intelligent type inference:
+**Advanced TypeScript support** with full type safety and intelligent inference:
 
 ```typescript
-import { find, modify } from '@doeixd/dom';
+import { find, modify, addClass, on } from '@doeixd/dom';
 
-// Type inference from selectors
+// 🎯 Smart type inference from selectors
 const button = find('button'); // HTMLButtonElement
 const input = find('input');   // HTMLInputElement
+const form = find('form');     // HTMLFormElement
 
-// Generic support
+// 🔧 Generic support for custom elements
 const custom = find<MyCustomElement>('.custom');
+
+// ⚡ Function overloads for hybrid patterns
+modify(button, { text: 'Click' });    // Imperative
+modify(button)({ text: 'Click' });    // Curried
+
+// 🎪 Event type safety
+on(button, 'click', (e) => {
+  // e is MouseEvent - fully typed!
+  console.log(e.clientX, e.clientY);
+});
+
+// 📊 Data attributes with type inference
+Data.set(button, 'user-id', 123);     // Accepts any serializable type
+const userId = Data.read(button)('user-id'); // Returns any (parsed JSON/number/string)
+```
+
+**Key TypeScript Features:**
+- ✅ **Strict mode compliant** - no `any` abuse
+- ✅ **Function overloads** - both imperative and curried patterns
+- ✅ **HTMLElement generics** - type-safe element operations
+- ✅ **EventMap inference** - proper event typing
+- ✅ **Null safety** - handles `null`/`undefined` gracefully
+- ✅ **Advanced generics** - complex type constraints where needed
+
+## The `def` Utility
+
+**Power your own hybrid functions** with the `def` utility:
+
+```typescript
+import { def } from '@doeixd/dom';
+
+// Create functions that work both ways
+const setText = def((el, text) => el.innerText = text);
+const addClasses = def((el, ...classes) => el.classList.add(...classes));
+
+// Use imperatively
+setText(button, 'Hello World');
+addClasses(div, 'active', 'visible');
+
+// Use in pipelines
+pipe(
+  find('.button'),
+  setText('Click me'),
+  addClasses('primary', 'large')
+);
+```
+
+**How it works:**
+```typescript
+// def() creates dual-callable functions
+const fn = def((target, ...args) => result);
+
+// Imperative: fn(target, ...args)
+fn(element, arg1, arg2);
+
+// Curried: fn(target)(...args)
+fn(element)(arg1, arg2);
 ```
 
 ## License
