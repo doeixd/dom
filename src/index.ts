@@ -275,121 +275,304 @@ export const def = <T, A extends any[], R>(
 // =============================================================================
 
 /**
- * Finds the first element matching the selector within a root.
- * 
- * Returns `null` if no element is found. The return type is automatically
- * inferred from the selector when using tag names.
- * 
- * @template S - The CSS selector string (literal type for best inference)
- * @param root - The root element to search within (defaults to document)
- * @returns A curried function that accepts a selector and returns the matched element or null
- * 
+ * Finds the first element matching the selector.
+ *
+ * Overloads allow calling in two ways:
+ * 1. `find(root)(selector)` — search within a specific root (default: document)
+ * 2. `find(selector)` — root is implicitly `document`
+ *
+ * @template S - CSS selector (literal string for best inference)
+ *
+ * @overload
+ * @param selector - The selector to search for within `document`
+ * @returns The matched element or `null`, inferred from selector
+ *
  * @example
- * ```typescript
- * // Basic usage with type inference
- * const btn = find(document)('button'); // HTMLButtonElement | null
- * const link = find(document)('a'); // HTMLAnchorElement | null
- * 
- * // Search within a specific container
- * const container = document.querySelector('.container');
- * const findInContainer = find(container);
- * const heading = findInContainer('h1');
- * 
- * // ID and class selectors
- * const app = find(document)('#app'); // HTMLElement | null
- * const card = find(document)('.card'); // HTMLElement | null
- * 
- * // Null-safe: returns null if root is null
- * const maybeRoot = document.querySelector('.missing');
- * const result = find(maybeRoot)('div'); // null
- * ```
+ * // String-first API
+ * const btn = find("button");   // HTMLButtonElement | null
+ * const app = find("#app");     // HTMLElement | null
+ *
+ * @overload
+ * @param root - The root to search within (defaults to document)
+ * @returns A function that accepts a selector and returns the matched element
+ *
+ * @example
+ * // Curried API
+ * const findIn = find(document.querySelector(".card")!);
+ * const title = findIn("h1");   // HTMLHeadingElement | null
  */
-export const find = (root: ParentNode = document) => {
+export function find<S extends string>(
+  selector: S
+): ParseSelector<S> | null;
+
+export function find(root?: ParentNode):
+  <S extends string>(selector: S) => ParseSelector<S> | null;
+
+export function find(arg: any) {
+  // Case 1: string passed — treat as selector with implicit document root
+  if (typeof arg === "string") {
+    const selector = arg;
+    return document.querySelector(selector) as any;
+  }
+
+  // Case 2: root passed — return curried selector function
+  const root: ParentNode = arg ?? document;
   return <S extends string>(selector: S): ParseSelector<S> | null => {
     return root.querySelector(selector) as ParseSelector<S> | null;
   };
-};
+}
+
 
 /**
- * Finds all elements matching the selector within a root.
- * 
- * Returns an array of matched elements (empty array if none found).
- * The element type is automatically inferred from tag name selectors.
- * 
- * @template S - The CSS selector string (literal type for best inference)
- * @param root - The root element to search within (defaults to document)
- * @returns A curried function that accepts a selector and returns an array of matched elements
- * 
+ * Finds all elements matching the selector.
+ *
+ * Supports two call styles:
+ * 1. `findAll(selector)` — searches `document`
+ * 2. `findAll(root)(selector)` — searches a specific root
+ *
+ * @template S - CSS selector (literal string for best inference)
+ *
+ * @overload
+ * @param selector - Selector to search for within `document`
+ * @returns Array of matched elements (empty if none)
+ *
  * @example
- * ```typescript
- * // Basic usage with type inference
- * const buttons = findAll(document)('button'); // HTMLButtonElement[]
- * const links = findAll(document)('a'); // HTMLAnchorElement[]
- * 
- * // Search within a container
- * const list = document.querySelector('ul');
- * const items = findAll(list)('li'); // HTMLLIElement[]
- * 
- * // Class and attribute selectors
- * const cards = findAll(document)('.card'); // HTMLElement[]
- * const required = findAll(document)('[required]'); // HTMLElement[]
- * 
- * // Iterate over results
- * findAll(document)('input').forEach(input => {
- *   console.log(input.value); // Type-safe access to input.value
- * });
- * 
- * // Empty array if no matches
- * const missing = findAll(document)('.does-not-exist'); // []
- * ```
+ * const items = findAll("li");   // HTMLLIElement[]
+ *
+ * @overload
+ * @param root - The root to search within (defaults to document)
+ * @returns Function that accepts a selector and returns an array of elements
+ *
+ * @example
+ * const findInside = findAll(container);
+ * const inputs = findInside("input");  // HTMLInputElement[]
  */
-export const findAll = (root: ParentNode = document) => {
+export function findAll<S extends string>(
+  selector: S
+): ParseSelector<S>[];
+
+export function findAll(root?: ParentNode):
+  <S extends string>(selector: S) => ParseSelector<S>[];
+
+export function findAll(arg: any) {
+  if (typeof arg === "string") {
+    const selector = arg;
+    return Array.from(document.querySelectorAll(selector)) as any[];
+  }
+
+  const root: ParentNode = arg ?? document;
   return <S extends string>(selector: S): ParseSelector<S>[] => {
     return Array.from(root.querySelectorAll(selector)) as ParseSelector<S>[];
   };
-};
+}
+
 
 /**
  * Finds the closest ancestor (including self) matching the selector.
- * 
- * Traverses up the DOM tree from the element to find the first ancestor
- * that matches the selector. Returns `null` if no match is found or if
- * the element is `null`.
- * 
- * @template S - The CSS selector string (literal type for best inference)
- * @param element - The starting element (can be null for safe chaining)
- * @returns A curried function that accepts a selector and returns the matched ancestor or null
- * 
+ *
+ * Supports:
+ * 1. `closest(selector)` — uses `document.documentElement` as the starting point
+ * 2. `closest(element)(selector)` — starts from a specific element
+ *
+ * Note: Using `closest(selector)` alone is rarely useful unless you
+ * intentionally want to search from the root element.
+ *
+ * @template S - CSS selector (literal type for best inference)
+ *
+ * @overload
+ * @param selector - Selector to match when starting at `document.documentElement`
+ * @returns The matched ancestor or `null`
+ *
  * @example
- * ```typescript
- * // Find parent container
- * const button = document.querySelector('button');
- * const card = closest(button)('.card'); // HTMLElement | null
- * const form = closest(button)('form'); // HTMLFormElement | null
- * 
- * // Useful for event delegation
- * on(document)('click', (e) => {
- *   const target = e.target as Element;
- *   const listItem = closest(target)('li');
- *   if (listItem) {
- *     console.log('Clicked list item:', listItem);
- *   }
- * });
- * 
- * // Null-safe: returns null if element is null
- * const maybeEl = document.querySelector('.missing');
- * const result = closest(maybeEl)('.parent'); // null
- * 
- * // Can match the element itself
- * const div = document.querySelector('div.active');
- * const match = closest(div)('div'); // Returns div itself
- * ```
+ * const htmlOrNull = closest("html");
+ *
+ * @overload
+ * @param element - Starting element (null-safe)
+ * @returns Function accepting a selector that returns the matched ancestor
+ *
+ * @example
+ * const card = closest(button)(".card"); // HTMLElement | null
  */
-export const closest = (element: Element | null) => {
+export function closest<S extends string>(
+  selector: S
+): ParseSelector<S> | null;
+
+export function closest(element: Element | null):
+  <S extends string>(selector: S) => ParseSelector<S> | null;
+
+export function closest(arg: any) {
+  if (typeof arg === "string") {
+    const selector = arg;
+    return document.documentElement.closest(selector) as any;
+  }
+
+  const element: Element | null = arg;
   return <S extends string>(selector: S): ParseSelector<S> | null => {
     return element?.closest(selector) as ParseSelector<S> | null;
   };
-};
+}
+
+
+/**
+ * Checks whether an element matching the selector exists.
+ *
+ * Overloads:
+ * 1. `exists(selector)` — searches `document`
+ * 2. `exists(root)(selector)` — searches within a specific root
+ *
+ * @template S - CSS selector (literal for best inference)
+ *
+ * @overload
+ * @param selector - Selector to test within `document`
+ * @returns `true` if a matching element exists, otherwise `false`
+ *
+ * @example
+ * exists("button");    // boolean
+ * exists("#app");      // boolean
+ */
+export function exists<S extends string>(
+  selector: S
+): boolean;
+
+export function exists(root?: ParentNode):
+  <S extends string>(selector: S) => boolean;
+
+export function exists(arg: any) {
+  if (typeof arg === "string") {
+    return document.querySelector(arg) !== null;
+  }
+
+  const root: ParentNode = arg ?? document;
+  return <S extends string>(selector: S): boolean => {
+    return root.querySelector(selector) !== null;
+  };
+}
+
+
+/**
+ * Checks whether a given element contains a descendant matching the selector.
+ *
+ * Overloads:
+ * 1. `has(selector)` — checks within `document`
+ * 2. `has(element)(selector)` — checks within a given element
+ *
+ * Null-safe: Passing `null` returns a function that always returns false.
+ *
+ * @template S - CSS selector string
+ *
+ * @overload
+ * @param selector - Selector checked inside `document`
+ * @returns `true` if a match exists, otherwise `false`
+ *
+ * @example
+ * has(".card");  // boolean
+ *
+ * @overload
+ * @param element - Element to test within (null-safe)
+ * @returns Function testing a selector inside that element
+ *
+ * @example
+ * const card = document.querySelector(".card");
+ * const result = has(card)("button");
+ */
+export function has<S extends string>(
+  selector: S
+): boolean;
+
+export function has(element: ParentNode | null):
+  <S extends string>(selector: S) => boolean;
+
+export function has(arg: any) {
+  if (typeof arg === "string") {
+    return document.querySelector(arg) !== null;
+  }
+
+  const root: ParentNode | null = arg;
+  return <S extends string>(selector: S): boolean => {
+    if (!root) return false;
+    return root.querySelector(selector) !== null;
+  };
+}
+
+/**
+ * Returns the index of a node among its siblings.
+ *
+ * Overloads:
+ * 1. `index(node)` — returns the node's index or -1
+ * 2. `index(root)(node)` — curries the "list parent" (rare but consistent)
+ *
+ * Note: When called as `index(node)`, the parent is automatically the node's
+ * actual parent element.
+ *
+ * @example
+ * const item = document.querySelector("li");
+ * index(item);  // 0, 1, 2, ...
+ *
+ * @example
+ * // Curried
+ * const list = document.querySelector("ul");
+ * index(list)(someLi);
+ */
+export function index(node: Element | null): number;
+
+export function index(root: ParentNode | null):
+  (node: Element | null) => number;
+
+export function index(arg: any): any {
+  // Case: Direct index(node)
+  if (!(arg instanceof Element) && arg !== null) {
+    // Treat as curried root
+    const root: ParentNode | null = arg;
+    return (node: Element | null): number => {
+      if (!root || !node) return -1;
+      const children = Array.from(root.children);
+      return children.indexOf(node);
+    };
+  }
+
+  // Direct element case
+  const node: Element | null = arg;
+  if (!node || !node.parentElement) return -1;
+  return Array.from(node.parentElement.children).indexOf(node);
+}
+
+/**
+ * Returns all siblings of an element (excluding the element itself).
+ *
+ * Overloads:
+ * 1. `siblings(node)` — returns its siblings
+ * 2. `siblings(root)(node)` — sibling list relative to a specific parent
+ *
+ * Null-safe: returns an empty array if `node` or parent is null.
+ *
+ * @example
+ * const btn = document.querySelector("button");
+ * const sibs = siblings(btn);   // Element[]
+ *
+ * @example
+ * const list = document.querySelector("ul");
+ * const sibsOf = siblings(list);
+ * sibsOf(list.querySelector("li"));
+ */
+export function siblings(node: Element | null): Element[];
+
+export function siblings(root: ParentNode | null):
+  (node: Element | null) => Element[];
+
+export function siblings(arg: any): any {
+  if (!(arg instanceof Element) && arg !== null) {
+    const root: ParentNode | null = arg;
+    return (node: Element | null): Element[] => {
+      if (!root || !node) return [];
+      return Array.from(root.children).filter(el => el !== node);
+    };
+  }
+
+  const node: Element | null = arg;
+  if (!node || !node.parentElement) return [];
+  return Array.from(node.parentElement.children).filter(el => el !== node);
+}
+
 
 
 // =============================================================================
@@ -1247,115 +1430,115 @@ export const clone = <T extends Node>(node: T | null) => {
  * ```
  */
 export const cls = {
-   /**
-    * Adds one or more CSS classes to the element.
-    *
-    * @param el - The element to add classes to (null-safe)
-    * @returns A curried function that accepts class names and returns the element
-    *
-    * @example
-    * ```typescript
-    * // Imperative (cleaner DX)
-    * cls.add(btn, 'active', 'shadow');
-    *
-    * // Curried (pipeline friendly)
-    * cls.add(btn)('active', 'shadow');
-    *
-    * // Add single class
-    * cls.add(div)('active');
-    *
-    * // Add multiple classes
-    * cls.add(div)('card', 'shadow', 'rounded');
-    *
-    * // Null-safe
-    * cls.add(null)('active'); // Returns null
-    * ```
-    */
-   add: def((el: Element | null, ...classes: string[]) => {
-     el?.classList.add(...classes);
-     return el;
-   }),
+  /**
+   * Adds one or more CSS classes to the element.
+   *
+   * @param el - The element to add classes to (null-safe)
+   * @returns A curried function that accepts class names and returns the element
+   *
+   * @example
+   * ```typescript
+   * // Imperative (cleaner DX)
+   * cls.add(btn, 'active', 'shadow');
+   *
+   * // Curried (pipeline friendly)
+   * cls.add(btn)('active', 'shadow');
+   *
+   * // Add single class
+   * cls.add(div)('active');
+   *
+   * // Add multiple classes
+   * cls.add(div)('card', 'shadow', 'rounded');
+   *
+   * // Null-safe
+   * cls.add(null)('active'); // Returns null
+   * ```
+   */
+  add: def((el: Element | null, ...classes: string[]) => {
+    el?.classList.add(...classes);
+    return el;
+  }),
 
-   /**
-    * Removes one or more CSS classes from the element.
-    *
-    * @param el - The element to remove classes from (null-safe)
-    * @returns A curried function that accepts class names and returns the element
-    *
-    * @example
-    * ```typescript
-    * // Imperative (cleaner DX)
-    * cls.remove(btn, 'active', 'shadow');
-    *
-    * // Curried (pipeline friendly)
-    * cls.remove(btn)('active', 'shadow');
-    *
-    * // Remove single class
-    * cls.remove(div)('active');
-    *
-    * // Remove multiple classes
-    * cls.remove(div)('loading', 'disabled', 'error');
-    *
-    * // Safe if class doesn't exist
-    * cls.remove(div)('nonexistent'); // No error
-    * ```
-    */
-   remove: def((el: Element | null, ...classes: string[]) => {
-     el?.classList.remove(...classes);
-     return el;
-   }),
+  /**
+   * Removes one or more CSS classes from the element.
+   *
+   * @param el - The element to remove classes from (null-safe)
+   * @returns A curried function that accepts class names and returns the element
+   *
+   * @example
+   * ```typescript
+   * // Imperative (cleaner DX)
+   * cls.remove(btn, 'active', 'shadow');
+   *
+   * // Curried (pipeline friendly)
+   * cls.remove(btn)('active', 'shadow');
+   *
+   * // Remove single class
+   * cls.remove(div)('active');
+   *
+   * // Remove multiple classes
+   * cls.remove(div)('loading', 'disabled', 'error');
+   *
+   * // Safe if class doesn't exist
+   * cls.remove(div)('nonexistent'); // No error
+   * ```
+   */
+  remove: def((el: Element | null, ...classes: string[]) => {
+    el?.classList.remove(...classes);
+    return el;
+  }),
 
-   /**
-    * Toggles a CSS class on the element.
-    *
-    * @param el - The element to toggle the class on (null-safe)
-    * @returns A curried function that accepts class name and optional force flag
-    *
-    * @example
-    * ```typescript
-    * // Imperative (cleaner DX)
-    * cls.toggle(btn, 'active');
-    * cls.toggle(btn, 'active', true); // Force add
-    *
-    * // Curried (pipeline friendly)
-    * cls.toggle(btn)('active'); // Adds if absent, removes if present
-    * cls.toggle(btn)('active', true); // Always adds
-    * cls.toggle(btn)('active', false); // Always removes
-    *
-    * // Conditional toggle
-    * cls.toggle(button)('disabled', isLoading);
-    * ```
-    */
-   toggle: def((el: Element | null, className: string, force?: boolean) => {
-     el?.classList.toggle(className, force);
-     return el;
-   }),
+  /**
+   * Toggles a CSS class on the element.
+   *
+   * @param el - The element to toggle the class on (null-safe)
+   * @returns A curried function that accepts class name and optional force flag
+   *
+   * @example
+   * ```typescript
+   * // Imperative (cleaner DX)
+   * cls.toggle(btn, 'active');
+   * cls.toggle(btn, 'active', true); // Force add
+   *
+   * // Curried (pipeline friendly)
+   * cls.toggle(btn)('active'); // Adds if absent, removes if present
+   * cls.toggle(btn)('active', true); // Always adds
+   * cls.toggle(btn)('active', false); // Always removes
+   *
+   * // Conditional toggle
+   * cls.toggle(button)('disabled', isLoading);
+   * ```
+   */
+  toggle: def((el: Element | null, className: string, force?: boolean) => {
+    el?.classList.toggle(className, force);
+    return el;
+  }),
 
-   /**
-    * Replaces an old class with a new class.
-    *
-    * @param el - The element to modify (null-safe)
-    * @returns A curried function that accepts old and new class names
-    *
-    * @example
-    * ```typescript
-    * // Imperative (cleaner DX)
-    * cls.replace(btn, 'btn-primary', 'btn-secondary');
-    *
-    * // Curried (pipeline friendly)
-    * cls.replace(btn)('btn-primary', 'btn-secondary');
-    *
-    * // Replace theme class
-    * cls.replace(div)('theme-light', 'theme-dark');
-    *
-    * // No effect if old class doesn't exist
-    * cls.replace(div)('nonexistent', 'new'); // No change
-    * ```
-    */
-   replace: def((el: Element | null, oldClass: string, newClass: string) => {
-     el?.classList.replace(oldClass, newClass);
-     return el;
-   }),
+  /**
+   * Replaces an old class with a new class.
+   *
+   * @param el - The element to modify (null-safe)
+   * @returns A curried function that accepts old and new class names
+   *
+   * @example
+   * ```typescript
+   * // Imperative (cleaner DX)
+   * cls.replace(btn, 'btn-primary', 'btn-secondary');
+   *
+   * // Curried (pipeline friendly)
+   * cls.replace(btn)('btn-primary', 'btn-secondary');
+   *
+   * // Replace theme class
+   * cls.replace(div)('theme-light', 'theme-dark');
+   *
+   * // No effect if old class doesn't exist
+   * cls.replace(div)('nonexistent', 'new'); // No change
+   * ```
+   */
+  replace: def((el: Element | null, oldClass: string, newClass: string) => {
+    el?.classList.replace(oldClass, newClass);
+    return el;
+  }),
 
   /**
    * Checks if the element has a specific class.
@@ -1518,53 +1701,53 @@ export const Data = {
    */
   get: (el: HTMLElement | null) => (key: string) => el?.dataset[key],
 
-   /**
-    * Sets a data attribute value.
-    *
-    * Automatically converts objects to JSON strings and handles null/undefined
-    * by removing the attribute. CamelCase keys are converted to kebab-case.
-    *
-    * @template T - The element type (inferred)
-    * @param el - The element to set data on (null-safe)
-    * @returns A curried function that accepts key and value, returns the element
-    *
-    * @example
-    * ```typescript
-    * const div = document.querySelector('div');
-    *
-    * // Imperative (cleaner DX)
-    * Data.set(div, 'userId', '123');
-    *
-    * // Curried (pipeline friendly)
-    * Data.set(div)('userId', '123');
-    *
-    * // Set number (converted to string)
-    * Data.set(div)('count', 42); // data-count="42"
-    *
-    * // Set boolean
-    * Data.set(div)('isActive', true); // data-is-active="true"
-    *
-    * // Set object (JSON stringified)
-    * Data.set(div)('config', { theme: 'dark', size: 'lg' });
-    * // data-config='{"theme":"dark","size":"lg"}'
-    *
-    * // Remove attribute (null or undefined)
-    * Data.set(div)('userId', null); // Removes data-user-id
-    *
-    * // CamelCase to kebab-case
-    * Data.set(div)('userName', 'John'); // Sets data-user-name="John"
-    *
-    * // Chaining
-    * Data.set(div)('id', 1);
-    * Data.set(div)('name', 'Item');
-    * ```
-    */
-   set: def((el: HTMLElement | null, key: string, val: any) => {
-     if (!el) return el;
-     if (val == null) delete el.dataset[key];
-     else el.dataset[key] = typeof val === 'object' ? JSON.stringify(val) : String(val);
-     return el;
-   }),
+  /**
+   * Sets a data attribute value.
+   *
+   * Automatically converts objects to JSON strings and handles null/undefined
+   * by removing the attribute. CamelCase keys are converted to kebab-case.
+   *
+   * @template T - The element type (inferred)
+   * @param el - The element to set data on (null-safe)
+   * @returns A curried function that accepts key and value, returns the element
+   *
+   * @example
+   * ```typescript
+   * const div = document.querySelector('div');
+   *
+   * // Imperative (cleaner DX)
+   * Data.set(div, 'userId', '123');
+   *
+   * // Curried (pipeline friendly)
+   * Data.set(div)('userId', '123');
+   *
+   * // Set number (converted to string)
+   * Data.set(div)('count', 42); // data-count="42"
+   *
+   * // Set boolean
+   * Data.set(div)('isActive', true); // data-is-active="true"
+   *
+   * // Set object (JSON stringified)
+   * Data.set(div)('config', { theme: 'dark', size: 'lg' });
+   * // data-config='{"theme":"dark","size":"lg"}'
+   *
+   * // Remove attribute (null or undefined)
+   * Data.set(div)('userId', null); // Removes data-user-id
+   *
+   * // CamelCase to kebab-case
+   * Data.set(div)('userName', 'John'); // Sets data-user-name="John"
+   *
+   * // Chaining
+   * Data.set(div)('id', 1);
+   * Data.set(div)('name', 'Item');
+   * ```
+   */
+  set: def((el: HTMLElement | null, key: string, val: any) => {
+    if (!el) return el;
+    if (val == null) delete el.dataset[key];
+    else el.dataset[key] = typeof val === 'object' ? JSON.stringify(val) : String(val);
+    return el;
+  }),
 
   /**
    * Reads a data attribute with automatic type inference.
@@ -1619,67 +1802,67 @@ export const Data = {
     try { return JSON.parse(val); } catch { return val; }
   },
 
-   /**
-    * Observes changes to a data attribute and fires a callback.
-    *
-    * Uses MutationObserver to watch for attribute changes. The callback fires
-    * immediately with the current value, then on every change. Values are
-    * automatically parsed using `Data.read()`.
-    *
-    * @template T - The expected value type
-    * @param el - The element to observe (null-safe)
-    * @returns A curried function that accepts key and callback, returns cleanup function
-    *
-    * @example
-    * ```typescript
-    * const div = document.querySelector('div');
-    *
-    * // Imperative (cleaner DX)
-    * const cleanup = Data.bind(div, 'count', (value, el) => {
-    *   console.log('Count is now:', value);
-    * });
-    *
-    * // Curried (pipeline friendly)
-    * const cleanup = Data.bind(div)('count', (value, el) => {
-    *   console.log('Count is now:', value);
-    *   // Fires immediately with current value
-    *   // Then fires on every change
-    * });
-    *
-    * // Later: stop watching
-    * cleanup();
-    *
-    * // Form validation example
-    * Data.bind(input)('validationError', (error) => {
-    *   if (error) {
-    *     errorDisplay.textContent = error;
-    *     errorDisplay.style.display = 'block';
-    *   } else {
-    *     errorDisplay.style.display = 'none';
-    *   }
-    * });
-    *
-    * // Sync state between components
-    * Data.bind(slider)('value', (value) => {
-    *   valueDisplay.textContent = String(value);
-    * });
-    *
-    * // Null-safe: returns no-op cleanup
-    * const noop = Data.bind(null)('key', callback); // () => {}
-    * ```
-    */
-   bind: def((el: HTMLElement | null, key: string, callback: (val: any, el: HTMLElement) => void): Unsubscribe => {
-     if (!el) return () => { };
-     const attr = toDataAttr(key);
-     const update = () => callback(Data.read(el)(key), el);
+  /**
+   * Observes changes to a data attribute and fires a callback.
+   *
+   * Uses MutationObserver to watch for attribute changes. The callback fires
+   * immediately with the current value, then on every change. Values are
+   * automatically parsed using `Data.read()`.
+   *
+   * @template T - The expected value type
+   * @param el - The element to observe (null-safe)
+   * @returns A curried function that accepts key and callback, returns cleanup function
+   *
+   * @example
+   * ```typescript
+   * const div = document.querySelector('div');
+   *
+   * // Imperative (cleaner DX)
+   * const cleanup = Data.bind(div, 'count', (value, el) => {
+   *   console.log('Count is now:', value);
+   * });
+   *
+   * // Curried (pipeline friendly)
+   * const cleanup = Data.bind(div)('count', (value, el) => {
+   *   console.log('Count is now:', value);
+   *   // Fires immediately with current value
+   *   // Then fires on every change
+   * });
+   *
+   * // Later: stop watching
+   * cleanup();
+   *
+   * // Form validation example
+   * Data.bind(input)('validationError', (error) => {
+   *   if (error) {
+   *     errorDisplay.textContent = error;
+   *     errorDisplay.style.display = 'block';
+   *   } else {
+   *     errorDisplay.style.display = 'none';
+   *   }
+   * });
+   *
+   * // Sync state between components
+   * Data.bind(slider)('value', (value) => {
+   *   valueDisplay.textContent = String(value);
+   * });
+   *
+   * // Null-safe: returns no-op cleanup
+   * const noop = Data.bind(null)('key', callback); // () => {}
+   * ```
+   */
+  bind: def((el: HTMLElement | null, key: string, callback: (val: any, el: HTMLElement) => void): Unsubscribe => {
+    if (!el) return () => { };
+    const attr = toDataAttr(key);
+    const update = () => callback(Data.read(el)(key), el);
 
-     update(); // Initial
-     const obs = new MutationObserver((m) => {
-       if (m.some(x => x.attributeName === attr)) update();
-     });
-     obs.observe(el, { attributes: true, attributeFilter: [attr] });
-     return () => obs.disconnect();
-   })
+    update(); // Initial
+    const obs = new MutationObserver((m) => {
+      if (m.some(x => x.attributeName === attr)) update();
+    });
+    obs.observe(el, { attributes: true, attributeFilter: [attr] });
+    return () => obs.disconnect();
+  })
 };
 
 /**
@@ -2249,55 +2432,55 @@ export const Form = {
     return data;
   },
 
-   /**
-    * Populates form inputs from a plain object.
-    *
-    * Matches object keys to input `name` attributes and sets values accordingly.
-    *
-    * @param root - The form or container element
-    * @returns A curried function that accepts data object and returns the root
-    *
-    * @example
-    * ```typescript
-    * const form = document.querySelector('form');
-    *
-    * // Imperative (cleaner DX)
-    * Form.populate(form, {
-    *   username: 'john',
-    *   email: 'john@example.com',
-    *   notifications: true
-    * });
-    *
-    * // Curried (pipeline friendly)
-    * Form.populate(form)({
-    *   username: user.username,
-    *   email: user.email,
-    *   bio: user.bio,
-    *   notifications: user.preferences.notifications
-    * });
-    *
-    * // Load saved data
-    * const savedData = Local.get('formData');
-    * if (savedData) Form.populate(form)(savedData);
-    *
-    * // Reset form to defaults
-    * Form.populate(form)({
-    *   theme: 'light',
-    *   language: 'en',
-    *   notifications: true
-    * });
-    * ```
-    */
-   populate: def((root: HTMLElement | null, data: Record<string, any>) => {
-     if (!root) return root;
-     Object.entries(data).forEach(([k, v]) => {
-       const el = root.querySelector(`[name="${k}"]`) as HTMLInputElement;
-       if (!el) return;
-       if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!v;
-       else el.value = String(v);
-     });
-     return root;
-   })
+  /**
+   * Populates form inputs from a plain object.
+   *
+   * Matches object keys to input `name` attributes and sets values accordingly.
+   *
+   * @param root - The form or container element
+   * @returns A curried function that accepts data object and returns the root
+   *
+   * @example
+   * ```typescript
+   * const form = document.querySelector('form');
+   *
+   * // Imperative (cleaner DX)
+   * Form.populate(form, {
+   *   username: 'john',
+   *   email: 'john@example.com',
+   *   notifications: true
+   * });
+   *
+   * // Curried (pipeline friendly)
+   * Form.populate(form)({
+   *   username: user.username,
+   *   email: user.email,
+   *   bio: user.bio,
+   *   notifications: user.preferences.notifications
+   * });
+   *
+   * // Load saved data
+   * const savedData = Local.get('formData');
+   * if (savedData) Form.populate(form)(savedData);
+   *
+   * // Reset form to defaults
+   * Form.populate(form)({
+   *   theme: 'light',
+   *   language: 'en',
+   *   notifications: true
+   * });
+   * ```
+   */
+  populate: def((root: HTMLElement | null, data: Record<string, any>) => {
+    if (!root) return root;
+    Object.entries(data).forEach(([k, v]) => {
+      const el = root.querySelector(`[name="${k}"]`) as HTMLInputElement;
+      if (!el) return;
+      if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!v;
+      else el.value = String(v);
+    });
+    return root;
+  })
 };
 
 /**

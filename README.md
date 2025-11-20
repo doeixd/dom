@@ -118,6 +118,10 @@ $('button').modify({ text: 'Click' }).addClass('active');
 | `find` | Find the first matching element. | `const btn = find(document)('.submit-btn');` |
 | `findAll` | Find all matches as a standard Array. | `const items = findAll(list)('li');` |
 | `closest` | Find the closest matching ancestor. | `const card = closest(btn)('.card');` |
+| `exists` | Check if an element exists. | `const exists = exists('.submit-btn');` |
+| `has` | Check if an element contains a descendant. | `const has = has('.card')('.submit-btn');` |
+| `index` | Get the index of an element. | `const idx = index(btn);` |
+| `siblings` | Get all sibling elements. | `const sibs = siblings(btn);` |
 | `Traverse.parent` | Get the parent element. | `const parent = Traverse.parent(el);` |
 | `Traverse.children` | Get child elements as an array. | `const kids = Traverse.children(el);` |
 | `Traverse.siblings` | Get all sibling elements. | `const sibs = Traverse.siblings(el);` |
