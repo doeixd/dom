@@ -1,5 +1,5 @@
 /**
- * fdom (Functional DOM) - v2.0.0
+ * @doeixd/dom 
  * ==========================================
  * A production-grade, target-first, type-safe DOM library.
  *
