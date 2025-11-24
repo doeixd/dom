@@ -7960,36 +7960,166 @@ export const bind = {
       data.forEach((item, i) => fragment.appendChild(renderItem(item, i)));
       container.replaceChildren(fragment);
     };
+  },
+
+  /** 
+ * Binds to inline styles. 
+ * @example bind.style(el, 'width') // expects string like "100px"
+ */
+  style: (el: HTMLElement | null, property: string) => {
+    let current: string | undefined;
+    return (value: string | number) => {
+      if (!el || current === value) return;
+      current = String(value);
+      el.style[property as any] = current;
+    };
+  },
+
+  /** 
+   * Binds to CSS Variables. 
+   * @example bind.cssVar(el, '--progress')
+   */
+  cssVar: (el: HTMLElement | null, varName: string) => {
+    let current: string | undefined;
+    return (value: string | number) => {
+      if (!el || current === value) return;
+      current = String(value);
+      el.style.setProperty(varName, current);
+    };
   }
 };
 
+/**
+ * Creates a lightweight, pure JavaScript observable store.
+ * Unlike `store()`, this does NOT write to the DOM.
+ */
+export const createStore = <T extends Record<string, any>>(initialState: T) => {
+  let state = { ...initialState };
+  const listeners = new Set<(s: T) => void>();
+
+  return {
+    /** Get current state snapshot */
+    get: () => state,
+
+    /** Update state (partial updates merged) */
+    set: (update: Partial<T> | ((prev: T) => Partial<T>)) => {
+      const newVals = typeof update === 'function' ? update(state) : update;
+      state = { ...state, ...newVals };
+      listeners.forEach(fn => fn(state));
+    },
+
+    /** Subscribe to changes */
+    subscribe: (fn: (s: T) => void): Unsubscribe => {
+      listeners.add(fn);
+      fn(state); // Fire immediately
+      return () => listeners.delete(fn);
+    }
+  };
+};
 
 // =============================================================================
 // 40. VIEW FACTORY & BINDER GENERATOR
 // =============================================================================
 /**
- * Helper to bind multiple events to refs in one go.
+ * Attaches multiple event listeners to a set of DOM references in one go.
+ * 
+ * Returns a single **Unsubscribe** function that cleans up all listeners created 
+ * by this call.
+ * 
+ * **Features:**
+ * - **Deep Typing:** Infers event types based on event names (e.g., 'click' -> `MouseEvent`).
+ * - **Cleanup:** Returns a batch unsubscribe function to prevent memory leaks.
+ * - **Target-First:** Supports `bindEvents(refs, map)` or `bindEvents(refs)(map)`.
+ * 
+ * @template R - The Refs object type (Record of HTMLElements).
+ * @template M - The Event Map definition.
+ * 
+ * @param refs - The object containing DOM elements (usually from `createView()`).
+ * @param map - A nested object mapping `RefKey -> EventName -> Handler`.
+ * @returns A function that removes all attached listeners.
  * 
  * @example
- * bindEvents(refs, {
- *   btn: { click: handleClick },
- *   input: { input: handleInput, keydown: handleKey }
- * })
+ * ```typescript
+ * // 1. Immediate Usage
+ * const cleanup = bindEvents(refs, {
+ *   btn: { 
+ *     // 'e' is inferred as MouseEvent, 'el' as HTMLButtonElement
+ *     click: (e, el) => console.log('Clicked', el) 
+ *   },
+ *   input: { 
+ *     // 'e' is inferred as InputEvent
+ *     input: (e) => updateState(e.target.value),
+ *     keydown: (e) => handleEnter(e)
+ *   }
+ * });
+ * 
+ * // Later: remove all listeners
+ * cleanup();
+ * 
+ * // 2. Curried Usage (useful for defining behavior separate from refs)
+ * const attachListeners = bindEvents(refs);
+ * 
+ * const cleanup = attachListeners({
+ *   btn: { click: handleClick }
+ * });
+ * ```
  */
-export const bindEvents = <K extends string>(
-  refs: Record<K, HTMLElement>,
-  map: Partial<Record<K, Record<string, (e: Event, el: HTMLElement) => void>>>
-) => {
-  Object.entries(map).forEach(([refKey, events]) => {
-    const el = refs[refKey as K];
-    if (!el) return;
+export function bindEvents<
+  R extends Record<string, HTMLElement>
+>(
+  refs: R
+): (map: EventSchema<R>) => Unsubscribe;
 
-    Object.entries(events as Record<string, any>).forEach(([evtName, handler]) => {
-      // Uses our standard 'on' function
-      on(el)(evtName as any, (e) => handler(e, el));
+export function bindEvents<
+  R extends Record<string, HTMLElement>
+>(
+  refs: R,
+  map: EventSchema<R>
+): Unsubscribe;
+
+export function bindEvents(refs: any, map?: any) {
+  const exec = (m: any): Unsubscribe => {
+    const unsubs: Unsubscribe[] = [];
+
+    Object.entries(m).forEach(([refKey, events]) => {
+      const el = refs[refKey];
+      if (!el) return;
+
+      Object.entries(events as Record<string, any>).forEach(([evtName, handler]) => {
+        // Uses fdom 'on' which returns an Unsubscribe
+        unsubs.push(
+          on(el)(evtName as any, (e) => handler(e, el))
+        );
+      });
     });
-  });
+
+    // Return batch cleanup
+    return () => unsubs.forEach(fn => fn());
+  };
+
+  if (map !== undefined) {
+    return exec(map);
+  }
+
+  return (lateMap: any) => exec(lateMap);
+}
+
+/**
+ * Helper type to map Refs to Event Handlers.
+ * - Matches keys from Refs.
+ * - Provides autocomplete for standard DOM events (click, input, etc).
+ * - Allows custom events (strings).
+ */
+export type EventSchema<R extends Record<string, HTMLElement>> = {
+  [K in keyof R]?: {
+    // Standard Events
+    [E in keyof HTMLElementEventMap]?: (e: HTMLElementEventMap[E], el: R[K]) => void;
+  } & {
+    // Custom Events
+    [customEvent: string]: (e: any, el: R[K]) => void;
+  };
 };
+
 /**
  * Defines the shape of the Refs object returned by `view()`.
  * Use a generic to specify keys: `view<'title' | 'button'>`
@@ -8027,37 +8157,175 @@ export const view = <K extends string = string>(htmlString: string) => {
 };
 
 /**
- * A helper to generate a typed object of Setters from a Refs object.
- * This reduces the boilerplate of creating individual binders manually.
+ * Generates a strongly-typed object of UI updaters from a set of DOM references.
+ * 
+ * This utility acts as a **Schema Definition** for your view. It maps specific DOM elements 
+ * (from `refs`) to specific behaviors (from `bind` primitives), returning an object of 
+ * setter functions ready to accept data.
+ * 
+ * **Features:**
+ * - **Type Safety:** Schema keys must exist in the provided `refs`.
+ * - **Inference:** The returned setters preserve the input types of the binders (e.g., `bind.text` -> `string`).
+ * - **Target-First:** Supports `binder(refs, schema)` or `binder(refs)(schema)`.
+ * 
+ * @template R - The Refs object type (Record of HTMLElements).
+ * @template S - The Schema type mapping ref keys to binder factories.
+ * 
+ * @param refs - The object containing DOM elements (usually from `createView()`).
+ * @param schema - A map defining how each ref should be bound (e.g., `{ title: bind.text }`).
+ * @returns An object where keys match the schema and values are the bound setter functions.
  * 
  * @example
- * const { refs } = createCard();
+ * ```typescript
+ * // 1. Immediate Usage
  * const ui = binder(refs, {
- *   title: bind.text,
- *   image: bind.attr('src'),
- *   active: bind.toggle('is-active')
+ *   title: bind.text,                // (val: string) => void
+ *   avatar: bind.attr('src'),        // (val: string | null) => void
+ *   isAdmin: bind.toggle('admin')    // (val: boolean) => void
  * });
  * 
- * // Usage
- * ui.title('Hello');
- * ui.active(true);
+ * ui.title('Welcome'); // Type-safe
+ * 
+ * // 2. Curried Usage (useful for pipelines or delayed definition)
+ * const bindToView = binder(refs);
+ * 
+ * const ui = bindToView({
+ *   title: bind.text
+ * });
+ * ```
  */
-export const binder = <
+export function binder<
+  R extends Record<string, HTMLElement>
+>(
+  refs: R
+): <
+  S extends Partial<{ [K in keyof R]: (el: any) => (val: any) => void }>
+>(schema: S) => { [K in keyof S]: S[K] extends (el: any) => infer Fn ? Fn : never };
+
+export function binder<
   R extends Record<string, HTMLElement>,
-  Schema extends { [Key in keyof R]?: (el: HTMLElement) => Setter<any> }
+  S extends Partial<{ [K in keyof R]: (el: any) => (val: any) => void }>
 >(
   refs: R,
-  schema: Schema
-): { [Key in keyof Schema]: Schema[Key] extends (el: any) => infer S ? S : never } => {
-  const binders = {} as any;
-  for (const key in schema) {
-    if (refs[key]) {
-      // @ts-ignore
-      binders[key] = schema[key](refs[key]);
+  schema: S
+): { [K in keyof S]: S[K] extends (el: any) => infer Fn ? Fn : never };
+
+export function binder(refs: any, schema?: any) {
+  const exec = (s: any) => {
+    const binders: any = {};
+    for (const key in s) {
+      if (refs[key]) {
+        binders[key] = s[key](refs[key]);
+      }
     }
+    return binders;
+  };
+
+  if (schema !== undefined) {
+    return exec(schema);
   }
-  return binders;
-};
+
+  return (lateSchema: any) => exec(lateSchema);
+}
+
+/** 
+ * Helper type to constrain the setters object. 
+ */
+type SetterMap = Record<string, (val: any) => void>;
+
+/** 
+ * Helper type to infer the data shape from the setters.
+ * Converts { name: (s: string) => void } into { name?: string } 
+ */
+type InferData<S extends SetterMap> = Partial<{
+  [K in keyof S]: Parameters<S[K]>[0]
+}>;
+
+/**
+ * Connects a data object to a map of UI setter functions.
+ * 
+ * This utility eliminates the boilerplate of manually calling updaters like 
+ * `if (data.name) ui.name(data.name)`. It iterates through the `data` object 
+ * and invokes the corresponding setter for each key found in the `setters` map.
+ * 
+ * **Behaviors:**
+ * - **Partial Updates:** Keys in `data` that are `undefined` are ignored, allowing for partial state updates.
+ * - **Null Support:** Keys set to `null` are passed through (useful for clearing attributes or text).
+ * - **Type Inference:** The input `data` shape is strictly inferred from the `setters` definition.
+ * 
+ * **Usage Patterns:**
+ * 1. **Immediate (`apply(ui, data)`):** Apply changes instantly. Useful for one-off updates.
+ * 2. **Curried (`apply(ui)`):** Returns a reusable update function typed to accept your data. 
+ *    This is the recommended pattern for the component `update` return value.
+ * 
+ * @template S - The shape of the Setters object (inferred automatically).
+ * @param setters - The schema of updater functions (created via `binder()`).
+ * @param data - The data object to apply. Keys missing from `setters` are safely ignored.
+ * @returns 
+ * - If `data` is provided: `void` (updates run immediately).
+ * - If `data` is omitted: A function `(data: T) => void` for future updates.
+ * 
+ * @example
+ * ```typescript
+ * // 1. Define the UI Schema
+ * const ui = binder(refs, {
+ *   title: bind.text,                // (val: string) => void
+ *   isVisible: bind.toggle('show')   // (val: boolean) => void
+ * });
+ * 
+ * // 2. Immediate Usage
+ * apply(ui, { title: 'Hello', isVisible: true });
+ * 
+ * // 3. Curried Usage (The "Hard Way" Component Pattern)
+ * export default function init() {
+ *   const { root, refs } = createView();
+ *   const ui = binder(refs, { ... });
+ * 
+ *   // Create a pre-bound update function
+ *   // 'update' is now typed as: (data: { title?: string, isVisible?: boolean }) => void
+ *   const update = apply(ui);
+ * 
+ *   return (props) => {
+ *     update(props);
+ *     return root;
+ *   };
+ * }
+ * ```
+ */
+export function apply<S extends SetterMap>(
+  setters: S
+): (data: InferData<S>) => void;
+
+export function apply<S extends SetterMap>(
+  setters: S,
+  data: InferData<S>
+): void;
+
+export function apply<S extends SetterMap>(
+  setters: S,
+  data?: InferData<S>
+) {
+  // Shared logic execution
+  const exec = (d: InferData<S>) => {
+    for (const key in d) {
+      const val = d[key];
+      // Check undefined to allow null values if the setter accepts them
+      if (val !== undefined) {
+        const setter = setters[key];
+        if (setter) setter(val);
+      }
+    }
+  };
+
+  // 1. Immediate execution
+  if (data !== undefined) {
+    return exec(data);
+  }
+
+  // 2. Partial application (Curried)
+  return (lateData: InferData<S>) => exec(lateData);
+}
+
 
 // =============================================================================
 // 41. HTTP FACTORY (TYPE-SAFE, FLEXIBLE, WITH DEFAULTS)
@@ -9140,13 +9408,13 @@ export interface ComponentContext<
 
   /** 
    * Map of single elements with `data-ref` attributes.
-   * Access is type-safe based on the generic provided.
+   * Scoped to this component instance.
    */
   refs: Refs;
 
   /** 
    * Map of element arrays with `data-ref` attributes.
-   * Useful for lists (e.g., `groups.items.forEach(...)`).
+   * Useful for lists (e.g. `groups.items.forEach(...)`).
    */
   groups: Groups;
 
@@ -9168,51 +9436,30 @@ export interface ComponentContext<
   findAll: (selector: string) => HTMLElement[];
 
   /**
-   * Adds an event listener that automatically cleans up when the component is destroyed.
-   * 
-   * @overload Delegated event on the component root.
-   * @overload Direct event on a specific target element.
+   * Generates a strongly-typed object of UI updaters based on the component's Refs.
+   * @see binder
    */
-  on<K extends keyof HTMLElementEventMap>(
-    event: K,
-    selector: string,
-    handler: (e: HTMLElementEventMap[K], target: HTMLElement) => void
-  ): void;
-  on<K extends keyof HTMLElementEventMap>(
-    event: K,
-    target: EventTarget,
-    handler: (e: HTMLElementEventMap[K], target: EventTarget) => void
-  ): void;
+  binder: <S extends Partial<{ [K in keyof Refs]: (el: any) => (val: any) => void }>>(schema: S) =>
+    { [K in keyof S]: S[K] extends (el: any) => infer Fn ? Fn : never };
+
+  /**
+   * Attaches multiple event listeners to the component's Refs with automatic cleanup.
+   * @see bindEvents
+   */
+  bindEvents: (map: EventSchema<Refs>) => void;
 
   /**
    * Watches a specific key in the component's state (DOM attributes) for changes.
    * Fires immediately with current value, then on every change.
+   * Auto-cleans up on destroy.
    */
   watch: (key: keyof State & string, handler: (val: any) => void) => void;
-
-  /**
-   * Establishes Two-Way Binding between a form input and a state key.
-   * - Input changes -> Update State
-   * - State changes -> Update Input value
-   */
-  bind: (input: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement, key: keyof State & string) => void;
 
   /**
    * Registers a cleanup function to run when the component is destroyed.
    * (Equivalent to React's useEffect return function).
    */
   effect: (fn: Unsubscribe) => void;
-
-  /**
-   * Helper to attach an IntersectionObserver or ResizeObserver.
-   * Auto-disconnects on destroy.
-   */
-  observe: (
-    type: 'intersection' | 'resize',
-    target: Element,
-    callback: IntersectionObserverCallback | ResizeObserverCallback,
-    options?: object
-  ) => void;
 }
 
 /**
@@ -9226,88 +9473,66 @@ export type ComponentInstance<API> = API & {
 };
 
 /**
- * A lightweight component factory with automatic lifecycle management.
+ * Creates a reactive, self-cleaning component instance on a DOM element.
  * 
- * Applies the **Setup Pattern** (similar to Vue 3 Composition API) to Vanilla DOM elements.
+ * Applies the **Setup Pattern** (similar to Vue 3 Composition API) to Vanilla DOM.
  * It binds a logic closure to a root element and provides a scoped `Context` toolkit.
  * 
  * 🧠 **Key Features:**
- * 1. **Auto-Cleanup**: All event listeners (`on`), watchers (`watch`), and observers (`observe`) 
+ * 1. **Auto-Cleanup**: All listeners (`bindEvents`), watchers (`watch`), and effects 
  *    attached via the context are automatically removed when `destroy()` is called.
- * 2. **Scoped Access**: `refs`, `find`, and `findAll` are scoped to the component root.
- * 3. **DOM-as-State**: The `ctx.state` proxy reads/writes directly to `data-*` attributes,
- *    keeping the DOM as the single source of truth.
- * 4. **Composition**: The `setup` function allows you to compose reusable logic functions
- *    easily.
+ * 2. **Scoped Access**: `refs`, `groups`, `binder`, `find` are scoped to the component root.
+ * 3. **DOM-as-State**: `ctx.state` proxies `data-*` attributes for simple reactivity.
+ * 4. **Composition**: The `setup` function allows for composing reusable logic.
  * 
- * @template API - The public interface returned by the component (methods/properties).
+ * @template API - The public methods/properties returned by the component.
  * @template R - The shape of `refs` (elements marked with `data-ref="name"`).
- * @template G - The shape of `groups` (lists of elements marked with `data-ref="name"`).
- * @template S - The shape of `state` (data attributes accessed via `ctx.state`).
+ * @template G - The shape of `groups` (lists marked with `data-ref="name"`).
+ * @template S - The shape of `state` (reactive `data-*` attributes).
  * 
  * @param target - The DOM element or CSS selector to mount the component on.
- * @param setup - The initialization function. Receives `ComponentContext` and returns the public API.
+ * @param setup - The initialization function. Receives a `ComponentContext` and returns the public API.
  * @returns The initialized component instance, or `null` if the target was not found.
  * 
  * @example
  * ```typescript
- * // 1. Define Types (Optional, for strong typing)
+ * // 1. Define Types
  * interface CounterRefs { display: HTMLElement; btn: HTMLButtonElement; }
+ * interface CounterGroups { items: HTMLElement[]; }
  * interface CounterState { count: number; }
  * 
- * // 2. HTML: <div id="app"><span data-ref="display"></span><button data-ref="btn">Inc</button></div>
- * 
- * // 3. Define Component
- * const Counter = defineComponent<any, CounterRefs, any, CounterState>('#app', (ctx) => {
- *   const { display, btn } = ctx.refs;
- * 
- *   // Initialize State (updates data-count="0" in DOM)
+ * // 2. Component Definition
+ * const Counter = defineComponent<any, CounterRefs, CounterGroups, CounterState>('#app', (ctx) => {
+ *   
+ *   // Initialize State in DOM
  *   ctx.state.count = 0;
  * 
- *   // Event Listener (auto-cleaned on destroy)
- *   ctx.on('click', btn, () => {
- *     ctx.state.count++;
+ *   // Output Schema (Data -> DOM)
+ *   const ui = ctx.binder({
+ *     display: bind.text
  *   });
  * 
- *   // Reactive Watcher (runs when state changes)
+ *   // Input Handling (DOM -> Logic)
+ *   ctx.bindEvents({
+ *     btn: {
+ *       click: () => ctx.state.count++
+ *     }
+ *   });
+ * 
+ *   // Working with Groups (Lists)
+ *   ctx.groups.items.forEach((item, index) => {
+ *      modify(item)({ text: `Item ${index}` });
+ *   });
+ * 
+ *   // Reactivity (State -> Output)
  *   ctx.watch('count', (val) => {
- *     display.textContent = String(val);
+ *     ui.display(String(val));
  *   });
  * });
- * ```
  * 
- * @example
- * ```typescript
- * // Example: Exposing a Public API
- * interface ModalAPI { open: () => void; close: () => void; }
- * 
- * const Modal = defineComponent<ModalAPI>('#my-modal', (ctx) => {
- *   const { root } = ctx;
- * 
- *   const open = () => {
- *     ctx.state.isOpen = true;
- *     root.setAttribute('open', '');
- *   };
- * 
- *   const close = () => {
- *     ctx.state.isOpen = false;
- *     root.removeAttribute('open');
- *   };
- * 
- *   // Close on Escape key (delegated to document, but managed by component)
- *   const cleanupKey = on(document)('keydown', (e) => {
- *     if (e.key === 'Escape') close();
- *   });
- *   ctx.effect(cleanupKey); // Register for auto-cleanup
- * 
- *   // Return methods to be used externally
- *   return { open, close };
- * });
- * 
- * // Usage
- * Modal.open();
- * // Later...
- * Modal.destroy(); // Cleans up DOM listeners and the global Escape listener
+ * // 3. Usage
+ * // ... later ...
+ * Counter.destroy();
  * ```
  */
 export const defineComponent = <
@@ -9326,25 +9551,26 @@ export const defineComponent = <
   // 2. Lifecycle & Cleanup Manager
   const hooks = createListenerGroup();
 
-  // 3. Construct Context
+  // 3. Resolve Scoped Refs & Groups
+  const scopedRefs = refs(root) as R;
+  const scopedGroups = groupRefs(root) as G;
+
+  // 4. Construct Context
   const ctx: ComponentContext<R, G, S> = {
     root,
-    refs: refs(root) as R,
-    groups: groupRefs(root) as G,
+    refs: scopedRefs,
+    groups: scopedGroups,
     state: store<S>(root),
 
     find: find(root),
     findAll: findAll(root),
 
-    // Unified Event Manager
-    on: (event: string, targetOrSelector: string | EventTarget, handler: any) => {
-      if (typeof targetOrSelector === 'string') {
-        // Delegated
-        hooks.add(onDelegated(root)(targetOrSelector)(event as any, handler));
-      } else {
-        // Direct
-        hooks.add(on(targetOrSelector as any)(event as any, (e) => handler(e, targetOrSelector)));
-      }
+    // Scoped Binder (Bound to Refs)
+    binder: (schema) => binder(scopedRefs, schema),
+
+    // Scoped Event Binding (Bound to Refs) with Auto-Cleanup
+    bindEvents: (map) => {
+      hooks.add(bindEvents(scopedRefs, map));
     },
 
     // Reactive State Watcher
@@ -9352,51 +9578,58 @@ export const defineComponent = <
       hooks.add(Data.bind(root)(key, handler));
     },
 
-    // Two-Way Data Binding
-    bind: (input, key) => {
-      if (!input) return;
-
-      // 1. Init: Sync DOM -> Input
-      const current = Data.read(root)(key);
-      if (current !== undefined) Input.set(input)(current);
-
-      // 2. Input -> State (Debounced slightly for performance)
-      hooks.add(on(input)('input', () => {
-        const val = Input.get(input);
-        Data.set(root)(key, val);
-      }));
-
-      // 3. State -> Input
-      hooks.add(Data.bind(root)(key, (val) => {
-        const currentInputVal = Input.get(input);
-        // Only update if different to avoid cursor jumping
-        if (currentInputVal != val) Input.set(input)(val);
-      }));
-    },
-
     // Generic Cleanup
-    effect: (fn) => hooks.add(fn),
-
-    // Advanced Observers
-    observe: (type, targetEl, cb, opts) => {
-      if (!targetEl) return;
-      const Obs = type === 'intersection' ? IntersectionObserver : ResizeObserver;
-      const observer = new Obs(cb as any, opts);
-      observer.observe(targetEl);
-      hooks.add(() => observer.disconnect());
-    }
+    effect: (fn) => hooks.add(fn)
   };
 
-  // 4. Initialize Logic
+  // 5. Initialize Logic
   const api = setup(ctx) || {} as API;
 
-  // 5. Return Instance
+  // 6. Return Instance
   return {
     ...api,
     root,
+    destroy: () => hooks.clear(),
+  };
+};
+
+/**
+ * Spawns a component dynamically.
+ * Useful for Modals, Toasts, or dynamic lists.
+ * 
+ * @param templateFn - The view factory (from `view()`)
+ * @param componentFn - The logic factory (from `defineComponent`)
+ * @param target - Where to append the result
+ * @param props - Initial props
+ */
+export const mountComponent = <API>(
+  templateFn: () => { root: HTMLElement | DocumentFragment },
+  componentFn: (root: HTMLElement) => ComponentInstance<API> | null,
+  target: HTMLElement,
+  _props?: any
+) => {
+  // 1. Create DOM
+  const { root } = templateFn();
+  const rootEl = (root instanceof DocumentFragment ? root.firstElementChild : root) as HTMLElement;
+
+  // 2. Append to DOM (must happen before logic if logic needs measurements)
+  target.appendChild(root);
+
+  // 3. Initialize Logic
+  // We explicitly pass the element we just created
+  const instance = componentFn(rootEl);
+
+  if (!instance) {
+    rootEl.remove();
+    throw new Error('Failed to init component');
+  }
+
+  // 4. Return wrapper with destroy that cleans DOM too
+  return {
+    ...instance,
     destroy: () => {
-      hooks.clear();
-      // If the component added specific cleanup logic in setup, it runs here.
+      instance.destroy();
+      rootEl.remove();
     }
   };
 };
