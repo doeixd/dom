@@ -7630,44 +7630,101 @@ export const History = {
 // 0.1 FUNCTIONAL COMBINATORS
 // =============================================================================
 
+// =============================================================================
+// FUNCTIONAL COMBINATORS & UTILITIES
+// =============================================================================
+
+/**
+ * A collection of functional programming helpers for composition, currying,
+ * and creating point-free logic. Essential for building complex behaviors
+ * from small, reusable functions.
+ */
 export const Fn = {
   /**
-   * Standard Left-to-Right composition.
-   * Passes the output of one function as the input to the next.
-   * @example pipe(getName, toUpper, log)(user);
+   * (B-Combinator) Chains functions in left-to-right order.
+   * `pipe(f, g, h)(x)` is equivalent to `h(g(f(x)))`.
+   * 
+   * @param fns - The sequence of functions to apply.
+   * @returns A new function that applies the sequence to its input.
+   * 
+   * @example
+   * ```typescript
+   * import { Fn, modify, cls } from '@doeixd/dom';
+   * 
+   * const makeActive = Fn.pipe(
+   *   modify({ text: 'Active' }),
+   *   cls.add('is-active')
+   * );
+   * 
+   * makeActive(myButton);
+   * ```
    */
-  pipe: <T>(...fns: Function[]) => (x: T) => fns.reduce((v, f) => f(v), x),
+  pipe: <T>(...fns: Array<(arg: any) => any>) => (x: T): any => fns.reduce((v, f) => f(v), x),
 
   /**
-   * Curries a binary function.
-   * Turns `fn(a, b)` into `fn(a)(b)`.
-   * @example const add = curry((a, b) => a + b); add(1)(2);
+   * Converts a function that takes two arguments `fn(a, b)` into a curried
+   * function that takes them one at a time `fn(a)(b)`.
+   * 
+   * @param fn - The binary function to curry.
+   * 
+   * @example
+   * ```typescript
+   * const add = (a: number, b: number) => a + b;
+   * const curriedAdd = Fn.curry(add);
+   * const add5 = curriedAdd(5);
+   * add5(3); // 8
+   * ```
    */
   curry: <A, B, R>(fn: (a: A, b: B) => R) => (a: A) => (b: B): R => fn(a, b),
 
   /**
-   * Swaps the arguments of a curried function.
-   * Turns `fn(a)(b)` into `fn(b)(a)`.
-   * Useful for converting "Config-First" to "Target-First" or vice versa.
+   * (C-Combinator) Swaps the arguments of a curried function.
+   * Transforms `fn(config)(target)` into `fn(target)(config)`.
    * 
-   * @example 
-   * // Suppose style(prop)(el)
-   * const styleEl = swap(style)(el);
-   * styleEl('color');
+   * Essential for using config-first functions (like `cls.add`) in contexts 
+   * like `Array.map` that provide the target first.
+   * 
+   * @param fn - The curried function to swap.
+   * 
+   * @example
+   * ```typescript
+   * import { Fn, findAll, cls } from '@doeixd/dom';
+   * 
+   * const buttons = findAll('button');
+   * const addActiveClass = Fn.swap(cls.add)('is-active');
+   * 
+   * buttons.forEach(addActiveClass); // point-free style
+   * ```
    */
-  swap: <A, B, R>(fn: (a: A) => (b: B) => R) => (b: B) => (a: A): R => fn(a)(b),
+  swap: <A, B, R>(fn: (a: A) => (b: B) => R): (b: B) => (a: A) => R => (b) => (a) => fn(a)(b),
 
   /**
-   * Flips the arguments of a standard binary function.
-   * Turns `fn(a, b)` into `fn(b, a)`.
+   * Flips the arguments of a non-curried binary function.
+   * Transforms `fn(a, b)` into `fn(b, a)`.
+   * 
+   * @param fn - The binary function to flip.
    */
-  flip: <A, B, R>(fn: (a: A, b: B) => R) => (b: B, a: A): R => fn(a, b),
+  flip: <A, B, R>(fn: (a: A, b: B) => R): (b: B, a: A) => R => (b, a) => fn(a, b),
 
   /**
-   * Executes a side-effect function and returns the original value.
-   * Essential for logging or debugging inside a `pipe` chain without breaking it.
+   * (K-Combinator) Executes a side-effect function with a value, then returns the value.
+   * Essential for debugging (`console.log`) or executing void-returning functions
+   * inside a `pipe` chain without breaking it.
    * 
-   * @example pipe(modify({...}), tap(console.log), addClass('active'))(el);
+   * @param fn - The side-effect function.
+   * 
+   * @example
+   * ```typescript
+   * import { Fn, modify, find } from '@doeixd/dom';
+   * 
+   * const processEl = Fn.pipe(
+   *   modify({ text: 'Processed' }),
+   *   Fn.tap(el => console.log('Element after modify:', el)),
+   *   el => el.dataset.id
+   * );
+   * 
+   * const id = processEl(find('#my-el'));
+   * ```
    */
   tap: <T>(fn: (x: T) => void) => (x: T): T => {
     fn(x);
@@ -7675,44 +7732,111 @@ export const Fn = {
   },
 
   /**
-   * Executes a function only if the value is not null/undefined.
-   * Useful wrapper for standard API functions that might crash on null.
+   * Creates a function that executes only if its input is not `null` or `undefined`.
+   * Safely wraps functions that would otherwise throw errors on nullish inputs.
    * 
-   * @example const safeParse = maybe(JSON.parse);
+   * @param fn - The function to protect.
+   * 
+   * @example
+   * ```typescript
+   * import { Fn, find } from '@doeixd/dom';
+   * 
+   * const el = find('.maybe-missing');
+   * const safeFocus = Fn.maybe(focus());
+   * 
+   * safeFocus(el); // No crash if el is null
+   * ```
    */
   maybe: <T, R>(fn: (x: T) => R) => (x: T | null | undefined): R | null => {
     return (x === null || x === undefined) ? null : fn(x);
   },
 
   /**
-   * Creates a function that accepts data as the *first* argument, 
-   * but applies it to a curried function expecting data *last*.
+   * (W-Combinator / Converge) Applies multiple functions to the same input,
+   * then passes their results to a final combining function.
+   * `converge(h, f, g)(x)` is equivalent to `h(f(x), g(x))`.
    * 
-   * Adapts `fn(config)(data)` to `fn(data, config)`.
+   * @param h - The final function that accepts the results.
+   * @param fns - The functions to apply to the input.
+   * 
+   * @example
+   * ```typescript
+   * import { Fn, attr, prop } from '@doeixd/dom';
+   * 
+   * const logData = (id, value) => console.log({ id, value });
+   * 
+   * const logInputState = Fn.converge(
+   *   logData,
+   *   attr('data-id'),
+   *   prop('value')
+   * );
+   * 
+   * logInputState(myInputElement); // Logs { id: '...', value: '...' }
+   * ```
    */
-  unbind: <D, C, R>(fn: (config: C) => (data: D) => R) => (data: D, config: C): R => {
-    return fn(config)(data);
+  converge: <T, O>(h: (...args: any[]) => O, ...fns: Array<(x: T) => any>) => (x: T): O => {
+    return h(...fns.map(f => f(x)));
   },
 
   /**
-   * "Thunks" a function. Returns a function that accepts no arguments 
-   * and returns the result of the original call.
-   * Useful for event handlers that don't need the event object.
+   * Creates a function that executes one of two functions based on a predicate.
    * 
-   * @example on(btn)('click', thunk(count, increment));
+   * @param predicate - A function that returns a boolean.
+   * @param ifTrue - The function to call if the predicate is true.
+   * @param ifFalse - The function to call if the predicate is false.
+   * 
+   * @example
+   * ```typescript
+   * import { Fn, cls } from '@doeixd/dom';
+   * 
+   * const hasValue = (el: HTMLInputElement) => el.value.length > 0;
+   * 
+   * const toggleValidClass = Fn.ifElse(
+   *   hasValue,
+   *   cls.add('is-valid'),
+   *   cls.remove('is-valid')
+   * );
+   * 
+   * toggleValidClass(myInputElement);
+   * ```
    */
-  thunk: <T>(fn: (...args: any[]) => T, ...args: any[]) => () => fn(...args),
+  ifElse: <T, R1, R2>(
+    predicate: (x: T) => boolean,
+    ifTrue: (x: T) => R1,
+    ifFalse: (x: T) => R2
+  ) => (x: T): R1 | R2 => predicate(x) ? ifTrue(x) : ifFalse(x),
 
   /**
-   * Returns the value unchanged.
-   * Useful as a default no-op callback.
+   * "Thunks" a function, creating a nullary (zero-argument) function that
+   * calls the original with pre-filled arguments.
+   * 
+   * Useful for event handlers that don't need the event object.
+   * 
+   * @param fn - The function to thunk.
+   * @param args - The arguments to pre-fill.
+   * 
+   * @example
+   * ```typescript
+   * import { Fn, on } from '@doeixd/dom';
+   * 
+   * const increment = (amount: number) => console.log(amount + 1);
+   * 
+   * on(button)('click', Fn.thunk(increment, 5)); // Logs 6 on click
+   * ```
+   */
+  thunk: <A extends any[], R>(fn: (...args: A) => R, ...args: A): () => R => () => fn(...args),
+
+  /**
+   * (I-Combinator) Returns the value it was given.
+   * Useful as a default or placeholder in functional compositions.
    */
   identity: <T>(x: T): T => x,
 
   /**
-   * A function that does nothing.
+   * A function that does nothing and returns nothing.
+   * Useful for providing a default no-op callback.
    */
-  noop: () => { }
+  noop: () => { },
 };
 
 // =============================================================================
