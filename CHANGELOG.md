@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.5](https://github.com/doeixd/dom/compare/v0.0.4...v0.0.5) (2025-11-24)
+
+
+### Features
+
+* add core `@doeixd/dom` library implementation and comprehensive architecture documentation ([2c14ddd](https://github.com/doeixd/dom/commit/2c14ddd1edc7dfe67972d9fe9772a61c76cff161))
+* introduce `AGENTS.md`, add an export finding script, and document new type utilities and advanced DOM functions. ([b5cb5b0](https://github.com/doeixd/dom/commit/b5cb5b0ac581fa85bcef42bd992045d452897fce))
+* introduce fdom library with core types, utilities, and build outputs. ([2fd1024](https://github.com/doeixd/dom/commit/2fd10248c0065d064104471dff2397f711c79813))
+
 ### [0.0.4](https://github.com/doeixd/dom/compare/v0.0.3...v0.0.4) (2025-11-24)
 
 
