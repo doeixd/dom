@@ -92,7 +92,8 @@
     "watch": "pridepack watch",
     "start": "pridepack start",
     "dev": "pridepack dev",
-    "test": "vitest --run --environment happy-dom"
+    "test": "vitest --run --environment happy-dom",
+    "find-exports": "node scripts/find-exports.js"
   },
   "private": false,
   "description": "Simple, functional, DOM library",
