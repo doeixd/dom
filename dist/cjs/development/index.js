@@ -70,6 +70,7 @@ __export(src_exports, {
   cycleClass: () => cycleClass,
   debounce: () => debounce,
   def: () => def,
+  defineComponent: () => defineComponent,
   dispatch: () => dispatch,
   el: () => el,
   empty: () => empty,
@@ -4432,6 +4433,63 @@ function sanitizeHTMLTextOnly(html2) {
   template.innerHTML = html2;
   return template.content.textContent || "";
 }
+var defineComponent = (target, setup) => {
+  const root = typeof target === "string" ? find(document)(target) : target;
+  if (!root) return null;
+  const hooks = createListenerGroup();
+  const ctx = {
+    root,
+    refs: refs(root),
+    groups: groupRefs(root),
+    state: store(root),
+    find: find(root),
+    findAll: findAll(root),
+    // Unified Event Manager
+    on: (event, targetOrSelector, handler) => {
+      if (typeof targetOrSelector === "string") {
+        hooks.add(onDelegated(root)(targetOrSelector)(event, handler));
+      } else {
+        hooks.add(on(targetOrSelector)(event, (e) => handler(e, targetOrSelector)));
+      }
+    },
+    // Reactive State Watcher
+    watch: (key, handler) => {
+      hooks.add(Data.bind(root)(key, handler));
+    },
+    // Two-Way Data Binding
+    bind: (input, key) => {
+      if (!input) return;
+      const current = Data.read(root)(key);
+      if (current !== void 0) Input.set(input)(current);
+      hooks.add(on(input)("input", () => {
+        const val = Input.get(input);
+        Data.set(root)(key, val);
+      }));
+      hooks.add(Data.bind(root)(key, (val) => {
+        const currentInputVal = Input.get(input);
+        if (currentInputVal != val) Input.set(input)(val);
+      }));
+    },
+    // Generic Cleanup
+    effect: (fn) => hooks.add(fn),
+    // Advanced Observers
+    observe: (type, targetEl, cb, opts) => {
+      if (!targetEl) return;
+      const Obs = type === "intersection" ? IntersectionObserver : ResizeObserver;
+      const observer = new Obs(cb, opts);
+      observer.observe(targetEl);
+      hooks.add(() => observer.disconnect());
+    }
+  };
+  const api = setup(ctx) || {};
+  return {
+    ...api,
+    root,
+    destroy: () => {
+      hooks.clear();
+    }
+  };
+};
 /**
  * fdom (Functional DOM) - v2.0.0
  * ==========================================

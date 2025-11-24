@@ -6703,5 +6703,161 @@ export declare function sanitizeHTMLSimple<T = string>(html: string): T;
  * ```
  */
 export declare function sanitizeHTMLTextOnly<T = string>(html: string): T;
+/**
+ * Context object passed to the component setup function.
+ * Provides a scoped, auto-cleaning sandbox for the component's logic.
+ */
+export interface ComponentContext<Refs extends Record<string, HTMLElement> = any, Groups extends Record<string, HTMLElement[]> = any, State extends Record<string, any> = Record<string, any>> {
+    /** The root element of the component */
+    root: HTMLElement;
+    /**
+     * Map of single elements with `data-ref` attributes.
+     * Access is type-safe based on the generic provided.
+     */
+    refs: Refs;
+    /**
+     * Map of element arrays with `data-ref` attributes.
+     * Useful for lists (e.g., `groups.items.forEach(...)`).
+     */
+    groups: Groups;
+    /**
+     * Reactive Proxy for the root element's dataset.
+     * - Reading `state.foo` reads `data-foo` from the DOM.
+     * - Writing `state.foo = x` updates `data-foo` and triggers watchers.
+     */
+    state: State;
+    /**
+     * Scoped element finder (querySelector within root).
+     */
+    find: (selector: string) => HTMLElement | null;
+    /**
+     * Scoped element finder (querySelectorAll within root).
+     */
+    findAll: (selector: string) => HTMLElement[];
+    /**
+     * Adds an event listener that automatically cleans up when the component is destroyed.
+     *
+     * @overload Delegated event on the component root.
+     * @overload Direct event on a specific target element.
+     */
+    on<K extends keyof HTMLElementEventMap>(event: K, selector: string, handler: (e: HTMLElementEventMap[K], target: HTMLElement) => void): void;
+    on<K extends keyof HTMLElementEventMap>(event: K, target: EventTarget, handler: (e: HTMLElementEventMap[K], target: EventTarget) => void): void;
+    /**
+     * Watches a specific key in the component's state (DOM attributes) for changes.
+     * Fires immediately with current value, then on every change.
+     */
+    watch: (key: keyof State & string, handler: (val: any) => void) => void;
+    /**
+     * Establishes Two-Way Binding between a form input and a state key.
+     * - Input changes -> Update State
+     * - State changes -> Update Input value
+     */
+    bind: (input: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement, key: keyof State & string) => void;
+    /**
+     * Registers a cleanup function to run when the component is destroyed.
+     * (Equivalent to React's useEffect return function).
+     */
+    effect: (fn: Unsubscribe) => void;
+    /**
+     * Helper to attach an IntersectionObserver or ResizeObserver.
+     * Auto-disconnects on destroy.
+     */
+    observe: (type: 'intersection' | 'resize', target: Element, callback: IntersectionObserverCallback | ResizeObserverCallback, options?: object) => void;
+}
+/**
+ * The public interface returned by a component instance.
+ */
+export type ComponentInstance<API> = API & {
+    /** The root element */
+    root: HTMLElement;
+    /** Destroys the component, removing all listeners and observers */
+    destroy: () => void;
+};
+/**
+ * A lightweight component factory with automatic lifecycle management.
+ *
+ * Applies the **Setup Pattern** (similar to Vue 3 Composition API) to Vanilla DOM elements.
+ * It binds a logic closure to a root element and provides a scoped `Context` toolkit.
+ *
+ * 🧠 **Key Features:**
+ * 1. **Auto-Cleanup**: All event listeners (`on`), watchers (`watch`), and observers (`observe`)
+ *    attached via the context are automatically removed when `destroy()` is called.
+ * 2. **Scoped Access**: `refs`, `find`, and `findAll` are scoped to the component root.
+ * 3. **DOM-as-State**: The `ctx.state` proxy reads/writes directly to `data-*` attributes,
+ *    keeping the DOM as the single source of truth.
+ * 4. **Composition**: The `setup` function allows you to compose reusable logic functions
+ *    easily.
+ *
+ * @template API - The public interface returned by the component (methods/properties).
+ * @template R - The shape of `refs` (elements marked with `data-ref="name"`).
+ * @template G - The shape of `groups` (lists of elements marked with `data-ref="name"`).
+ * @template S - The shape of `state` (data attributes accessed via `ctx.state`).
+ *
+ * @param target - The DOM element or CSS selector to mount the component on.
+ * @param setup - The initialization function. Receives `ComponentContext` and returns the public API.
+ * @returns The initialized component instance, or `null` if the target was not found.
+ *
+ * @example
+ * ```typescript
+ * // 1. Define Types (Optional, for strong typing)
+ * interface CounterRefs { display: HTMLElement; btn: HTMLButtonElement; }
+ * interface CounterState { count: number; }
+ *
+ * // 2. HTML: <div id="app"><span data-ref="display"></span><button data-ref="btn">Inc</button></div>
+ *
+ * // 3. Define Component
+ * const Counter = defineComponent<any, CounterRefs, any, CounterState>('#app', (ctx) => {
+ *   const { display, btn } = ctx.refs;
+ *
+ *   // Initialize State (updates data-count="0" in DOM)
+ *   ctx.state.count = 0;
+ *
+ *   // Event Listener (auto-cleaned on destroy)
+ *   ctx.on('click', btn, () => {
+ *     ctx.state.count++;
+ *   });
+ *
+ *   // Reactive Watcher (runs when state changes)
+ *   ctx.watch('count', (val) => {
+ *     display.textContent = String(val);
+ *   });
+ * });
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // Example: Exposing a Public API
+ * interface ModalAPI { open: () => void; close: () => void; }
+ *
+ * const Modal = defineComponent<ModalAPI>('#my-modal', (ctx) => {
+ *   const { root } = ctx;
+ *
+ *   const open = () => {
+ *     ctx.state.isOpen = true;
+ *     root.setAttribute('open', '');
+ *   };
+ *
+ *   const close = () => {
+ *     ctx.state.isOpen = false;
+ *     root.removeAttribute('open');
+ *   };
+ *
+ *   // Close on Escape key (delegated to document, but managed by component)
+ *   const cleanupKey = on(document)('keydown', (e) => {
+ *     if (e.key === 'Escape') close();
+ *   });
+ *   ctx.effect(cleanupKey); // Register for auto-cleanup
+ *
+ *   // Return methods to be used externally
+ *   return { open, close };
+ * });
+ *
+ * // Usage
+ * Modal.open();
+ * // Later...
+ * Modal.destroy(); // Cleans up DOM listeners and the global Escape listener
+ * ```
+ */
+export declare const defineComponent: <API extends Record<string, any> = {}, R extends Record<string, HTMLElement> = any, G extends Record<string, HTMLElement[]> = any, S extends Record<string, any> = any>(target: string | HTMLElement | null, setup: (ctx: ComponentContext<R, G, S>) => API | void) => ComponentInstance<API> | null;
 export {};
 //# sourceMappingURL=index.d.ts.map
