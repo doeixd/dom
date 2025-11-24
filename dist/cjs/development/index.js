@@ -48,6 +48,7 @@ __export(src_exports, {
   after: () => after,
   animate: () => animate,
   append: () => append,
+  apply: () => apply,
   attr: () => attr,
   batch: () => batch,
   before: () => before,
@@ -65,6 +66,7 @@ __export(src_exports, {
   createBus: () => createBus,
   createListenerGroup: () => createListenerGroup,
   createQueue: () => createQueue,
+  createStore: () => createStore,
   css: () => css,
   cssTemplate: () => cssTemplate,
   cycleClass: () => cycleClass,
@@ -93,6 +95,7 @@ __export(src_exports, {
   isVisible: () => isVisible,
   modify: () => modify,
   mount: () => mount,
+  mountComponent: () => mountComponent,
   nextFrame: () => nextFrame,
   offset: () => offset,
   on: () => on,
@@ -3883,17 +3886,71 @@ var bind = {
       data.forEach((item, i) => fragment.appendChild(renderItem(item, i)));
       container.replaceChildren(fragment);
     };
+  },
+  /** 
+  * Binds to inline styles. 
+  * @example bind.style(el, 'width') // expects string like "100px"
+  */
+  style: (el2, property) => {
+    let current;
+    return (value) => {
+      if (!el2 || current === value) return;
+      current = String(value);
+      el2.style[property] = current;
+    };
+  },
+  /** 
+   * Binds to CSS Variables. 
+   * @example bind.cssVar(el, '--progress')
+   */
+  cssVar: (el2, varName) => {
+    let current;
+    return (value) => {
+      if (!el2 || current === value) return;
+      current = String(value);
+      el2.style.setProperty(varName, current);
+    };
   }
 };
-var bindEvents = (refs2, map) => {
-  Object.entries(map).forEach(([refKey, events]) => {
-    const el2 = refs2[refKey];
-    if (!el2) return;
-    Object.entries(events).forEach(([evtName, handler]) => {
-      on(el2)(evtName, (e) => handler(e, el2));
-    });
-  });
+var createStore = (initialState) => {
+  let state = { ...initialState };
+  const listeners = /* @__PURE__ */ new Set();
+  return {
+    /** Get current state snapshot */
+    get: () => state,
+    /** Update state (partial updates merged) */
+    set: (update) => {
+      const newVals = typeof update === "function" ? update(state) : update;
+      state = { ...state, ...newVals };
+      listeners.forEach((fn) => fn(state));
+    },
+    /** Subscribe to changes */
+    subscribe: (fn) => {
+      listeners.add(fn);
+      fn(state);
+      return () => listeners.delete(fn);
+    }
+  };
 };
+function bindEvents(refs2, map) {
+  const exec = (m) => {
+    const unsubs = [];
+    Object.entries(m).forEach(([refKey, events]) => {
+      const el2 = refs2[refKey];
+      if (!el2) return;
+      Object.entries(events).forEach(([evtName, handler]) => {
+        unsubs.push(
+          on(el2)(evtName, (e) => handler(e, el2))
+        );
+      });
+    });
+    return () => unsubs.forEach((fn) => fn());
+  };
+  if (map !== void 0) {
+    return exec(map);
+  }
+  return (lateMap) => exec(lateMap);
+}
 var view = (htmlString) => {
   const tpl = document.createElement("template");
   tpl.innerHTML = htmlString.trim();
@@ -3908,15 +3965,36 @@ var view = (htmlString) => {
     return { root: rootEl, refs: refs2 };
   };
 };
-var binder = (refs2, schema) => {
-  const binders = {};
-  for (const key in schema) {
-    if (refs2[key]) {
-      binders[key] = schema[key](refs2[key]);
+function binder(refs2, schema) {
+  const exec = (s) => {
+    const binders = {};
+    for (const key in s) {
+      if (refs2[key]) {
+        binders[key] = s[key](refs2[key]);
+      }
     }
+    return binders;
+  };
+  if (schema !== void 0) {
+    return exec(schema);
   }
-  return binders;
-};
+  return (lateSchema) => exec(lateSchema);
+}
+function apply(setters, data) {
+  const exec = (d) => {
+    for (const key in d) {
+      const val = d[key];
+      if (val !== void 0) {
+        const setter = setters[key];
+        if (setter) setter(val);
+      }
+    }
+  };
+  if (data !== void 0) {
+    return exec(data);
+  }
+  return (lateData) => exec(lateData);
+}
 var _mergeHeaders = (base, override) => {
   return { ...base, ...override };
 };
@@ -4437,56 +4515,49 @@ var defineComponent = (target, setup) => {
   const root = typeof target === "string" ? find(document)(target) : target;
   if (!root) return null;
   const hooks = createListenerGroup();
+  const scopedRefs = refs(root);
+  const scopedGroups = groupRefs(root);
   const ctx = {
     root,
-    refs: refs(root),
-    groups: groupRefs(root),
+    refs: scopedRefs,
+    groups: scopedGroups,
     state: store(root),
     find: find(root),
     findAll: findAll(root),
-    // Unified Event Manager
-    on: (event, targetOrSelector, handler) => {
-      if (typeof targetOrSelector === "string") {
-        hooks.add(onDelegated(root)(targetOrSelector)(event, handler));
-      } else {
-        hooks.add(on(targetOrSelector)(event, (e) => handler(e, targetOrSelector)));
-      }
+    // Scoped Binder (Bound to Refs)
+    binder: (schema) => binder(scopedRefs, schema),
+    // Scoped Event Binding (Bound to Refs) with Auto-Cleanup
+    bindEvents: (map) => {
+      hooks.add(bindEvents(scopedRefs, map));
     },
     // Reactive State Watcher
     watch: (key, handler) => {
       hooks.add(Data.bind(root)(key, handler));
     },
-    // Two-Way Data Binding
-    bind: (input, key) => {
-      if (!input) return;
-      const current = Data.read(root)(key);
-      if (current !== void 0) Input.set(input)(current);
-      hooks.add(on(input)("input", () => {
-        const val = Input.get(input);
-        Data.set(root)(key, val);
-      }));
-      hooks.add(Data.bind(root)(key, (val) => {
-        const currentInputVal = Input.get(input);
-        if (currentInputVal != val) Input.set(input)(val);
-      }));
-    },
     // Generic Cleanup
-    effect: (fn) => hooks.add(fn),
-    // Advanced Observers
-    observe: (type, targetEl, cb, opts) => {
-      if (!targetEl) return;
-      const Obs = type === "intersection" ? IntersectionObserver : ResizeObserver;
-      const observer = new Obs(cb, opts);
-      observer.observe(targetEl);
-      hooks.add(() => observer.disconnect());
-    }
+    effect: (fn) => hooks.add(fn)
   };
   const api = setup(ctx) || {};
   return {
     ...api,
     root,
+    destroy: () => hooks.clear()
+  };
+};
+var mountComponent = (templateFn, componentFn, target, _props) => {
+  const { root } = templateFn();
+  const rootEl = root instanceof DocumentFragment ? root.firstElementChild : root;
+  target.appendChild(root);
+  const instance = componentFn(rootEl);
+  if (!instance) {
+    rootEl.remove();
+    throw new Error("Failed to init component");
+  }
+  return {
+    ...instance,
     destroy: () => {
-      hooks.clear();
+      instance.destroy();
+      rootEl.remove();
     }
   };
 };
