@@ -109,6 +109,81 @@ $('button').modify({ text: 'Click' }).addClass('active');
 
 <br />
 
+## The Component Pattern
+
+For complex applications, `@doeixd/dom` provides a lightweight component architecture. It bridges the gap between low-level DOM manipulation and high-level frameworks like React or Vue, without the build steps or virtual DOM overhead.
+
+### `defineComponent`
+
+This function creates a self-contained logic unit attached to a DOM element. It solves three major problems in Vanilla JS development:
+1.  **Ref Management:** Automatically maps `data-ref` elements to variables.
+2.  **Lifecycle Management:** Automatically cleans up event listeners and observers when the component is destroyed.
+3.  **State Sync:** Provides a simple way to sync JavaScript state with DOM data attributes.
+
+#### Example: Counter Component
+
+**HTML:**
+```html
+<div id="counter">
+  <span data-ref="display">0</span>
+  <button data-ref="btn">Increment</button>
+</div>
+```
+
+**TypeScript:**
+```typescript
+import { defineComponent } from '@doeixd/dom';
+
+// 1. Define Types (Optional)
+interface Refs { display: HTMLElement; btn: HTMLButtonElement; }
+interface State { count: number; }
+
+// 2. Define Logic
+const Counter = defineComponent<any, Refs, any, State>('#counter', (ctx) => {
+  const { display, btn } = ctx.refs;
+
+  // Initialize State (sets data-count="0" in DOM)
+  ctx.state.count = 0;
+
+  // Event Listener (auto-cleaned on destroy)
+  ctx.on('click', btn, () => {
+    ctx.state.count++;
+  });
+
+  // Reactive Watcher (runs when state changes)
+  ctx.watch('count', (val) => {
+    display.textContent = String(val);
+  });
+  
+  // Return Public API
+  return {
+    reset: () => { ctx.state.count = 0; }
+  };
+});
+
+// 3. Usage
+// Counter.reset();
+// Counter.destroy(); // Removes all listeners
+```
+
+#### The `ComponentContext` (ctx)
+
+The `ctx` object passed to your setup function provides scoped, auto-cleaning utilities:
+
+| Property | Description |
+| :--- | :--- |
+| `ctx.root` | The root element of the component. |
+| `ctx.refs` | Object map of elements with `data-ref="name"`. |
+| `ctx.groups` | Object map of element lists with `data-ref="name"`. |
+| `ctx.state` | Proxy object for reading/writing `data-*` attributes. |
+| `ctx.on` | Add event listener (auto-removed on destroy). |
+| `ctx.watch` | Watch state changes. |
+| `ctx.bind` | Two-way bind an input to a state key. |
+| `ctx.observe` | Add Intersection/Resize observer (auto-disconnected). |
+| `ctx.effect` | Register arbitrary cleanup logic. |
+
+<br />
+
 ## The Toolkit: A Practical Guide
 
 ### DOM Querying & Traversal

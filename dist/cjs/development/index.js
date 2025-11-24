@@ -46,13 +46,16 @@ __export(src_exports, {
   Traverse: () => Traverse,
   ViewTransitions: () => ViewTransitions,
   after: () => after,
+  animate: () => animate,
   append: () => append,
+  attr: () => attr,
   batch: () => batch,
   before: () => before,
   bind: () => bind,
   bindEvents: () => bindEvents,
   binder: () => binder,
   blur: () => blur,
+  cast: () => cast,
   clone: () => clone,
   cloneMany: () => cloneMany,
   closest: () => closest,
@@ -70,18 +73,25 @@ __export(src_exports, {
   dispatch: () => dispatch,
   el: () => el,
   empty: () => empty,
+  exists: () => exists,
   find: () => find,
   findAll: () => findAll,
   focus: () => focus,
   form: () => form,
   groupBy: () => groupBy,
   groupRefs: () => groupRefs,
+  has: () => has,
   html: () => html,
   htmlMany: () => htmlMany,
+  index: () => index,
   injectStyles: () => injectStyles,
   instantiate: () => instantiate,
+  isElement: () => isElement,
+  isInViewport: () => isInViewport,
+  isTag: () => isTag,
   isVisible: () => isVisible,
   modify: () => modify,
+  mount: () => mount,
   nextFrame: () => nextFrame,
   offset: () => offset,
   on: () => on,
@@ -89,11 +99,17 @@ __export(src_exports, {
   onMount: () => onMount,
   onReady: () => onReady,
   prepend: () => prepend,
+  prop: () => prop,
+  ready: () => ready,
   rect: () => rect,
   refs: () => refs,
   remove: () => remove,
+  require: () => require2,
+  sanitizeHTMLSimple: () => sanitizeHTMLSimple,
+  sanitizeHTMLTextOnly: () => sanitizeHTMLTextOnly,
   scrollInto: () => scrollInto,
   set: () => set,
+  siblings: () => siblings,
   store: () => store,
   stripListeners: () => stripListeners,
   tempStyle: () => tempStyle,
@@ -119,21 +135,85 @@ var def = (fn) => {
   }
   return wrapper;
 };
-var find = (root = document) => {
+function find(arg) {
+  if (typeof arg === "string") {
+    const selector = arg;
+    return document.querySelector(selector);
+  }
+  const root = arg != null ? arg : document;
   return (selector) => {
     return root.querySelector(selector);
   };
-};
-var findAll = (root = document) => {
+}
+function require2(selector, root = document) {
+  const el2 = root.querySelector(selector);
+  if (!el2) throw new Error(`Element not found: ${selector}`);
+  return el2;
+}
+function findAll(arg) {
+  if (typeof arg === "string") {
+    const selector = arg;
+    return Array.from(document.querySelectorAll(selector));
+  }
+  const root = arg != null ? arg : document;
   return (selector) => {
     return Array.from(root.querySelectorAll(selector));
   };
-};
-var closest = (element) => {
+}
+function closest(arg) {
+  if (typeof arg === "string") {
+    const selector = arg;
+    return document.documentElement.closest(selector);
+  }
+  const element = arg;
   return (selector) => {
     return element == null ? void 0 : element.closest(selector);
   };
-};
+}
+function exists(arg) {
+  if (typeof arg === "string") {
+    return document.querySelector(arg) !== null;
+  }
+  const root = arg != null ? arg : document;
+  return (selector) => {
+    return root.querySelector(selector) !== null;
+  };
+}
+function siblings(arg) {
+  if (!(arg instanceof Element) && arg !== null) {
+    const root = arg;
+    return (node2) => {
+      if (!root || !node2) return [];
+      return Array.from(root.children).filter((el2) => el2 !== node2);
+    };
+  }
+  const node = arg;
+  if (!node || !node.parentElement) return [];
+  return Array.from(node.parentElement.children).filter((el2) => el2 !== node);
+}
+function has(arg) {
+  if (typeof arg === "string") {
+    return document.querySelector(arg) !== null;
+  }
+  const root = arg;
+  return (selector) => {
+    if (!root) return false;
+    return root.querySelector(selector) !== null;
+  };
+}
+function index(arg) {
+  if (!(arg instanceof Element) && arg !== null) {
+    const root = arg;
+    return (node2) => {
+      if (!root || !node2) return -1;
+      const children = Array.from(root.children);
+      return children.indexOf(node2);
+    };
+  }
+  const node = arg;
+  if (!node || !node.parentElement) return -1;
+  return Array.from(node.parentElement.children).indexOf(node);
+}
 var on = (target) => {
   return (eventType, handler, options = false) => {
     if (!target) return () => {
@@ -240,16 +320,35 @@ var wrap = def((target, wrapper) => {
   }
   return wrapper;
 });
-var el = (tag) => {
-  return (props = {}) => {
-    return (children = []) => {
+var mount = def((parent, child) => {
+  if (!child) return () => {
+  };
+  const parentEl = typeof parent === "string" ? document.querySelector(parent) : parent;
+  if (!parentEl) return () => {
+  };
+  parentEl.appendChild(child);
+  return () => {
+    if (child.parentNode === parentEl) {
+      parentEl.removeChild(child);
+    }
+  };
+});
+function el(tag, props, children) {
+  if (props !== void 0 && children !== void 0) {
+    const node = document.createElement(tag);
+    modify(node)(props);
+    node.append(..._nodes(children));
+    return node;
+  }
+  return (propsArg = {}) => {
+    return (childrenArg = []) => {
       const node = document.createElement(tag);
-      modify(node)(props);
-      node.append(..._nodes(children));
+      modify(node)(propsArg);
+      node.append(..._nodes(childrenArg));
       return node;
     };
   };
-};
+}
 var html = (strings, ...values) => {
   const str = strings.reduce((acc, s, i) => {
     var _a;
@@ -549,11 +648,14 @@ var Data = {
     if (val === "false") return false;
     if (val === "null") return null;
     if (!isNaN(Number(val)) && val.trim() !== "") return Number(val);
-    try {
-      return JSON.parse(val);
-    } catch (e) {
-      return val;
+    if (val.startsWith("{") || val.startsWith("[")) {
+      try {
+        return JSON.parse(val);
+      } catch (e) {
+        return val;
+      }
     }
+    return val;
   },
   /**
    * Observes changes to a data attribute and fires a callback.
@@ -607,13 +709,13 @@ var Data = {
   bind: def((el2, key, callback) => {
     if (!el2) return () => {
     };
-    const attr = toDataAttr(key);
+    const attr2 = toDataAttr(key);
     const update = () => callback(Data.read(el2)(key), el2);
     update();
     const obs = new MutationObserver((m) => {
-      if (m.some((x) => x.attributeName === attr)) update();
+      if (m.some((x) => x.attributeName === attr2)) update();
     });
-    obs.observe(el2, { attributes: true, attributeFilter: [attr] });
+    obs.observe(el2, { attributes: true, attributeFilter: [attr2] });
     return () => obs.disconnect();
   })
 };
@@ -635,9 +737,65 @@ var watchText = def((target, callback) => {
   obs.observe(target, { characterData: true, childList: true, subtree: true });
   return () => obs.disconnect();
 });
+function attr(a) {
+  if (typeof a === "string") {
+    const attribute = a;
+    return document.documentElement.getAttribute(attribute);
+  }
+  const el2 = a;
+  return (attribute, value) => {
+    if (!el2) return value === void 0 ? null : void 0;
+    if (value === void 0) {
+      return el2.getAttribute(attribute);
+    }
+    el2.setAttribute(attribute, value);
+  };
+}
+function prop(a) {
+  if (typeof a === "string") {
+    const key = a;
+    const el3 = document.documentElement;
+    return el3[key];
+  }
+  const el2 = a;
+  return (key, value) => {
+    if (!el2) return void 0;
+    if (value === void 0) return el2[key];
+    el2[key] = value;
+  };
+}
 var onReady = (fn) => {
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", fn, { once: true });
-  else fn();
+  if (document.readyState === "complete" || document.readyState === "interactive") {
+    fn();
+  } else {
+    document.addEventListener("DOMContentLoaded", fn, { once: true });
+  }
+};
+var ready = {
+  /**
+   * Waits until the DOM is parsed and interactive (DOMContentLoaded).
+   * Resolves immediately if DOM is already loaded.
+   * 
+   * @returns Promise that resolves when DOM is ready
+   */
+  dom: () => new Promise((resolve) => {
+    if (document.readyState !== "loading") resolve();
+    else document.addEventListener("DOMContentLoaded", () => resolve(), { once: true });
+  }),
+  /**
+   * Waits until the microtask queue is flushed (after current JS execution).
+   * Useful for ensuring Promise chains and MutationObserver callbacks have run.
+   * 
+   * @returns Promise that resolves on next microtask
+   */
+  micro: () => new Promise((resolve) => queueMicrotask(resolve)),
+  /**
+   * Waits until the next requestAnimationFrame (next paint cycle).
+   * Useful for deferring layout-dependent code.
+   * 
+   * @returns Promise that resolves on next frame
+   */
+  raf: () => new Promise((resolve) => requestAnimationFrame(() => resolve()))
 };
 var onMount = def((selector, handler, root = document, once = false) => {
   if (!selector) return () => {
@@ -869,121 +1027,209 @@ var cssTemplate = (strings, ...values) => strings.reduce((acc, s, i) => {
 }, "");
 var Traverse = {
   /**
-   * Gets the parent element.
-   * 
-   * @param el - The element to get the parent of
-   * @returns The parent element or null
-   * 
+   * Get the parent element, optionally filtered by a selector.
+   *
    * @example
-   * ```typescript
-   * const listItem = document.querySelector('li');
-   * const list = Traverse.parent(listItem); // <ul>
-   * 
-   * // Navigate up multiple levels
-   * const grandparent = Traverse.parent(Traverse.parent(element));
-   * 
-   * // Null-safe
-   * Traverse.parent(null); // null
-   * Traverse.parent(document.documentElement); // null (no parent)
-   * ```
+   * // Element-first
+   * const parent = Traverse.parent(el);       // <div> | null
+   *
+   * // Selector-first
+   * const parent = Traverse.parent("#child"); // parent of #child
+   *
+   * // Curried
+   * const specific = Traverse.parent(el)(".box");
    */
-  parent: (el2) => (el2 == null ? void 0 : el2.parentElement) || null,
+  parent(elOrSelector) {
+    if (typeof elOrSelector === "string") {
+      const el3 = document.querySelector(elOrSelector);
+      return (el3 == null ? void 0 : el3.parentElement) || null;
+    }
+    const el2 = elOrSelector != null ? elOrSelector : null;
+    return (selector) => {
+      var _a;
+      const parent = (_a = el2 == null ? void 0 : el2.parentElement) != null ? _a : null;
+      if (!parent) return null;
+      return !selector || parent.matches(selector) ? parent : null;
+    };
+  },
   /**
-   * Gets the next sibling element.
-   * 
-   * @param el - The element to get the next sibling of
-   * @returns The next sibling element or null
-   * 
+   * Get the next sibling element.
+   *
    * @example
-   * ```typescript
-   * const first = document.querySelector('li:first-child');
-   * const second = Traverse.next(first);
-   * 
-   * // Iterate through siblings
-   * let current = firstElement;
-   * while (current) {
-   *   console.log(current);
-   *   current = Traverse.next(current);
-   * }
-   * 
-   * // Null-safe
-   * Traverse.next(null); // null
-   * Traverse.next(lastElement); // null (no next sibling)
-   * ```
+   * Traverse.next(el);            // <li> | null
+   * Traverse.next(".active");     // next of .active
+   * Traverse.next(el)("button");  // next button sibling
    */
-  next: (el2) => el2 == null ? void 0 : el2.nextElementSibling,
+  next(elOrSelector) {
+    if (typeof elOrSelector === "string") {
+      const el3 = document.querySelector(elOrSelector);
+      return (el3 == null ? void 0 : el3.nextElementSibling) || null;
+    }
+    const el2 = elOrSelector != null ? elOrSelector : null;
+    return (selector) => {
+      var _a;
+      const next = (_a = el2 == null ? void 0 : el2.nextElementSibling) != null ? _a : null;
+      if (!selector || !next) return next;
+      return next.matches(selector) ? next : null;
+    };
+  },
   /**
-   * Gets the previous sibling element.
-   * 
-   * @param el - The element to get the previous sibling of
-   * @returns The previous sibling element or null
-   * 
+   * Get the previous sibling element.
+   *
    * @example
-   * ```typescript
-   * const last = document.querySelector('li:last-child');
-   * const secondLast = Traverse.prev(last);
-   * 
-   * // Iterate backwards
-   * let current = lastElement;
-   * while (current) {
-   *   console.log(current);
-   *   current = Traverse.prev(current);
-   * }
-   * ```
+   * Traverse.prev(el);
+   * Traverse.prev(".selected");
+   * Traverse.prev(el)(".item");
    */
-  prev: (el2) => el2 == null ? void 0 : el2.previousElementSibling,
+  prev(elOrSelector) {
+    if (typeof elOrSelector === "string") {
+      const el3 = document.querySelector(elOrSelector);
+      return (el3 == null ? void 0 : el3.previousElementSibling) || null;
+    }
+    const el2 = elOrSelector != null ? elOrSelector : null;
+    return (selector) => {
+      var _a;
+      const prev = (_a = el2 == null ? void 0 : el2.previousElementSibling) != null ? _a : null;
+      if (!selector || !prev) return prev;
+      return prev.matches(selector) ? prev : null;
+    };
+  },
   /**
-   * Gets all child elements as an array.
-   * 
-   * @param el - The element to get children of
-   * @returns Array of child elements (empty if no children or null)
-   * 
+   * Get child elements, with optional selector filtering.
+   *
    * @example
-   * ```typescript
-   * const list = document.querySelector('ul');
-   * const items = Traverse.children(list); // Array of <li> elements
-   * 
-   * // Process children
-   * Traverse.children(container).forEach((child, index) => {
-   *   child.dataset.index = String(index);
-   * });
-   * 
-   * // Count children
-   * const childCount = Traverse.children(element).length;
-   * 
-   * // Null-safe
-   * Traverse.children(null); // []
-   * ```
+   * Traverse.children(el);         // Element[]
+   * Traverse.children(".list");    // children of element matching .list
+   * Traverse.children(el)("li");   // only <li> children
    */
-  children: (el2) => el2 ? Array.from(el2.children) : [],
+  children(elOrSelector) {
+    if (typeof elOrSelector === "string") {
+      const el3 = document.querySelector(elOrSelector);
+      return el3 ? Array.from(el3.children) : [];
+    }
+    const el2 = elOrSelector != null ? elOrSelector : null;
+    return (selector) => {
+      if (!el2) return [];
+      const kids = Array.from(el2.children);
+      return selector ? kids.filter((c) => c.matches(selector)) : kids;
+    };
+  },
   /**
-   * Gets all sibling elements (excluding the element itself).
-   * 
-   * @param el - The element to get siblings of
-   * @returns Array of sibling elements (empty if no siblings or null)
-   * 
+    * Get sibling elements (excluding the original element).
+    *
+    * @example
+    * Traverse.siblings(el);
+    * Traverse.siblings("#active");
+    * Traverse.siblings(el)(".item");
+    */
+  siblings(elOrSelector) {
+    if (typeof elOrSelector === "string") {
+      const el3 = document.querySelector(elOrSelector);
+      if (!(el3 == null ? void 0 : el3.parentElement)) return [];
+      return Array.from(el3.parentElement.children).filter((c) => c !== el3);
+    }
+    const el2 = elOrSelector != null ? elOrSelector : null;
+    return (selector) => {
+      if (!(el2 == null ? void 0 : el2.parentElement)) return [];
+      const sibs = Array.from(el2.parentElement.children).filter((s) => s !== el2);
+      return selector ? sibs.filter((s) => s.matches(selector)) : sibs;
+    };
+  },
+  /**
+   * Get all ancestor elements up to the document root.
+   *
+   * Optionally stops at an element matching a selector.
+   *
    * @example
-   * ```typescript
-   * const activeItem = document.querySelector('.active');
-   * const siblings = Traverse.siblings(activeItem);
-   * 
-   * // Remove active class from siblings
-   * Traverse.siblings(activeItem).forEach(sibling => {
-   *   sibling.classList.remove('active');
-   * });
-   * 
-   * // Highlight siblings
-   * Traverse.siblings(element).forEach(sibling => {
-   *   sibling.style.opacity = '0.5';
-   * });
-   * 
-   * // Null-safe
-   * Traverse.siblings(null); // []
-   * ```
+   * Traverse.parents(el);                  // All ancestors
+   * Traverse.parents("#child");            // Ancestors of #child
+   * Traverse.parents(el, ".section");      // Ancestors until .section match
+   * Traverse.parents(el)(".container");    // Curried: ancestors matching .container
    */
-  siblings: (el2) => {
-    if (!el2 || !el2.parentElement) return [];
-    return Array.from(el2.parentElement.children).filter((c) => c !== el2);
+  parents(elOrSelector, until) {
+    var _a;
+    const el2 = typeof elOrSelector === "string" ? document.querySelector(elOrSelector) : elOrSelector != null ? elOrSelector : null;
+    const result = [];
+    let current = (_a = el2 == null ? void 0 : el2.parentElement) != null ? _a : null;
+    while (current) {
+      if (typeof until === "string" && current.matches(until)) {
+        break;
+      }
+      if (typeof until === "function" && until(current)) {
+        break;
+      }
+      result.push(current);
+      current = current.parentElement;
+    }
+    return result;
+  },
+  /**
+   * Get all following sibling elements.
+   *
+   * Optionally filtered by a selector.
+   *
+   * @example
+   * Traverse.nextAll(el);           // All following siblings
+   * Traverse.nextAll(".selected");  // Following siblings of .selected
+   * Traverse.nextAll(el)(".item");  // Following siblings matching .item
+   */
+  nextAll(elOrSelector, selector) {
+    var _a;
+    const el2 = typeof elOrSelector === "string" ? document.querySelector(elOrSelector) : elOrSelector != null ? elOrSelector : null;
+    const result = [];
+    let current = (_a = el2 == null ? void 0 : el2.nextElementSibling) != null ? _a : null;
+    while (current) {
+      if (!selector || current.matches(selector)) {
+        result.push(current);
+      }
+      current = current.nextElementSibling;
+    }
+    return result;
+  },
+  /**
+   * Get all preceding sibling elements.
+   *
+   * Optionally filtered by a selector.
+   *
+   * @example
+   * Traverse.prevAll(el);           // All preceding siblings
+   * Traverse.prevAll(".selected");  // Preceding siblings of .selected
+   * Traverse.prevAll(el)(".item");  // Preceding siblings matching .item
+   */
+  prevAll(elOrSelector, selector) {
+    var _a;
+    const el2 = typeof elOrSelector === "string" ? document.querySelector(elOrSelector) : elOrSelector != null ? elOrSelector : null;
+    const result = [];
+    let current = (_a = el2 == null ? void 0 : el2.previousElementSibling) != null ? _a : null;
+    while (current) {
+      if (!selector || current.matches(selector)) {
+        result.push(current);
+      }
+      current = current.previousElementSibling;
+    }
+    return result;
+  },
+  /**
+   * Get all ancestors including the element itself, up to document root.
+   *
+   * Optionally filtered by a selector.
+   *
+   * @example
+   * Traverse.closestAll(el);            // Element + all ancestors
+   * Traverse.closestAll("#child");      // Self + ancestors of #child
+   * Traverse.closestAll(el)(".box");    // Self + ancestors matching .box
+   */
+  closestAll(elOrSelector, selector) {
+    const el2 = typeof elOrSelector === "string" ? document.querySelector(elOrSelector) : elOrSelector != null ? elOrSelector : null;
+    const result = [];
+    let current = el2;
+    while (current) {
+      if (!selector || current.matches(selector)) {
+        result.push(current);
+      }
+      current = current.parentElement;
+    }
+    return result;
   }
 };
 var CssVar = {
@@ -1053,9 +1299,9 @@ var CssVar = {
     return el2 ? getComputedStyle(el2).getPropertyValue(name).trim() : "";
   }
 };
-var computed = (el2) => (prop) => {
+var computed = (el2) => (prop2) => {
   if (!el2) return "";
-  const value = getComputedStyle(el2)[prop];
+  const value = getComputedStyle(el2)[prop2];
   return typeof value === "string" ? value : String(value);
 };
 var injectStyles = (cssContent, root = document.head) => {
@@ -1066,7 +1312,12 @@ var injectStyles = (cssContent, root = document.head) => {
 };
 var waitTransition = (el2) => new Promise((resolve) => {
   if (!el2) return resolve(null);
+  let resolved = false;
+  let timeoutId;
   const onEnd = () => {
+    if (resolved) return;
+    resolved = true;
+    if (timeoutId !== void 0) clearTimeout(timeoutId);
     el2.removeEventListener("transitionend", onEnd);
     el2.removeEventListener("animationend", onEnd);
     resolve(el2);
@@ -1075,7 +1326,14 @@ var waitTransition = (el2) => new Promise((resolve) => {
   el2.addEventListener("animationend", onEnd);
   requestAnimationFrame(() => {
     const s = getComputedStyle(el2);
-    if (s.transitionDuration === "0s" && s.animationDuration === "0s") onEnd();
+    const transitionDuration = parseFloat(s.transitionDuration) * 1e3;
+    const animationDuration = parseFloat(s.animationDuration) * 1e3;
+    const maxDuration = Math.max(transitionDuration, animationDuration);
+    if (maxDuration === 0) {
+      onEnd();
+    } else {
+      timeoutId = setTimeout(onEnd, maxDuration + 50);
+    }
   });
 });
 var Obj = {
@@ -2263,7 +2521,7 @@ var $ = (target) => {
      * @param handler - Callback receiving new value
      * @returns {Unsubscribe} Function to stop watching
      */
-    watchAttr: (attr, handler) => target ? watchAttr(target)(attr, handler) : () => {
+    watchAttr: (attr2, handler) => target ? watchAttr(target)(attr2, handler) : () => {
     },
     /**
      * Watches text content for changes.
@@ -2559,7 +2817,7 @@ var $$ = (selectorOrList) => {
     addClass: map(cls.add),
     removeClass: map(cls.remove),
     toggleClass: map(cls.toggle),
-    attr: map((el2) => (attr) => modify(el2)({ attr })),
+    attr: map((el2) => (attr2) => modify(el2)({ attr: attr2 })),
     // Batch Events
     on: (evt, handler) => {
       const unsubs = elements.map((el2) => on(el2)(evt, handler));
@@ -2575,15 +2833,28 @@ var $$ = (selectorOrList) => {
   return wrapper;
 };
 var store = (element) => {
-  if (!element) return {};
-  return new Proxy({}, {
-    get: (_, prop) => Data.read(element)(prop),
-    set: (_, prop, value) => {
-      Data.set(element)(prop, value);
+  if (!element) return new EventTarget();
+  const target = new EventTarget();
+  return new Proxy(target, {
+    get: (t, prop2) => {
+      if (prop2 in t) {
+        const val = t[prop2];
+        return typeof val === "function" ? val.bind(t) : val;
+      }
+      return Data.read(element)(String(prop2));
+    },
+    set: (t, prop2, value) => {
+      if (prop2 in t) return true;
+      Data.set(element)(String(prop2), value);
+      t.dispatchEvent(new CustomEvent(String(prop2), { detail: value }));
+      t.dispatchEvent(new CustomEvent("change", { detail: { prop: prop2, value } }));
       return true;
     },
-    deleteProperty: (_, prop) => {
-      Data.set(element)(prop, null);
+    deleteProperty: (t, prop2) => {
+      if (prop2 in t) return false;
+      Data.set(element)(String(prop2), null);
+      t.dispatchEvent(new CustomEvent(String(prop2), { detail: null }));
+      t.dispatchEvent(new CustomEvent("change", { detail: { prop: prop2, value: null } }));
       return true;
     },
     // Allow iteration over current dataset
@@ -4042,6 +4313,125 @@ var Http = {
     return res.json();
   }
 };
+function cast(selector) {
+  return (el2) => {
+    if (!el2) return null;
+    return el2.matches(selector) ? el2 : null;
+  };
+}
+function isElement(node) {
+  return node instanceof Element;
+}
+function isTag(tag) {
+  return (el2) => {
+    return !!el2 && el2.tagName.toLowerCase() === tag.toLowerCase();
+  };
+}
+function isInViewport(elOrSelector) {
+  if (typeof elOrSelector === "string") {
+    const el3 = document.querySelector(elOrSelector);
+    if (!el3) return false;
+    return inViewport(el3, {});
+  }
+  const el2 = elOrSelector != null ? elOrSelector : null;
+  return (options) => {
+    if (!el2) return false;
+    return inViewport(el2, options != null ? options : {});
+  };
+}
+function inViewport(el2, {
+  partial = false,
+  threshold,
+  root = null,
+  margin
+}) {
+  const rect2 = el2.getBoundingClientRect();
+  const margins = parseMargin(margin);
+  const containerRect = root ? root.getBoundingClientRect() : {
+    top: 0,
+    left: 0,
+    right: window.innerWidth,
+    bottom: window.innerHeight
+  };
+  const vp = {
+    top: containerRect.top + margins.top,
+    left: containerRect.left + margins.left,
+    right: containerRect.right - margins.right,
+    bottom: containerRect.bottom - margins.bottom
+  };
+  const elementArea = rect2.width * rect2.height;
+  if (elementArea === 0) return false;
+  const intersection = {
+    top: Math.max(rect2.top, vp.top),
+    left: Math.max(rect2.left, vp.left),
+    right: Math.min(rect2.right, vp.right),
+    bottom: Math.min(rect2.bottom, vp.bottom)
+  };
+  const intersectWidth = intersection.right - intersection.left;
+  const intersectHeight = intersection.bottom - intersection.top;
+  if (intersectWidth <= 0 || intersectHeight <= 0) return false;
+  const visibleArea = intersectWidth * intersectHeight;
+  if (typeof threshold === "number") {
+    return visibleArea / elementArea >= threshold;
+  }
+  if (!partial) {
+    return rect2.top >= vp.top && rect2.left >= vp.left && rect2.right <= vp.right && rect2.bottom <= vp.bottom;
+  }
+  return visibleArea > 0;
+}
+function parseMargin(input) {
+  if (!input) return { top: 0, left: 0, right: 0, bottom: 0 };
+  const parts = input.split(/\s+/).map((p) => parseInt(p, 10) || 0);
+  switch (parts.length) {
+    case 1:
+      return { top: parts[0], right: parts[0], bottom: parts[0], left: parts[0] };
+    case 2:
+      return { top: parts[0], right: parts[1], bottom: parts[0], left: parts[1] };
+    case 3:
+      return { top: parts[0], right: parts[1], bottom: parts[2], left: parts[1] };
+    case 4:
+    default:
+      return {
+        top: parts[0],
+        right: parts[1],
+        bottom: parts[2],
+        left: parts[3]
+      };
+  }
+}
+function animate(elOrSelector) {
+  if (typeof elOrSelector === "string") {
+    const el3 = document.querySelector(elOrSelector);
+    return (keyframes, options) => el3 ? el3.animate(keyframes, options).finished : Promise.resolve();
+  }
+  const el2 = elOrSelector != null ? elOrSelector : null;
+  return (keyframes, options) => el2 ? el2.animate(keyframes, options).finished : Promise.resolve();
+}
+function sanitizeHTMLSimple(html2) {
+  const template = document.createElement("template");
+  template.innerHTML = html2;
+  const dangerousTags = ["script", "iframe", "object", "embed"];
+  template.content.querySelectorAll(dangerousTags.join(",")).forEach((node) => node.remove());
+  template.content.querySelectorAll("*").forEach((el2) => {
+    const attrs = el2.getAttributeNames();
+    for (const attr2 of attrs) {
+      if (attr2.startsWith("on")) {
+        el2.removeAttribute(attr2);
+      } else if (attr2 === "href" || attr2 === "src") {
+        const value = el2.getAttribute(attr2) || "";
+        if (value.toLowerCase().trim().startsWith("javascript:")) {
+          el2.removeAttribute(attr2);
+        }
+      }
+    }
+  });
+  return template.innerHTML;
+}
+function sanitizeHTMLTextOnly(html2) {
+  const template = document.createElement("template");
+  template.innerHTML = html2;
+  return template.content.textContent || "";
+}
 /**
  * fdom (Functional DOM) - v2.0.0
  * ==========================================
@@ -4060,11 +4450,11 @@ var Http = {
  * -----------------------------------------------------------------------------
  *
  * 🟢 DOM CORE
- *    1. Querying ......... find, findAll, closest
- *    2. Events ........... on, onDelegated, dispatch
- *    3. Manipulation ..... modify, css, tempStyle
- *    4. Structure ........ append, prepend, after, before, remove, wrap
- *    5. Creation ......... el, html, htmlMany, clone
+  *    1. Querying ......... find, findAll, closest
+  *    2. Events ........... on, onDelegated, dispatch
+  *    3. Manipulation ..... modify, css, tempStyle
+  *    4. Structure ........ append, prepend, after, before, remove, wrap, mount
+  *    5. Creation ......... el, html, htmlMany, clone
  *
  * 🔵 STATE & ATTRIBUTES
  *    6. Classes .......... cls (add/remove/toggle), watchClass
@@ -4081,7 +4471,7 @@ var Http = {
  *    26. Signals ......... Signal (AbortController wrappers)
  *
  * 🟣 LAYOUT & NAVIGATION
- *    10. Navigation ...... Traverse (parent, children, siblings, next, prev)
+ *    10. Navigation ...... Traverse (parent, children, siblings, next, prev, parents, nextAll, prevAll, closestAll)
  *    11. CSS Utils ....... CssVar, computed, injectStyles, waitTransition
  *    15. Color ........... toColorSpace (Color mix utils)
  *    18. Geometry ........ rect, offset, isVisible

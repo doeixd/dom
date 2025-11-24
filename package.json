@@ -76,6 +76,7 @@
   ],
   "devDependencies": {
     "@types/node": "^22.10.1",
+    "happy-dom": "^20.0.10",
     "pridepack": "^2.6.2",
     "standard-version": "^9.5.0",
     "tslib": "^2.8.1",
@@ -91,7 +92,7 @@
     "watch": "pridepack watch",
     "start": "pridepack start",
     "dev": "pridepack dev",
-    "test": "vitest --run"
+    "test": "vitest --run --environment happy-dom"
   },
   "private": false,
   "description": "Simple, functional, DOM library",
@@ -101,7 +102,7 @@
   },
   "homepage": "https://github.com/doeixd/dom",
   "bugs": {
-    "url": ""
+    "url": "https://github.com/doeixd/dom/issues"
   },
   "author": "Patrick Glen",
   "publishConfig": {

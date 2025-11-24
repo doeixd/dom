@@ -4,7 +4,8 @@
   ],
   "include": [
     "src",
-    "types"
+    "types",
+    "test/sanitize.test.ts"
   ],
   "compilerOptions": {
     "module": "ESNext",

@@ -324,6 +324,21 @@ export function find(arg: any) {
   };
 }
 
+/**
+ * Finds an element or throws if not found.
+ * 
+ * @template S - CSS selector
+ * @param selector - The selector to search for
+ * @param root - The root to search within (default: document)
+ * @returns The matched element
+ * @throws Error if element not found
+ */
+export function require<S extends string>(selector: S, root: ParentNode = document): ParseSelector<S> {
+  const el = root.querySelector(selector);
+  if (!el) throw new Error(`Element not found: ${selector}`);
+  return el as ParseSelector<S>;
+}
+
 
 /**
  * Finds all elements matching the selector.
@@ -1271,24 +1286,31 @@ export const mount = def((parent: Element | string | null, child: Element | null
 /**
  * Creates a DOM element with full type inference.
  * 
- * Returns a curried function for building elements in three stages:
- * 1. Tag name (with type inference)
- * 2. Properties (text, classes, attributes, etc.)
- * 3. Children (elements or text)
+ * Supports two syntaxes:
+ * 1. **Hyperscript-style**: `el(tag, props, children)` — cleaner, more readable
+ * 2. **Curried**: `el(tag)(props)(children)` — composable, pipeline-friendly
  * 
  * The return type is automatically inferred from the tag name.
  * 
  * @template K - The HTML tag name (keyof HTMLElementTagNameMap)
  * @param tag - The HTML tag name (e.g., 'div', 'button', 'a')
- * @returns A curried function for props, then children, then the element
+ * @param props - Optional properties (text, classes, attributes, etc.)
+ * @param children - Optional children (elements or text)
+ * @returns The created element (Hyperscript) or curried function (Curried)
  * 
  * @example
  * ```typescript
- * // Basic button
- * const btn = el('button')({})(['Click me']);
+ * // Hyperscript-style (new, cleaner)
+ * const btn = el('button', { class: { primary: true } }, ['Click me']);
  * // btn is typed as HTMLButtonElement
  * 
- * // With properties
+ * // Nested elements (much more readable)
+ * const card = el('div', { class: { card: true } }, [
+ *   el('h2', {}, ['Title']),
+ *   el('p', {}, ['Description'])
+ * ]);
+ * 
+ * // Curried syntax (still supported for backward compatibility)
  * const link = el('a')({
  *   attr: { href: '/home' },
  *   class: { active: true },
@@ -1296,37 +1318,52 @@ export const mount = def((parent: Element | string | null, child: Element | null
  * })([]);
  * // link is typed as HTMLAnchorElement
  * 
- * // Nested elements
- * const card = el('div')({
- *   class: { card: true }
- * })([
- *   el('h2')({})(['Title']),
- *   el('p')({})(['Description'])
- * ]);
- * 
  * // Form input with type inference
- * const input = el('input')({
+ * const input = el('input', {
  *   attr: { type: 'text', placeholder: 'Enter name' },
  *   value: 'John'
- * })([]);
+ * }, []);
  * // input is typed as HTMLInputElement
  * 
- * // Partial application for reuse
+ * // Partial application for reuse (curried)
  * const createButton = el('button');
  * const primaryBtn = createButton({ class: { primary: true } })(['Save']);
  * const secondaryBtn = createButton({ class: { secondary: true } })(['Cancel']);
  * ```
  */
-export const el = <K extends keyof HTMLElementTagNameMap>(tag: K) => {
-  return (props: ElementProps = {}) => {
-    return (children: (string | Node)[] = []): HTMLElementTagNameMap[K] => {
+export function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  props: ElementProps,
+  children: (string | Node)[]
+): HTMLElementTagNameMap[K];
+
+export function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K
+): (props?: ElementProps) => (children?: (string | Node)[]) => HTMLElementTagNameMap[K];
+
+export function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  props?: ElementProps,
+  children?: (string | Node)[]
+): any {
+  // Hyperscript-style: el(tag, props, children)
+  if (props !== undefined && children !== undefined) {
+    const node = document.createElement(tag);
+    modify(node)(props);
+    node.append(..._nodes(children));
+    return node;
+  }
+
+  // Curried syntax: el(tag)(props)(children)
+  return (propsArg: ElementProps = {}) => {
+    return (childrenArg: (string | Node)[] = []): HTMLElementTagNameMap[K] => {
       const node = document.createElement(tag);
-      modify(node)(props);
-      node.append(..._nodes(children));
+      modify(node)(propsArg);
+      node.append(..._nodes(childrenArg));
       return node;
     };
   };
-};
+}
 
 /**
  * Creates an element from an HTML template string.
@@ -1866,7 +1903,10 @@ export const Data = {
     if (val === 'false') return false;
     if (val === 'null') return null;
     if (!isNaN(Number(val)) && val.trim() !== '') return Number(val);
-    try { return JSON.parse(val); } catch { return val; }
+    if (val.startsWith('{') || val.startsWith('[')) {
+      try { return JSON.parse(val); } catch { return val; }
+    }
+    return val;
   },
 
   /**
@@ -2176,8 +2216,11 @@ export function prop(a: any): any {
  * ```
  */
 export const onReady = (fn: () => void): void => {
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn, { once: true });
-  else fn();
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    fn();
+  } else {
+    document.addEventListener('DOMContentLoaded', fn, { once: true });
+  }
 };
 
 /**
@@ -2883,128 +2926,128 @@ export const Traverse = {
     * Traverse.siblings("#active");
     * Traverse.siblings(el)(".item");
     */
-   siblings(elOrSelector?: Element | string | null) {
-     if (typeof elOrSelector === "string") {
-       const el = document.querySelector(elOrSelector);
-       if (!el?.parentElement) return [];
-       return Array.from(el.parentElement.children).filter(c => c !== el);
-     }
+  siblings(elOrSelector?: Element | string | null) {
+    if (typeof elOrSelector === "string") {
+      const el = document.querySelector(elOrSelector);
+      if (!el?.parentElement) return [];
+      return Array.from(el.parentElement.children).filter(c => c !== el);
+    }
 
-     const el = elOrSelector ?? null;
-     return (selector?: string): Element[] => {
-       if (!el?.parentElement) return [];
-       const sibs = Array.from(el.parentElement.children).filter(s => s !== el);
-       return selector ? sibs.filter(s => s.matches(selector)) : sibs;
-     };
-   },
+    const el = elOrSelector ?? null;
+    return (selector?: string): Element[] => {
+      if (!el?.parentElement) return [];
+      const sibs = Array.from(el.parentElement.children).filter(s => s !== el);
+      return selector ? sibs.filter(s => s.matches(selector)) : sibs;
+    };
+  },
 
-   /**
-    * Get all ancestor elements up to the document root.
-    *
-    * Optionally stops at an element matching a selector.
-    *
-    * @example
-    * Traverse.parents(el);                  // All ancestors
-    * Traverse.parents("#child");            // Ancestors of #child
-    * Traverse.parents(el, ".section");      // Ancestors until .section match
-    * Traverse.parents(el)(".container");    // Curried: ancestors matching .container
-    */
-   parents(elOrSelector?: Element | string | null, until?: string | ((el: Element) => boolean)): Element[] {
-     const el = typeof elOrSelector === "string" ? document.querySelector(elOrSelector) : elOrSelector ?? null;
-     const result: Element[] = [];
-     let current = el?.parentElement ?? null;
+  /**
+   * Get all ancestor elements up to the document root.
+   *
+   * Optionally stops at an element matching a selector.
+   *
+   * @example
+   * Traverse.parents(el);                  // All ancestors
+   * Traverse.parents("#child");            // Ancestors of #child
+   * Traverse.parents(el, ".section");      // Ancestors until .section match
+   * Traverse.parents(el)(".container");    // Curried: ancestors matching .container
+   */
+  parents(elOrSelector?: Element | string | null, until?: string | ((el: Element) => boolean)): Element[] {
+    const el = typeof elOrSelector === "string" ? document.querySelector(elOrSelector) : elOrSelector ?? null;
+    const result: Element[] = [];
+    let current = el?.parentElement ?? null;
 
-     while (current) {
-       // If until is a string selector
-       if (typeof until === "string" && current.matches(until)) {
-         break;
-       }
-       // If until is a function predicate
-       if (typeof until === "function" && until(current)) {
-         break;
-       }
-       result.push(current);
-       current = current.parentElement;
-     }
+    while (current) {
+      // If until is a string selector
+      if (typeof until === "string" && current.matches(until)) {
+        break;
+      }
+      // If until is a function predicate
+      if (typeof until === "function" && until(current)) {
+        break;
+      }
+      result.push(current);
+      current = current.parentElement;
+    }
 
-     return result;
-   },
+    return result;
+  },
 
-   /**
-    * Get all following sibling elements.
-    *
-    * Optionally filtered by a selector.
-    *
-    * @example
-    * Traverse.nextAll(el);           // All following siblings
-    * Traverse.nextAll(".selected");  // Following siblings of .selected
-    * Traverse.nextAll(el)(".item");  // Following siblings matching .item
-    */
-   nextAll(elOrSelector?: Element | string | null, selector?: string): Element[] {
-     const el = typeof elOrSelector === "string" ? document.querySelector(elOrSelector) : elOrSelector ?? null;
-     const result: Element[] = [];
-     let current = el?.nextElementSibling ?? null;
+  /**
+   * Get all following sibling elements.
+   *
+   * Optionally filtered by a selector.
+   *
+   * @example
+   * Traverse.nextAll(el);           // All following siblings
+   * Traverse.nextAll(".selected");  // Following siblings of .selected
+   * Traverse.nextAll(el)(".item");  // Following siblings matching .item
+   */
+  nextAll(elOrSelector?: Element | string | null, selector?: string): Element[] {
+    const el = typeof elOrSelector === "string" ? document.querySelector(elOrSelector) : elOrSelector ?? null;
+    const result: Element[] = [];
+    let current = el?.nextElementSibling ?? null;
 
-     while (current) {
-       if (!selector || current.matches(selector)) {
-         result.push(current);
-       }
-       current = current.nextElementSibling;
-     }
+    while (current) {
+      if (!selector || current.matches(selector)) {
+        result.push(current);
+      }
+      current = current.nextElementSibling;
+    }
 
-     return result;
-   },
+    return result;
+  },
 
-   /**
-    * Get all preceding sibling elements.
-    *
-    * Optionally filtered by a selector.
-    *
-    * @example
-    * Traverse.prevAll(el);           // All preceding siblings
-    * Traverse.prevAll(".selected");  // Preceding siblings of .selected
-    * Traverse.prevAll(el)(".item");  // Preceding siblings matching .item
-    */
-   prevAll(elOrSelector?: Element | string | null, selector?: string): Element[] {
-     const el = typeof elOrSelector === "string" ? document.querySelector(elOrSelector) : elOrSelector ?? null;
-     const result: Element[] = [];
-     let current = el?.previousElementSibling ?? null;
+  /**
+   * Get all preceding sibling elements.
+   *
+   * Optionally filtered by a selector.
+   *
+   * @example
+   * Traverse.prevAll(el);           // All preceding siblings
+   * Traverse.prevAll(".selected");  // Preceding siblings of .selected
+   * Traverse.prevAll(el)(".item");  // Preceding siblings matching .item
+   */
+  prevAll(elOrSelector?: Element | string | null, selector?: string): Element[] {
+    const el = typeof elOrSelector === "string" ? document.querySelector(elOrSelector) : elOrSelector ?? null;
+    const result: Element[] = [];
+    let current = el?.previousElementSibling ?? null;
 
-     while (current) {
-       if (!selector || current.matches(selector)) {
-         result.push(current);
-       }
-       current = current.previousElementSibling;
-     }
+    while (current) {
+      if (!selector || current.matches(selector)) {
+        result.push(current);
+      }
+      current = current.previousElementSibling;
+    }
 
-     return result;
-   },
+    return result;
+  },
 
-   /**
-    * Get all ancestors including the element itself, up to document root.
-    *
-    * Optionally filtered by a selector.
-    *
-    * @example
-    * Traverse.closestAll(el);            // Element + all ancestors
-    * Traverse.closestAll("#child");      // Self + ancestors of #child
-    * Traverse.closestAll(el)(".box");    // Self + ancestors matching .box
-    */
-   closestAll(elOrSelector?: Element | string | null, selector?: string): Element[] {
-     const el = typeof elOrSelector === "string" ? document.querySelector(elOrSelector) : elOrSelector ?? null;
-     const result: Element[] = [];
-     let current: Element | null = el;
+  /**
+   * Get all ancestors including the element itself, up to document root.
+   *
+   * Optionally filtered by a selector.
+   *
+   * @example
+   * Traverse.closestAll(el);            // Element + all ancestors
+   * Traverse.closestAll("#child");      // Self + ancestors of #child
+   * Traverse.closestAll(el)(".box");    // Self + ancestors matching .box
+   */
+  closestAll(elOrSelector?: Element | string | null, selector?: string): Element[] {
+    const el = typeof elOrSelector === "string" ? document.querySelector(elOrSelector) : elOrSelector ?? null;
+    const result: Element[] = [];
+    let current: Element | null = el;
 
-     while (current) {
-       if (!selector || current.matches(selector)) {
-         result.push(current);
-       }
-       current = current.parentElement;
-     }
+    while (current) {
+      if (!selector || current.matches(selector)) {
+        result.push(current);
+      }
+      current = current.parentElement;
+    }
 
-     return result;
-   }
-  };
+    return result;
+  }
+};
 
 
 // =============================================================================
@@ -3295,7 +3338,14 @@ export const injectStyles = (cssContent: string, root: Node = document.head): Un
 export const waitTransition = (el: HTMLElement | null) => new Promise<HTMLElement | null>((resolve) => {
   if (!el) return resolve(null);
 
+  let resolved = false;
+  let timeoutId: number | undefined;
+
   const onEnd = () => {
+    if (resolved) return;
+    resolved = true;
+
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
     el.removeEventListener('transitionend', onEnd);
     el.removeEventListener('animationend', onEnd);
     resolve(el);
@@ -3307,7 +3357,16 @@ export const waitTransition = (el: HTMLElement | null) => new Promise<HTMLElemen
   // Fallback: If no transition happens (e.g. display:none or 0s duration), resolve anyway.
   requestAnimationFrame(() => {
     const s = getComputedStyle(el);
-    if (s.transitionDuration === '0s' && s.animationDuration === '0s') onEnd();
+    const transitionDuration = parseFloat(s.transitionDuration) * 1000;
+    const animationDuration = parseFloat(s.animationDuration) * 1000;
+    const maxDuration = Math.max(transitionDuration, animationDuration);
+
+    if (maxDuration === 0) {
+      onEnd();
+    } else {
+      // Safety timeout: duration + 50ms buffer
+      timeoutId = setTimeout(onEnd, maxDuration + 50) as any;
+    }
   });
 });
 
@@ -6562,16 +6621,29 @@ export const $$ = (selectorOrList: string | Element[] | NodeListOf<Element>) => 
  * ```
  */
 export const store = <T extends Record<string, any> = Record<string, any>>(element: HTMLElement | null) => {
-  if (!element) return {} as T;
+  if (!element) return new EventTarget() as T & EventTarget;
 
-  return new Proxy({}, {
-    get: (_, prop: string) => Data.read(element)(prop),
-    set: (_, prop: string, value: any) => {
-      Data.set(element)(prop, value);
+  const target = new EventTarget();
+  return new Proxy(target, {
+    get: (t, prop: string | symbol) => {
+      if (prop in t) {
+        const val = (t as any)[prop];
+        return typeof val === 'function' ? val.bind(t) : val;
+      }
+      return Data.read(element)(String(prop));
+    },
+    set: (t, prop: string | symbol, value: any) => {
+      if (prop in t) return true;
+      Data.set(element)(String(prop), value);
+      t.dispatchEvent(new CustomEvent(String(prop), { detail: value }));
+      t.dispatchEvent(new CustomEvent('change', { detail: { prop, value } }));
       return true;
     },
-    deleteProperty: (_, prop: string) => {
-      Data.set(element)(prop, null);
+    deleteProperty: (t, prop: string | symbol) => {
+      if (prop in t) return false;
+      Data.set(element)(String(prop), null);
+      t.dispatchEvent(new CustomEvent(String(prop), { detail: null }));
+      t.dispatchEvent(new CustomEvent('change', { detail: { prop, value: null } }));
       return true;
     },
     // Allow iteration over current dataset
@@ -6580,7 +6652,7 @@ export const store = <T extends Record<string, any> = Record<string, any>>(eleme
       enumerable: true,
       configurable: true,
     })
-  }) as T;
+  }) as T & EventTarget;
 };
 
 /**
@@ -8785,32 +8857,32 @@ export function isInViewport<S extends string>(
 ):
   | boolean
   | ((
-      options?: {
-        /**
-         * Allow partial visibility.  
-         * default: false (element must be fully inside)
-         */
-        partial?: boolean;
+    options?: {
+      /**
+       * Allow partial visibility.  
+       * default: false (element must be fully inside)
+       */
+      partial?: boolean;
 
-        /**
-         * Percentage of element that must be visible (0–1).  
-         * Overrides `partial`. default: 1 (fully visible)
-         */
-        threshold?: number;
+      /**
+       * Percentage of element that must be visible (0–1).  
+       * Overrides `partial`. default: 1 (fully visible)
+       */
+      threshold?: number;
 
-        /**
-         * Custom viewport root (e.g., a scroll container).
-         * default: window viewport
-         */
-        root?: Element | null;
+      /**
+       * Custom viewport root (e.g., a scroll container).
+       * default: window viewport
+       */
+      root?: Element | null;
 
-        /**
-         * Margin (CSS margin syntax: "10px", "10px 20px", etc.)
-         * Expands or contracts the effective viewport.
-         */
-        margin?: string;
-      }
-    ) => boolean) {
+      /**
+       * Margin (CSS margin syntax: "10px", "10px 20px", etc.)
+       * Expands or contracts the effective viewport.
+       */
+      margin?: string;
+    }
+  ) => boolean) {
   // --- Selector-first mode ---
   if (typeof elOrSelector === "string") {
     const el = document.querySelector(elOrSelector);
@@ -8858,11 +8930,11 @@ function inViewport(
   const containerRect = root
     ? root.getBoundingClientRect()
     : {
-        top: 0,
-        left: 0,
-        right: window.innerWidth,
-        bottom: window.innerHeight
-      };
+      top: 0,
+      left: 0,
+      right: window.innerWidth,
+      bottom: window.innerHeight
+    };
 
   // Apply margin adjustments
   const vp = {
@@ -8953,8 +9025,378 @@ function parseMargin(input?: string) {
 export function animate(elOrSelector?: Element | string | null) {
   if (typeof elOrSelector === "string") {
     const el = document.querySelector(elOrSelector);
-    return (keyframes:  Keyframe[], options?: KeyframeAnimationOptions) => el ? el.animate(keyframes, options).finished : Promise.resolve();
+    return (keyframes: Keyframe[], options?: KeyframeAnimationOptions) => el ? el.animate(keyframes, options).finished : Promise.resolve();
   }
   const el = elOrSelector ?? null;
   return (keyframes: Keyframe[], options?: KeyframeAnimationOptions) => el ? el.animate(keyframes, options).finished : Promise.resolve();
 }
+
+
+
+
+/**
+ * Sanitizes HTML by removing dangerous tags and attributes to prevent XSS.
+ * 
+ * **Safety Features**:
+ * - Removes `<script>`, `<iframe>`, `<object>`, `<embed>` tags.
+ * - Removes all `on*` attributes (inline event handlers like `onclick`).
+ * - Removes `javascript:` URIs in `href` and `src` attributes.
+ * 
+ * **SECURITY WARNING**: While significantly safer than a raw innerHTML, this function 
+ * is lightweight and may not catch every sophisticated XSS vector. 
+ * For high-risk inputs (e.g., public comments, rich text from untrusted users), 
+ * use a dedicated library like DOMPurify.
+ * 
+ * @template T - The return type (defaults to string, can be cast to TrustedHTML etc.)
+ * @param html - The HTML string to sanitize
+ * @returns The sanitized HTML string
+ * 
+ * @example
+ * ```typescript
+ * // Removes scripts and handlers
+ * const safe = sanitizeHTMLSimple('<div onclick="alert(1)">Hello</div><script>...</script>');
+ * // Result: "<div>Hello</div>"
+ * 
+ * // Removes dangerous protocols
+ * const safeLink = sanitizeHTMLSimple('<a href="javascript:alert(1)">Link</a>');
+ * // Result: "<a>Link</a>"
+ * ```
+ */
+export function sanitizeHTMLSimple<T = string>(html: string): T {
+  const template = document.createElement('template');
+  template.innerHTML = html;
+
+  const dangerousTags = ['script', 'iframe', 'object', 'embed'];
+
+  // 1. Remove dangerous tags
+  template.content.querySelectorAll(dangerousTags.join(',')).forEach(node => node.remove());
+
+  // 2. Sanitize attributes on all remaining elements
+  template.content.querySelectorAll('*').forEach(el => {
+    const attrs = el.getAttributeNames();
+    for (const attr of attrs) {
+      // Remove event handlers
+      if (attr.startsWith('on')) {
+        el.removeAttribute(attr);
+      }
+      // Remove javascript: protocol
+      else if (attr === 'href' || attr === 'src') {
+        const value = el.getAttribute(attr) || '';
+        if (value.toLowerCase().trim().startsWith('javascript:')) {
+          el.removeAttribute(attr);
+        }
+      }
+    }
+  });
+
+  return template.innerHTML as unknown as T;
+}
+
+/**
+ * Extracts text content from an HTML string, removing all tags.
+ * 
+ * Useful for:
+ * - Generating plain text previews
+ * - SEO descriptions
+ * - Accessibility labels
+ * - Safe text display
+ * 
+ * @template T - The return type (defaults to string)
+ * @param html - The HTML string to parse
+ * @returns The plain text content
+ * 
+ * @example
+ * ```typescript
+ * const text = sanitizeHTMLTextOnly('<h1>Hello <b>World</b></h1>');
+ * // Result: "Hello World"
+ * 
+ * // Handles entities
+ * const decoded = sanitizeHTMLTextOnly('Fish &amp; Chips');
+ * // Result: "Fish & Chips"
+ * ```
+ */
+export function sanitizeHTMLTextOnly<T = string>(html: string): T {
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  return (template.content.textContent || '') as unknown as T;
+}
+
+
+// =============================================================================
+// 42. COMPONENT ARCHITECTURE (Release Candidate)
+// =============================================================================
+
+/**
+ * Context object passed to the component setup function.
+ * Provides a scoped, auto-cleaning sandbox for the component's logic.
+ */
+export interface ComponentContext<
+  Refs extends Record<string, HTMLElement> = any,
+  Groups extends Record<string, HTMLElement[]> = any,
+  State extends Record<string, any> = Record<string, any>
+> {
+  /** The root element of the component */
+  root: HTMLElement;
+
+  /** 
+   * Map of single elements with `data-ref` attributes.
+   * Access is type-safe based on the generic provided.
+   */
+  refs: Refs;
+
+  /** 
+   * Map of element arrays with `data-ref` attributes.
+   * Useful for lists (e.g., `groups.items.forEach(...)`).
+   */
+  groups: Groups;
+
+  /**
+   * Reactive Proxy for the root element's dataset.
+   * - Reading `state.foo` reads `data-foo` from the DOM.
+   * - Writing `state.foo = x` updates `data-foo` and triggers watchers.
+   */
+  state: State;
+
+  /**
+   * Scoped element finder (querySelector within root).
+   */
+  find: (selector: string) => HTMLElement | null;
+
+  /**
+   * Scoped element finder (querySelectorAll within root).
+   */
+  findAll: (selector: string) => HTMLElement[];
+
+  /**
+   * Adds an event listener that automatically cleans up when the component is destroyed.
+   * 
+   * @overload Delegated event on the component root.
+   * @overload Direct event on a specific target element.
+   */
+  on<K extends keyof HTMLElementEventMap>(
+    event: K,
+    selector: string,
+    handler: (e: HTMLElementEventMap[K], target: HTMLElement) => void
+  ): void;
+  on<K extends keyof HTMLElementEventMap>(
+    event: K,
+    target: EventTarget,
+    handler: (e: HTMLElementEventMap[K], target: EventTarget) => void
+  ): void;
+
+  /**
+   * Watches a specific key in the component's state (DOM attributes) for changes.
+   * Fires immediately with current value, then on every change.
+   */
+  watch: (key: keyof State & string, handler: (val: any) => void) => void;
+
+  /**
+   * Establishes Two-Way Binding between a form input and a state key.
+   * - Input changes -> Update State
+   * - State changes -> Update Input value
+   */
+  bind: (input: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement, key: keyof State & string) => void;
+
+  /**
+   * Registers a cleanup function to run when the component is destroyed.
+   * (Equivalent to React's useEffect return function).
+   */
+  effect: (fn: Unsubscribe) => void;
+
+  /**
+   * Helper to attach an IntersectionObserver or ResizeObserver.
+   * Auto-disconnects on destroy.
+   */
+  observe: (
+    type: 'intersection' | 'resize',
+    target: Element,
+    callback: IntersectionObserverCallback | ResizeObserverCallback,
+    options?: object
+  ) => void;
+}
+
+/**
+ * The public interface returned by a component instance.
+ */
+export type ComponentInstance<API> = API & {
+  /** The root element */
+  root: HTMLElement;
+  /** Destroys the component, removing all listeners and observers */
+  destroy: () => void;
+};
+
+/**
+ * A lightweight component factory with automatic lifecycle management.
+ * 
+ * Applies the **Setup Pattern** (similar to Vue 3 Composition API) to Vanilla DOM elements.
+ * It binds a logic closure to a root element and provides a scoped `Context` toolkit.
+ * 
+ * 🧠 **Key Features:**
+ * 1. **Auto-Cleanup**: All event listeners (`on`), watchers (`watch`), and observers (`observe`) 
+ *    attached via the context are automatically removed when `destroy()` is called.
+ * 2. **Scoped Access**: `refs`, `find`, and `findAll` are scoped to the component root.
+ * 3. **DOM-as-State**: The `ctx.state` proxy reads/writes directly to `data-*` attributes,
+ *    keeping the DOM as the single source of truth.
+ * 4. **Composition**: The `setup` function allows you to compose reusable logic functions
+ *    easily.
+ * 
+ * @template API - The public interface returned by the component (methods/properties).
+ * @template R - The shape of `refs` (elements marked with `data-ref="name"`).
+ * @template G - The shape of `groups` (lists of elements marked with `data-ref="name"`).
+ * @template S - The shape of `state` (data attributes accessed via `ctx.state`).
+ * 
+ * @param target - The DOM element or CSS selector to mount the component on.
+ * @param setup - The initialization function. Receives `ComponentContext` and returns the public API.
+ * @returns The initialized component instance, or `null` if the target was not found.
+ * 
+ * @example
+ * ```typescript
+ * // 1. Define Types (Optional, for strong typing)
+ * interface CounterRefs { display: HTMLElement; btn: HTMLButtonElement; }
+ * interface CounterState { count: number; }
+ * 
+ * // 2. HTML: <div id="app"><span data-ref="display"></span><button data-ref="btn">Inc</button></div>
+ * 
+ * // 3. Define Component
+ * const Counter = defineComponent<any, CounterRefs, any, CounterState>('#app', (ctx) => {
+ *   const { display, btn } = ctx.refs;
+ * 
+ *   // Initialize State (updates data-count="0" in DOM)
+ *   ctx.state.count = 0;
+ * 
+ *   // Event Listener (auto-cleaned on destroy)
+ *   ctx.on('click', btn, () => {
+ *     ctx.state.count++;
+ *   });
+ * 
+ *   // Reactive Watcher (runs when state changes)
+ *   ctx.watch('count', (val) => {
+ *     display.textContent = String(val);
+ *   });
+ * });
+ * ```
+ * 
+ * @example
+ * ```typescript
+ * // Example: Exposing a Public API
+ * interface ModalAPI { open: () => void; close: () => void; }
+ * 
+ * const Modal = defineComponent<ModalAPI>('#my-modal', (ctx) => {
+ *   const { root } = ctx;
+ * 
+ *   const open = () => {
+ *     ctx.state.isOpen = true;
+ *     root.setAttribute('open', '');
+ *   };
+ * 
+ *   const close = () => {
+ *     ctx.state.isOpen = false;
+ *     root.removeAttribute('open');
+ *   };
+ * 
+ *   // Close on Escape key (delegated to document, but managed by component)
+ *   const cleanupKey = on(document)('keydown', (e) => {
+ *     if (e.key === 'Escape') close();
+ *   });
+ *   ctx.effect(cleanupKey); // Register for auto-cleanup
+ * 
+ *   // Return methods to be used externally
+ *   return { open, close };
+ * });
+ * 
+ * // Usage
+ * Modal.open();
+ * // Later...
+ * Modal.destroy(); // Cleans up DOM listeners and the global Escape listener
+ * ```
+ */
+export const defineComponent = <
+  API extends Record<string, any> = {},
+  R extends Record<string, HTMLElement> = any,
+  G extends Record<string, HTMLElement[]> = any,
+  S extends Record<string, any> = any
+>(
+  target: string | HTMLElement | null,
+  setup: (ctx: ComponentContext<R, G, S>) => API | void
+): ComponentInstance<API> | null => {
+  // 1. Resolve Root
+  const root = (typeof target === 'string' ? find(document)(target) : target) as HTMLElement;
+  if (!root) return null;
+
+  // 2. Lifecycle & Cleanup Manager
+  const hooks = createListenerGroup();
+
+  // 3. Construct Context
+  const ctx: ComponentContext<R, G, S> = {
+    root,
+    refs: refs(root) as R,
+    groups: groupRefs(root) as G,
+    state: store<S>(root),
+
+    find: find(root),
+    findAll: findAll(root),
+
+    // Unified Event Manager
+    on: (event: string, targetOrSelector: string | EventTarget, handler: any) => {
+      if (typeof targetOrSelector === 'string') {
+        // Delegated
+        hooks.add(onDelegated(root)(targetOrSelector)(event as any, handler));
+      } else {
+        // Direct
+        hooks.add(on(targetOrSelector as any)(event as any, (e) => handler(e, targetOrSelector)));
+      }
+    },
+
+    // Reactive State Watcher
+    watch: (key, handler) => {
+      hooks.add(Data.bind(root)(key, handler));
+    },
+
+    // Two-Way Data Binding
+    bind: (input, key) => {
+      if (!input) return;
+
+      // 1. Init: Sync DOM -> Input
+      const current = Data.read(root)(key);
+      if (current !== undefined) Input.set(input)(current);
+
+      // 2. Input -> State (Debounced slightly for performance)
+      hooks.add(on(input)('input', () => {
+        const val = Input.get(input);
+        Data.set(root)(key, val);
+      }));
+
+      // 3. State -> Input
+      hooks.add(Data.bind(root)(key, (val) => {
+        const currentInputVal = Input.get(input);
+        // Only update if different to avoid cursor jumping
+        if (currentInputVal != val) Input.set(input)(val);
+      }));
+    },
+
+    // Generic Cleanup
+    effect: (fn) => hooks.add(fn),
+
+    // Advanced Observers
+    observe: (type, targetEl, cb, opts) => {
+      if (!targetEl) return;
+      const Obs = type === 'intersection' ? IntersectionObserver : ResizeObserver;
+      const observer = new Obs(cb as any, opts);
+      observer.observe(targetEl);
+      hooks.add(() => observer.disconnect());
+    }
+  };
+
+  // 4. Initialize Logic
+  const api = setup(ctx) || {} as API;
+
+  // 5. Return Instance
+  return {
+    ...api,
+    root,
+    destroy: () => {
+      hooks.clear();
+      // If the component added specific cleanup logic in setup, it runs here.
+    }
+  };
+};
