@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.4](https://github.com/doeixd/dom/compare/v0.0.3...v0.0.4) (2025-11-24)
+
+
+### Features
+
+* add DOM utility library and configure its build outputs. ([2e81261](https://github.com/doeixd/dom/commit/2e81261ec024948495f7f1d81548d1e4cfa40fdc))
+* introduce `sanitizeHTMLSimple` and `sanitizeHTMLTextOnly` for HTML content sanitization. ([ed0bb57](https://github.com/doeixd/dom/commit/ed0bb57c11d74ed64d6ebabb145e0963e09331ee))
+
 ### [0.0.3](https://github.com/doeixd/dom/compare/v0.0.2...v0.0.3) (2025-11-20)
 
 
