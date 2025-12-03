@@ -88,6 +88,27 @@ export type ParseSelector<S extends string> =
   : HTMLElement;
 
 /**
+ * Input that can be an element, selector string, function returning element, or null.
+ * Used by selector-enabled utilities to accept flexible input types.
+ */
+export type ElementInput<S extends string = string> =
+  | ParseSelector<S>                    // Direct element
+  | S                                    // String selector
+  | (() => ParseSelector<S> | null)     // Function returning element
+  | null;                                // Null
+
+/**
+ * Function signature for selector-enabled utilities with dual-mode support.
+ * Supports both immediate execution and curried application.
+ */
+export type SelectorFunction<_T extends HTMLElement, A extends any[], R> = {
+  /** Immediate mode: all arguments provided at once */
+  <S extends string>(input: ElementInput<S>, ...args: A): R;
+  /** Curried mode: input provided first, returns function accepting remaining args */
+  <S extends string>(input: ElementInput<S>): (...args: A) => R;
+};
+
+/**
  * A cleanup/unsubscribe function returned by event listeners and subscriptions.
  * 
  * Call this function to remove the listener and free resources.
@@ -597,137 +618,283 @@ export function index(arg: any): any {
 // =============================================================================
 
 /**
+ * Handler type for events
+ */
+type EventHandler<T extends EventTarget, K extends keyof HTMLElementEventMap> = (
+  event: HTMLElementEventMap[K],
+  target: T
+) => void;
+
+/**
+ * Event setup stage: attach listener with event type and handler
+ */
+type EventSetup<T extends EventTarget> = {
+  <K extends keyof HTMLElementEventMap>(
+    eventType: K,
+    handler: EventHandler<T, K>,
+    options?: boolean | AddEventListenerOptions
+  ): Unsubscribe;
+};
+
+/**
  * Attaches an event listener to the target element.
  *
  * Returns a cleanup function to remove the listener. Supports all standard
  * DOM events with full type inference. The handler receives both the event
  * and the target element for convenience.
  *
- * @template T - The event target type (EventTarget or more specific)
- * @template K - The event type key from HTMLElementEventMap
- * @param target - The element to attach the listener to (null-safe)
- * @returns A curried function that accepts event type, handler, and options
+ * Supports multiple calling styles:
+ * ```typescript
+ * // Curried
+ * on(button)('click', handler);
+ *
+ * // Imperative
+ * on(button, 'click', handler);
+ * ```
  *
  * @example
  * ```typescript
- * // Basic click handler
- * const button = document.querySelector('button');
- * const cleanup = on(button)('click', (e, target) => {
- *   console.log('Clicked!', target); // target is typed as the button
+ * const button = find('button');
+ *
+ * // Curried - great for reuse
+ * const onButton = on(button);
+ * onButton('click', (e, target) => console.log('Clicked!', target));
+ * onButton('mouseenter', (e, target) => cls.add(target)('hovered'));
+ *
+ * // Imperative - concise one-offs
+ * on(button, 'click', (e, target) => {
  *   e.preventDefault();
+ *   submit();
  * });
  *
- * // Later: remove the listener
- * cleanup();
- *
- * // Input events with type inference
- * const input = document.querySelector('input');
- * on(input)('input', (e) => {
- *   console.log(e.target.value); // e is InputEvent
- * });
- *
- * // Keyboard events
- * on(document)('keydown', (e) => {
- *   if (e.key === 'Escape') {
- *     console.log('Escape pressed');
- *   }
- * });
- *
- * // With options (capture, once, passive)
- * on(window)('scroll', handler, { passive: true });
+ * // With options
+ * on(window, 'scroll', handler, { passive: true });
  * on(button)('click', handler, { once: true });
  *
  * // Null-safe: returns no-op cleanup if target is null
- * const missing = document.querySelector('.missing');
- * const noop = on(missing)('click', handler); // Safe, returns () => {}
+ * const missing = find('.missing');
+ * on(missing, 'click', handler); // Safe, returns () => {}
+ *
+ * // Type inference works throughout:
+ * on(input, 'input', (e) => {
+ *   console.log(e.data);  // e is InputEvent
+ * });
+ *
+ * on(document, 'keydown', (e) => {
+ *   if (e.key === 'Escape') close();  // e is KeyboardEvent
+ * });
  * ```
  */
-export const on = <T extends EventTarget = EventTarget>(target: T | null) => {
-  return <K extends keyof HTMLElementEventMap>(
-    eventType: K,
-    handler: (event: HTMLElementEventMap[K], target: T) => void,
-    options: boolean | AddEventListenerOptions = false
+// Overload: just target -> returns event setup
+export function on<T extends EventTarget>(
+  target: T | null
+): EventSetup<T>;
+
+// Overload: all args -> returns Unsubscribe
+export function on<T extends EventTarget, K extends keyof HTMLElementEventMap>(
+  target: T | null,
+  eventType: K,
+  handler: EventHandler<T, K>,
+  options?: boolean | AddEventListenerOptions
+): Unsubscribe;
+
+// Implementation
+export function on<T extends EventTarget, K extends keyof HTMLElementEventMap>(
+  target: T | null,
+  eventType?: K,
+  handler?: EventHandler<T, K>,
+  options?: boolean | AddEventListenerOptions
+): EventSetup<T> | Unsubscribe {
+
+  // Core listener factory
+  const createListener = <Evt extends keyof HTMLElementEventMap>(
+    evt: Evt,
+    fn: EventHandler<T, Evt>,
+    opts: boolean | AddEventListenerOptions = false
   ): Unsubscribe => {
     if (!target) return () => { };
 
-    const listener = (e: Event) => handler(e as HTMLElementEventMap[K], target);
-    target.addEventListener(eventType, listener, options);
-    return () => target.removeEventListener(eventType, listener, options);
+    const listener = (e: Event) => fn(e as HTMLElementEventMap[Evt], target);
+    target.addEventListener(evt, listener, opts);
+    return () => target.removeEventListener(evt, listener, opts);
   };
+
+  // Event setup stage
+  const eventSetup: EventSetup<T> = <Evt extends keyof HTMLElementEventMap>(
+    evt: Evt,
+    fn: EventHandler<T, Evt>,
+    opts?: boolean | AddEventListenerOptions
+  ) => createListener(evt, fn, opts);
+
+  // Route based on provided arguments
+  if (eventType === undefined || handler === undefined) {
+    // on(target) -> event setup
+    return eventSetup;
+  }
+
+  // on(target, event, handler) -> Unsubscribe
+  return createListener(eventType, handler, options);
+}
+
+/**
+ * Handler type for delegated events
+ */
+type DelegatedHandler<S extends string, K extends keyof HTMLElementEventMap> = (
+  event: HTMLElementEventMap[K],
+  match: ParseSelector<S>
+) => void;
+
+/**
+ * Final stage: attach event listener
+ */
+type DelegatedEventSetup<S extends string> = {
+  <K extends keyof HTMLElementEventMap>(
+    eventType: K,
+    handler: DelegatedHandler<S, K>,
+    options?: boolean | AddEventListenerOptions
+  ): Unsubscribe;
+};
+
+/**
+ * Middle stage: select target elements
+ * Supports both curried and imperative styles
+ */
+type DelegatedSelectorSetup = {
+  // Curried: (selector) => (event, handler) => Unsubscribe
+  <S extends string>(selector: S): DelegatedEventSetup<S>;
+
+  // Imperative: (selector, event, handler) => Unsubscribe
+  <S extends string, K extends keyof HTMLElementEventMap>(
+    selector: S,
+    eventType: K,
+    handler: DelegatedHandler<S, K>,
+    options?: boolean | AddEventListenerOptions
+  ): Unsubscribe;
 };
 
 /**
  * Attaches a **Delegated Event Listener** using event bubbling.
- * 
- * 🧠 **Architecture**: `Root -> Selector -> Event`
- * This ordering allows you to group interactions by the target element type.
- * 
- * 🛡️ **Type Safety**:
- * - The `match` argument is inferred from the CSS selector (e.g. `'button'` -> `HTMLButtonElement`).
- * - The `event` argument is inferred from the event name (e.g. `'click'` -> `MouseEvent`).
- * 
- * @param root - The container element (e.g. `<ul>`, `form`, `document`).
- * 
+ *
+ * Supports multiple calling styles:
+ * ```typescript
+ * // Fully curried
+ * onDelegated(root)('li')('click', handler);
+ *
+ * // Partially curried
+ * onDelegated(root, 'li')('click', handler);
+ * onDelegated(root)('li', 'click', handler);
+ *
+ * // Fully imperative
+ * onDelegated(root, 'li', 'click', handler);
+ * ```
+ *
  * @example
  * ```typescript
- * // 1. Define the scope (e.g. a User Table)
- * const table = find(document)('#user-table');
- * const onTable = onDelegated(table);
- * 
- * // 2. Define interactions for specific child elements
- * // Type inference knows 'tr' is HTMLTableRowElement
- * const onRow = onTable('tr');
- * 
- * onRow('click', (e, row) => {
- *   console.log('Row clicked', row.dataset.id);
- *   cls.toggle(row)('selected');
- * });
- * 
- * // 3. Define interactions for buttons
- * // Type inference knows 'button.delete' is HTMLButtonElement
- * onTable('button.delete')('click', (e, btn) => {
+ * const list = find('#user-list');
+ *
+ * // Curried - great for reuse
+ * const onListItem = onDelegated(list)('li');
+ * onListItem('click', (e, li) => console.log(li.textContent));
+ * onListItem('mouseenter', (e, li) => cls.add(li)('hovered'));
+ *
+ * // Imperative - concise one-offs
+ * onDelegated(list, 'button.delete', 'click', (e, btn) => {
  *   e.stopPropagation();
- *   const id = btn.dataset.id;
- *   api.delete(id);
+ *   deleteItem(btn.dataset.id);
  * });
  * ```
  */
-export const onDelegated = (root: ParentNode | null = document) => {
-  /**
-   * @param selector - CSS Selector to match target elements against (e.g. 'li', '.btn')
-   */
-  return <S extends string>(selector: S) => {
-    /**
-     * @param eventType - Standard DOM event name (click, input, change, etc)
-     * @param handler - Callback receiving the typed Event and the typed Matched Element
-     * @param options - EventListener options (capture, passive, etc)
-     */
-    return <K extends keyof HTMLElementEventMap>(
-      eventType: K,
-      handler: (event: HTMLElementEventMap[K], match: ParseSelector<S>) => void,
-      options: boolean | AddEventListenerOptions = false
-    ): Unsubscribe => {
-      if (!root) return () => { };
+// Overload: just root -> returns selector setup
+export function onDelegated(
+  root: ParentNode | null
+): DelegatedSelectorSetup;
 
-      const listener = (e: Event) => {
-        const target = e.target as Element;
+// Overload: root + selector -> returns event setup
+export function onDelegated<S extends string>(
+  root: ParentNode | null,
+  selector: S
+): DelegatedEventSetup<S>;
 
-        // 1. Find the closest ancestor (or self) that matches the selector
-        const match = target.closest ? target.closest(selector) : null;
+// Overload: all args -> returns Unsubscribe
+export function onDelegated<S extends string, K extends keyof HTMLElementEventMap>(
+  root: ParentNode | null,
+  selector: S,
+  eventType: K,
+  handler: DelegatedHandler<S, K>,
+  options?: boolean | AddEventListenerOptions
+): Unsubscribe;
 
-        // 2. Ensure the match exists AND is actually inside our root container
-        // (Prevents edge cases with disconnected nodes or Shadow DOM)
-        if (match && root.contains(match)) {
-          // @ts-ignore - TS inference here is complex but safe due to ParseSelector
-          handler(e as HTMLElementEventMap[K], match as ParseSelector<S>);
-        }
-      };
+// Implementation
+export function onDelegated<S extends string, K extends keyof HTMLElementEventMap>(
+  root: ParentNode | null,
+  selector?: S,
+  eventType?: K,
+  handler?: DelegatedHandler<S, K>,
+  options?: boolean | AddEventListenerOptions
+): DelegatedSelectorSetup | DelegatedEventSetup<S> | Unsubscribe {
 
-      root.addEventListener(eventType, listener, options);
-      return () => root.removeEventListener(eventType, listener, options);
+  // Core listener factory - the actual work happens here
+  const createListener = <Sel extends string, Evt extends keyof HTMLElementEventMap>(
+    sel: Sel,
+    evt: Evt,
+    fn: DelegatedHandler<Sel, Evt>,
+    opts: boolean | AddEventListenerOptions = false
+  ): Unsubscribe => {
+    if (!root) return () => { };
+
+    const listener = (e: Event) => {
+      const target = e.target as Element;
+      const match = target.closest?.(sel);
+
+      if (match && root.contains(match)) {
+        fn(e as HTMLElementEventMap[Evt], match as ParseSelector<Sel>);
+      }
     };
+
+    root.addEventListener(evt, listener, opts);
+    return () => root.removeEventListener(evt, listener, opts);
   };
-};
+
+  // Event setup stage: (eventType, handler, options?) => Unsubscribe
+  const eventSetup = <Sel extends string>(sel: Sel): DelegatedEventSetup<Sel> => {
+    return (<Evt extends keyof HTMLElementEventMap>(
+      evt: Evt,
+      fn: DelegatedHandler<Sel, Evt>,
+      opts?: boolean | AddEventListenerOptions
+    ) => createListener(sel, evt, fn, opts)) as DelegatedEventSetup<Sel>;
+  };
+
+  // Selector setup stage: supports both curried and imperative
+  const selectorSetup = (<Sel extends string,
+    Evt extends keyof HTMLElementEventMap
+  >(
+    sel: Sel,
+    evt?: Evt,
+    fn?: DelegatedHandler<Sel, Evt>,
+    opts?: boolean | AddEventListenerOptions
+  ) => {
+    // Imperative: all args provided
+    if (evt !== undefined && fn !== undefined) {
+      return createListener(sel, evt, fn, opts);
+    }
+    // Curried: return event setup
+    return eventSetup(sel);
+  }) as DelegatedSelectorSetup;
+
+  // Route based on provided arguments
+  if (selector === undefined) {
+    // onDelegated(root) -> selector setup
+    return selectorSetup;
+  }
+
+  if (eventType === undefined || handler === undefined) {
+    // onDelegated(root, selector) -> event setup
+    return eventSetup(selector);
+  }
+
+  // onDelegated(root, selector, event, handler) -> Unsubscribe
+  return createListener(selector, eventType, handler, options);
+}
 
 /**
  * Dispatches a CustomEvent from the target element.
@@ -787,67 +954,15 @@ export const dispatch = (target: EventTarget | null) => {
 // 3. MANIPULATION (MODIFY & STYLE)
 // =============================================================================
 
+// =============================================================================
+// 3. MANIPULATION (MODIFY & STYLE)
+// =============================================================================
+
 /**
- * Declaratively modifies an element's properties.
- *
- * Provides a unified API for setting text, HTML, styles, classes, attributes,
- * and dataset values. All modifications are applied in a single call. Returns
- * the element for chaining.
- *
- * @template T - The HTML element type
- * @param element - The element to modify (null-safe)
- * @returns A curried function that accepts props and returns the modified element
- *
- * @example
- * ```typescript
- * const button = document.querySelector('button');
- *
- * // Imperative (cleaner DX)
- * modify(button, { text: 'Click me!' });
- *
- * // Curried (pipeline friendly)
- * modify(button)({ text: 'Click me!' });
- *
- * // Multiple properties at once
- * modify(button)({
- *   text: 'Submit',
- *   class: { active: true, disabled: false },
- *   dataset: { userId: '123', action: 'save' },
- *   style: { backgroundColor: 'blue', color: 'white' },
- *   attr: { 'aria-label': 'Submit form', type: 'submit' }
- * });
- *
- * // Form inputs
- * const input = document.querySelector('input');
- * modify(input)({
- *   value: 'John Doe',
- *   disabled: false,
- *   attr: { placeholder: 'Enter name', required: true }
- * });
- *
- * // Conditional classes
- * modify(element)({
- *   class: {
- *     loading: isLoading,
- *     error: hasError,
- *     success: isSuccess
- *   }
- * });
- *
- * // Data attributes (auto-converts to kebab-case)
- * modify(element)({
- *   dataset: {
- *     userId: 123,        // becomes data-user-id="123"
- *     isActive: true,     // becomes data-is-active="true"
- *     config: { a: 1 }    // becomes data-config='{"a":1}'
- *   }
- * });
- *
- * // Null-safe: returns null if element is null
- * modify(null)({ text: 'test' }); // null
- * ```
+ * The core logic for applying properties to an element. Kept private.
+ * @internal
  */
-export const modify = def(<T extends HTMLElement>(element: T | null, props: ElementProps): T | null => {
+const _applyProps = <T extends HTMLElement>(element: T | null, props: ElementProps): T | null => {
   if (!element) return null;
 
   if (props.text !== undefined) element.innerText = props.text;
@@ -859,8 +974,12 @@ export const modify = def(<T extends HTMLElement>(element: T | null, props: Elem
 
   if (props.dataset) {
     Object.entries(props.dataset).forEach(([k, v]) => {
-      if (v === undefined) return;
-      element.dataset[k] = v === null ? undefined : String(v);
+      // Allow null/undefined to remove data attributes
+      if (v === null || v === undefined) {
+        delete element.dataset[k];
+      } else {
+        element.dataset[k] = String(v);
+      }
     });
   }
 
@@ -876,62 +995,150 @@ export const modify = def(<T extends HTMLElement>(element: T | null, props: Elem
   }
 
   return element;
-});
+};
+
+/**
+ * Declaratively modifies an element's properties with full type safety.
+ *
+ * Provides a unified API for setting text, styles, classes, attributes, and more.
+ * Supports three calling styles for maximum flexibility.
+ *
+ * @template T - The HTML element type, which is preserved.
+ *
+ * @overload
+ * <caption>**1. Config-First (Curried):** `modify(props)(element)`</caption>
+ * Best for creating reusable modifiers in functional pipelines.
+ * @param props - The properties to apply.
+ * @returns A function that accepts an element and returns it.
+ * @example
+ * ```typescript
+ * import { Fn, find } from '@doeixd/dom';
+ * 
+ * const makePrimary = modify({
+ *   class: { 'btn-primary': true },
+ *   attr: { 'aria-disabled': false }
+ * });
+ * 
+ * Fn.pipe(
+ *   find('#submit-btn'),
+ *   makePrimary
+ * );
+ * ```
+ *
+ * @overload
+ * <caption>**2. Element-First (Curried):** `modify(element)(props)`</caption>
+ * Best for applying multiple, separate modifications to the same element.
+ * @param element - The element to modify (null-safe).
+ * @returns A function that accepts properties and returns the element.
+ * @example
+ * ```typescript
+ * const btn = find('button');
+ * const modifyBtn = modify(btn);
+ * 
+ * modifyBtn({ text: 'Step 1' });
+ * // ... later
+ * modifyBtn({ class: { success: true }, text: 'Complete' });
+ * ```
+ *
+ * @overload
+ * <caption>**3. Imperative:** `modify(element, props)`</caption>
+ * Best for simple, one-off modifications. Cleanest syntax.
+ * @param element - The element to modify (null-safe).
+ * @param props - The properties to apply.
+ * @returns The modified element.
+ * @example
+ * ```typescript
+ * const btn = find('button');
+ * modify(btn, { text: 'Click Me' });
+ * ```
+ */
+export function modify<T extends HTMLElement>(props: ElementProps): (element: T | null) => T | null;
+export function modify<T extends HTMLElement>(element: T | null, props: ElementProps): T | null;
+export function modify<T extends HTMLElement>(element: T | null): (props: ElementProps) => T | null;
+
+export function modify(
+  arg1: any,
+  arg2?: any
+): any {
+  const isElementFirst = arg1 instanceof HTMLElement || arg1 === null;
+
+  // Case 1: Config-First -> modify(props)
+  if (!isElementFirst) {
+    const props = arg1;
+    return (element: HTMLElement | null) => _applyProps(element, props);
+  }
+
+  // Case 2: Imperative -> modify(el, props)
+  if (arg2 !== undefined) {
+    const element = arg1;
+    const props = arg2;
+    return _applyProps(element, props);
+  }
+
+  // Case 3: Element-First Curried -> modify(el)
+  const element = arg1;
+  return (props: ElementProps) => _applyProps(element, props);
+}
 
 /** 
  * Sets properties on an element.
  *  @alias modify 
  */
-export const set = modify
+export const set = modify;
 
 /**
- * Applies inline CSS styles to an element.
+ * Applies inline CSS styles to an element. Supports multiple calling styles.
  *
- * Merges the provided styles with existing inline styles. For removing styles,
- * set the property to empty string. Returns the element for chaining.
+ * @overload <caption>**1. Config-First:** `css(styles)(element)`</caption>
+ * @param styles - The CSS styles to apply.
+ * @returns A function that accepts an element.
  *
- * @param element - The element to style (null-safe)
- * @returns A curried function that accepts styles and returns the element
+ * @overload <caption>**2. Element-First:** `css(element)(styles)`</caption>
+ * @param element - The element to style.
+ * @returns A function that accepts styles.
  *
- * @example
- * ```typescript
- * const div = document.querySelector('div');
- *
- * // Imperative (cleaner DX)
- * css(div, { color: 'red', fontSize: '16px' });
- *
- * // Curried (pipeline friendly)
- * css(div)({
- *   color: 'red',
- *   fontSize: '16px',
- *   marginTop: '10px'
- * });
- *
- * // CSS custom properties (variables)
- * css(div)({
- *   '--primary-color': '#007bff',
- *   '--spacing': '1rem'
- * } as any);
- *
- * // Remove a style (set to empty string)
- * css(div)({ display: '' });
- *
- * // Animation and transitions
- * css(div)({
- *   transition: 'all 0.3s ease',
- *   transform: 'translateX(100px)',
- *   opacity: '0.5'
- * });
- *
- * // Chaining with modify
- * const element = modify(div)({ text: 'Hello' });
- * css(element)({ color: 'blue' });
- * ```
+ * @overload <caption>**3. Imperative:** `css(element, styles)`</caption>
+ * @param element - The element to style.
+ * @param styles - The CSS styles to apply.
  */
-export const css = def((element: HTMLElement | null, styles: Partial<CSSStyleDeclaration>) => {
-  if (element) Object.assign(element.style, styles);
-  return element;
-});
+export function css(
+  styles: Partial<CSSStyleDeclaration>
+): <T extends HTMLElement>(element: T | null) => T | null;
+
+export function css<T extends HTMLElement>(
+  element: T | null,
+  styles: Partial<CSSStyleDeclaration>
+): T | null;
+
+export function css<T extends HTMLElement>(
+  element: T | null
+): (styles: Partial<CSSStyleDeclaration>) => T | null;
+
+export function css(
+  arg1: any,
+  arg2?: any
+): any {
+  const isElementFirst = arg1 instanceof HTMLElement || arg1 === null;
+
+  const applyCss = <T extends HTMLElement>(element: T | null, styles: Partial<CSSStyleDeclaration>) => {
+    if (element) Object.assign(element.style, styles);
+    return element;
+  };
+
+  if (!isElementFirst) {
+    const styles = arg1;
+    return (element: HTMLElement | null) => applyCss(element, styles);
+  }
+
+  if (arg2 !== undefined) {
+    const element = arg1;
+    const styles = arg2;
+    return applyCss(element, styles);
+  }
+
+  const element = arg1;
+  return (styles: Partial<CSSStyleDeclaration>) => applyCss(element, styles);
+}
 
 /**
  * Applies styles temporarily and returns a revert function.
@@ -7837,6 +8044,366 @@ export const Fn = {
    * Useful for providing a default no-op callback.
    */
   noop: () => { },
+
+  /**
+   * Converts an element-first function into an element-last (chainable) function.
+   * Perfect for use with `chain()` and functional pipelines.
+   *
+   * Takes a function `(element, ...args) => result` and converts it to
+   * `(...args) => (element) => element`, allowing it to be used in chains.
+   *
+   * @template T - The element type
+   * @template A - The argument types tuple
+   * @param fn - The element-first function to convert
+   * @returns A curried, chainable version that returns the element
+   *
+   * @example
+   * ```typescript
+   * import { Fn, chain, find } from '@doeixd/dom';
+   *
+   * // Original element-first function
+   * function setTextColor(el: HTMLElement, color: string) {
+   *   el.style.color = color;
+   * }
+   *
+   * // Convert to chainable
+   * const withTextColor = Fn.chainable(setTextColor);
+   *
+   * // Now use in chain!
+   * chain(
+   *   find('#app'),
+   *   withTextColor('red'),        // Returns (el) => el
+   *   withTextColor('blue'),       // Can chain multiple
+   *   cls.add('styled')            // Mix with other chainables
+   * );
+   *
+   * // Works with multiple arguments
+   * function setAttrs(el: HTMLElement, name: string, value: string) {
+   *   el.setAttribute(name, value);
+   * }
+   * const withAttr = Fn.chainable(setAttrs);
+   *
+   * chain(
+   *   element,
+   *   withAttr('data-id', '123'),
+   *   withAttr('aria-label', 'Button')
+   * );
+   *
+   * // Reusable transformers
+   * const makeButton = [
+   *   withTextColor('white'),
+   *   Fn.chainable((el: HTMLElement, size: string) => {
+   *     el.style.padding = size === 'large' ? '20px' : '10px';
+   *   })('large'),
+   *   cls.add('btn')
+   * ];
+   *
+   * findAll('button').forEach(btn => chain(btn, ...makeButton));
+   * ```
+   */
+  chainable: <T extends HTMLElement, A extends any[]>(
+    fn: (element: T, ...args: A) => any
+  ) => (...args: A) => (element: T): T => {
+    fn(element, ...args);
+    return element;
+  },
+
+  /**
+   * Like `chainable`, but preserves the function's return value instead of
+   * returning the element. Useful when you need the result of the operation.
+   *
+   * @template T - The element type
+   * @template A - The argument types tuple
+   * @template R - The return type
+   * @param fn - The element-first function to convert
+   * @returns A curried version that returns the function's result
+   *
+   * @example
+   * ```typescript
+   * import { Fn } from '@doeixd/dom';
+   *
+   * // Function that returns a value
+   * function getComputedWidth(el: HTMLElement, includeMargin: boolean): number {
+   *   const styles = window.getComputedStyle(el);
+   *   const width = parseFloat(styles.width);
+   *   if (!includeMargin) return width;
+   *   const marginLeft = parseFloat(styles.marginLeft);
+   *   const marginRight = parseFloat(styles.marginRight);
+   *   return width + marginLeft + marginRight;
+   * }
+   *
+   * const getWidth = Fn.chainableWith(getComputedWidth);
+   *
+   * const element = find('#box');
+   * const totalWidth = getWidth(true)(element);  // Returns number
+   * console.log('Total width:', totalWidth);
+   *
+   * // Use in Fn.pipe when you need the value
+   * const processElement = Fn.pipe(
+   *   find('#container'),
+   *   getWidth(false),
+   *   width => console.log('Width:', width)
+   * );
+   * ```
+   */
+  chainableWith: <T extends HTMLElement, A extends any[], R>(
+    fn: (element: T, ...args: A) => R
+  ) => (...args: A) => (element: T): R => {
+    return fn(element, ...args);
+  },
+
+  /**
+   * Transforms an element-accepting function to also accept string selectors
+   * or functions that return elements. Preserves dual-mode API like def().
+   *
+   * Supports ParseSelector type inference for string literal selectors,
+   * enabling type-safe selector resolution with automatic element type inference.
+   *
+   * @template T - Element type
+   * @template A - Arguments tuple
+   * @template R - Return type
+   * @param fn - Original element-accepting function
+   * @param root - Root element for scoped searches (default: document)
+   * @returns Function that accepts ElementInput with dual-mode support
+   *
+   * @example
+   * ```typescript
+   * import { Fn, cls, css, modify, find } from '@doeixd/dom';
+   *
+   * // Transform existing functions
+   * const clsAdd = Fn.withSelector((el: HTMLElement | null, ...classes: string[]) => {
+   *   if (!el) return null;
+   *   cls.add(el)(...classes);
+   *   return el;
+   * });
+   *
+   * // Use with selectors (dual-mode)
+   * clsAdd('button', 'active', 'btn');           // Immediate: HTMLButtonElement | null
+   * clsAdd('button')('active', 'btn');           // Curried: HTMLButtonElement | null
+   * clsAdd('#app', 'container');                 // ID selector: HTMLElement | null
+   * clsAdd('svg')('icon');                       // SVG: SVGSVGElement | null
+   *
+   * // Use with function getters (lazy evaluation)
+   * clsAdd(() => find('.dynamic'))('highlight'); // Function: HTMLElement | null
+   *
+   * // Use with direct elements
+   * const button = find('button');
+   * clsAdd(button)('active');
+   *
+   * // Null-safe by design
+   * clsAdd(null)('active');         // Returns null, no error
+   * clsAdd('.missing')('active');   // Returns null if not found
+   *
+   * // Type inference preserved
+   * const btn = clsAdd('button')('active'); // Type: HTMLButtonElement | null
+   * const div = clsAdd('div')('card');      // Type: HTMLDivElement | null
+   *
+   * // Scoped to component
+   * const container = find('#container');
+   * const scopedAdd = Fn.withSelector(
+   *   (el: HTMLElement | null, ...classes: string[]) => {
+   *     if (!el) return null;
+   *     cls.add(el)(...classes);
+   *     return el;
+   *   },
+   *   container // Scoped root
+   * );
+   * scopedAdd('button')('btn'); // Searches within container only
+   *
+   * // Create reusable selector-enabled utilities
+   * const cssSelector = Fn.withSelector((el: HTMLElement | null, styles: Partial<CSSStyleDeclaration>) => {
+   *   if (!el) return null;
+   *   css(el)(styles);
+   *   return el;
+   * });
+   *
+   * cssSelector('.card', { padding: '20px' });
+   * cssSelector('.card')({ padding: '20px' });
+   * ```
+   */
+  withSelector: <T extends HTMLElement, A extends any[], R>(
+    fn: (element: T | null, ...args: A) => R,
+    root: ParentNode = document
+  ): SelectorFunction<T, A, R> => {
+    function wrapper<S extends string>(
+      input: ElementInput<S>,
+      ...args: any[]
+    ): any {
+      // Resolve input to element
+      let element: T | null = null;
+
+      if (input === null || input === undefined) {
+        element = null;
+      } else if (typeof input === 'string') {
+        element = root.querySelector(input) as unknown as T | null;
+      } else if (typeof input === 'function') {
+        element = input() as unknown as T | null;
+      } else {
+        element = input as unknown as T | null;
+      }
+
+      // Apply original function with dual-mode support
+      if (args.length > 0) {
+        // Immediate mode: all arguments provided
+        return fn(element, ...args as A);
+      } else {
+        // Curried mode: return function accepting remaining arguments
+        return (...lateArgs: A) => fn(element, ...lateArgs);
+      }
+    }
+
+    return wrapper as SelectorFunction<T, A, R>;
+  },
+};
+
+/**
+ * Selector-enabled versions of common DOM utilities.
+ *
+ * These wrap the original functions with `Fn.withSelector` for convenience,
+ * allowing you to pass string selectors, function getters, or direct elements.
+ *
+ * All functions support dual-mode API (immediate and curried) and preserve
+ * type inference via ParseSelector.
+ *
+ * @example
+ * ```typescript
+ * import { $sel, find } from '@doeixd/dom';
+ *
+ * // Add classes using selector
+ * $sel.addClass('button', 'active', 'btn');
+ * $sel.addClass('button')('active', 'btn'); // Curried
+ *
+ * // Apply CSS
+ * $sel.css('.card', { padding: '20px' });
+ * $sel.css('.card')({ padding: '20px' });
+ *
+ * // Modify elements
+ * $sel.modify('#app', { text: 'Hello', disabled: false });
+ *
+ * // Attach events
+ * $sel.on('button', 'click', (e) => console.log('Clicked!'));
+ *
+ * // Function getters for dynamic elements
+ * $sel.focus(() => find('.modal input'))();
+ *
+ * // Type inference preserved
+ * const btn = $sel.addClass('button')('active'); // HTMLButtonElement | null
+ * const svg = $sel.css('svg')({ fill: 'red' });  // SVGSVGElement | null
+ * ```
+ */
+export const $sel = {
+  /**
+   * Add classes using selector or element.
+   * Supports dual-mode: immediate and curried.
+   */
+  addClass: Fn.withSelector((el: Element | null, ...classes: string[]) => {
+    if (!el) return null;
+    cls.add(el, ...classes);
+    return el;
+  }),
+
+  /**
+   * Remove classes using selector or element.
+   * Supports dual-mode: immediate and curried.
+   */
+  removeClass: Fn.withSelector((el: Element | null, ...classes: string[]) => {
+    if (!el) return null;
+    cls.remove(el, ...classes);
+    return el;
+  }),
+
+  /**
+   * Toggle class using selector or element.
+   * Supports dual-mode: immediate and curried.
+   */
+  toggleClass: Fn.withSelector((el: Element | null, className: string, force?: boolean) => {
+    if (!el) return null;
+    return cls.toggle(el)(className, force);
+  }),
+
+  /**
+   * Apply CSS styles using selector or element.
+   * Supports dual-mode: immediate and curried.
+   */
+  css: Fn.withSelector((el: HTMLElement | null, styles: Partial<CSSStyleDeclaration>) => {
+    if (!el) return null;
+    return css(el)(styles);
+  }),
+
+  /**
+   * Modify element properties using selector or element.
+   * Supports dual-mode: immediate and curried.
+   */
+  modify: Fn.withSelector(<T extends HTMLElement>(el: T | null, props: ElementProps) => {
+    if (!el) return null;
+    return modify(el)(props) as T | null;
+  }),
+
+  /**
+   * Attach event listener using selector or element.
+   * Supports dual-mode: immediate and curried.
+   * Returns unsubscribe function for cleanup.
+   */
+  on: Fn.withSelector(<K extends keyof HTMLElementEventMap>(
+    el: HTMLElement | null,
+    event: K,
+    handler: (e: HTMLElementEventMap[K]) => void,
+    options?: boolean | AddEventListenerOptions
+  ): Unsubscribe => {
+    if (!el) return () => { };
+    return on(el)(event, handler, options);
+  }),
+
+  /**
+   * Focus element using selector or element.
+   * Supports dual-mode: immediate and curried.
+   */
+  focus: Fn.withSelector((el: HTMLElement | null, options?: FocusOptions) => {
+    if (!el) return null;
+    return focus(el)(options);
+  }),
+
+  /**
+   * Blur element using selector or element.
+   * Returns the element for chaining.
+   */
+  blur: Fn.withSelector((el: HTMLElement | null) => {
+    if (!el) return null;
+    return blur(el);
+  }),
+
+  /**
+   * Scroll element into view using selector or element.
+   * Supports dual-mode: immediate and curried.
+   */
+  scrollInto: Fn.withSelector((el: Element | null, options?: ScrollIntoViewOptions) => {
+    if (!el) return null;
+    return scrollInto(el)(options);
+  }),
+
+  /**
+   * Get element's bounding rect using selector or element.
+   */
+  rect: Fn.withSelector((el: Element | null): DOMRect | null => {
+    if (!el) return null;
+    return rect(el);
+  }),
+
+  /**
+   * Remove element from DOM using selector or element.
+   */
+  remove: Fn.withSelector((el: Element | null) => {
+    if (!el) return null;
+    return remove(el);
+  }),
+
+  /**
+   * Empty element (remove all children) using selector or element.
+   */
+  empty: Fn.withSelector((el: Element | null) => {
+    if (!el) return null;
+    return empty(el);
+  })
 };
 
 // =============================================================================
@@ -8449,6 +9016,131 @@ export function apply<S extends SetterMap>(
   // 2. Partial application (Curried)
   return (lateData: InferData<S>) => exec(lateData);
 }
+
+// =============================================================================
+// 40.5 ELEMENT TRANSFORMATION UTILITIES
+// =============================================================================
+
+/**
+ * Applies multiple pre-configured element transformers to an element.
+ *
+ * This utility takes an element and applies a sequence of curried functions to it.
+ * Each function should be a pre-configured transformer that expects an element
+ * (like `cls.add('active')`, `css({...})`, `modify({...})`).
+ *
+ * Returns the element for further chaining.
+ *
+ * @template T - The element type
+ * @param element - The target element (null-safe)
+ * @param transforms - Pre-configured element transformers
+ * @returns The element (or null if input was null)
+ *
+ * @example
+ * ```typescript
+ * import { chain, find, cls, css, modify, attr } from '@doeixd/dom';
+ *
+ * // Configure a button with multiple operations
+ * const button = chain(
+ *   find('#submit'),
+ *   cls.add('btn', 'btn-primary'),
+ *   css({ padding: '10px 20px', borderRadius: '4px' }),
+ *   modify({ text: 'Submit', disabled: false }),
+ *   attr.set('data-action', 'submit')
+ * );
+ *
+ * // Reusable configuration
+ * const cardStyle = [
+ *   cls.add('card', 'shadow'),
+ *   css({ margin: '10px', padding: '15px' })
+ * ];
+ *
+ * const cards = findAll('.card-container > div');
+ * cards.forEach(card => chain(card, ...cardStyle));
+ *
+ * // With Fn.pipe for element creation
+ * const createButton = Fn.pipe(
+ *   el('button'),
+ *   btn => chain(btn,
+ *     cls.add('btn'),
+ *     css({ padding: '10px' }),
+ *     modify({ text: 'Click me' })
+ *   )
+ * );
+ * ```
+ */
+export const chain = <T extends HTMLElement>(
+  element: T | null,
+  ...transforms: Array<(el: T) => any>
+): T | null => {
+  if (!element) return null;
+  transforms.forEach(transform => transform(element));
+  return element;
+};
+
+/**
+ * Executes multiple callback functions on an element.
+ *
+ * Similar to `chain`, but accepts direct callback functions instead of
+ * pre-configured transformers. Each callback receives the element as its
+ * first argument.
+ *
+ * This is more flexible for operations that need runtime values or complex logic.
+ * Returns the element for further chaining.
+ *
+ * @template T - The element type
+ * @param element - The target element (null-safe)
+ * @param operations - Callback functions that receive the element
+ * @returns The element (or null if input was null)
+ *
+ * @example
+ * ```typescript
+ * import { exec, find, cls, css, on } from '@doeixd/dom';
+ *
+ * // Execute multiple operations with runtime values
+ * const isActive = true;
+ * const theme = 'dark';
+ *
+ * exec(
+ *   find('#app'),
+ *   el => cls.add(el)('app-container'),
+ *   el => cls.toggle(el)('is-active', isActive),
+ *   el => cls.add(el)(`theme-${theme}`),
+ *   el => css(el)({
+ *     backgroundColor: theme === 'dark' ? '#333' : '#fff'
+ *   }),
+ *   el => on(el)('click', () => console.log('Clicked!', el)),
+ *   el => console.log('Element configured:', el)
+ * );
+ *
+ * // Conditional operations
+ * const config = getUserConfig();
+ * exec(
+ *   element,
+ *   el => config.showBorder && cls.add(el)('bordered'),
+ *   el => config.animated && attr.set(el)('data-animated', 'true'),
+ *   el => config.onInit?.(el)
+ * );
+ *
+ * // Mix with other operations
+ * const buttons = findAll('button');
+ * buttons.forEach((btn, index) =>
+ *   exec(
+ *     btn,
+ *     el => modify(el)({ text: `Button ${index + 1}` }),
+ *     el => on(el)('click', () => handleClick(index)),
+ *     el => el.dataset.index = String(index)
+ *   )
+ * );
+ * ```
+ */
+export const exec = <T extends HTMLElement>(
+  element: T | null,
+  ...operations: Array<(el: T) => any>
+): T | null => {
+  if (!element) return null;
+  operations.forEach(operation => operation(element));
+  return element;
+};
 
 
 // =============================================================================
@@ -9550,6 +10242,26 @@ export interface ComponentContext<
   state: State;
 
   /**
+   * Creates a lightweight, reactive store for component-local state.
+   * Unlike `state`, this does NOT sync with DOM attributes - it's pure JS.
+   *
+   * @example
+   * ```typescript
+   * const userStore = ctx.store({ name: '', email: '' });
+   *
+   * // Subscribe to changes
+   * userStore.subscribe((state) => console.log('User:', state));
+   *
+   * // Update state
+   * userStore.set({ name: 'Alice' });
+   *
+   * // Get current state
+   * console.log(userStore.get());
+   * ```
+   */
+  store: typeof createStore;
+
+  /**
    * Scoped element finder (querySelector within root).
    */
   find: (selector: string) => HTMLElement | null;
@@ -9584,6 +10296,207 @@ export interface ComponentContext<
    * (Equivalent to React's useEffect return function).
    */
   effect: (fn: Unsubscribe) => void;
+
+  /**
+   * Attaches an event listener to an element with automatic cleanup.
+   * Returns an unsubscribe function for manual cleanup if needed.
+   *
+   * @param event - The event name (e.g., 'click', 'input').
+   * @param element - The target element or selector (resolved via ctx.find).
+   * @param handler - The event handler function.
+   * @param options - Optional event listener options.
+   *
+   * @example
+   * ```typescript
+   * ctx.on('click', ctx.refs.btn, () => console.log('Clicked'));
+   * ctx.on('input', 'input[name="search"]', (e) => handleSearch(e));
+   * ```
+   */
+  on: <K extends keyof HTMLElementEventMap>(
+    event: K,
+    element: HTMLElement | string,
+    handler: (e: HTMLElementEventMap[K]) => void,
+    options?: boolean | AddEventListenerOptions
+  ) => Unsubscribe;
+
+  /**
+   * Prebound bind utilities for easy DOM updates with selector resolution.
+   * All methods accept either an HTMLElement or a selector string.
+   */
+  bind: {
+    /**
+     * Two-way binding between an input element and a state key.
+     * Automatically syncs input value ↔ state.
+     *
+     * @example
+     * ```typescript
+     * ctx.bind.input('input[name="username"]', 'username');
+     * // Now ctx.state.username updates the input, and input changes update state
+     * ```
+     */
+    input: (inputOrSelector: HTMLInputElement | string, stateKey: keyof State & string) => void;
+
+    /** Binds textContent to an element. */
+    text: (elOrSelector: HTMLElement | string | null) => Setter<string>;
+
+    /** Binds innerHTML to an element. */
+    html: (elOrSelector: HTMLElement | string | null) => Setter<string>;
+
+    /** Binds an attribute to an element. */
+    attr: (name: string, elOrSelector?: HTMLElement | string | null) => Setter<string | number | boolean | null> | ((el?: HTMLElement | string | null) => Setter<string | number | boolean | null>);
+
+    /** Binds a class toggle to an element. */
+    toggle: (className: string, elOrSelector?: HTMLElement | string | null) => Setter<boolean> | ((el?: HTMLElement | string | null) => Setter<boolean>);
+
+    /** Generic value binder with diffing. */
+    val: <T>(initial: T, effect: (val: T) => void) => Setter<T>;
+
+    /** Binds inline styles to an element. */
+    style: (elOrSelector: HTMLElement | string | null, property: string) => Setter<string | number>;
+
+    /** Binds CSS variables to an element. */
+    cssVar: (elOrSelector: HTMLElement | string | null, varName: string) => Setter<string | number>;
+
+    /** Binds a list to a container element. */
+    list: <T>(containerOrSelector: HTMLElement | string | null, renderItem: (item: T, index: number) => Node) => Setter<T[]>;
+  };
+
+  /**
+   * Observer utilities with automatic cleanup on component destroy.
+   */
+  observe: {
+    /**
+     * Creates an IntersectionObserver for an element.
+     * Auto-disconnects on component destroy.
+     *
+     * @example
+     * ```typescript
+     * ctx.observe.intersection('.lazy-image', (entry) => {
+     *   if (entry.isIntersecting) loadImage(entry.target);
+     * });
+     * ```
+     */
+    intersection: (
+      elementOrSelector: HTMLElement | string,
+      callback: (entry: IntersectionObserverEntry) => void,
+      options?: IntersectionObserverInit
+    ) => void;
+
+    /**
+     * Creates a ResizeObserver for an element.
+     * Auto-disconnects on component destroy.
+     *
+     * @example
+     * ```typescript
+     * ctx.observe.resize('.resizable', (entry) => {
+     *   console.log('New size:', entry.contentRect);
+     * });
+     * ```
+     */
+    resize: (
+      elementOrSelector: HTMLElement | string,
+      callback: (entry: ResizeObserverEntry) => void
+    ) => void;
+  };
+
+  /**
+   * Creates a computed property that derives its value from state keys.
+   * Re-computes whenever any dependency changes.
+   *
+   * @param deps - Array of state keys to watch.
+   * @param compute - Function to compute the derived value.
+   * @returns Object with current value and onChange subscription.
+   *
+   * @example
+   * ```typescript
+   * const fullName = ctx.computed(['firstName', 'lastName'], () =>
+   *   `${ctx.state.firstName} ${ctx.state.lastName}`
+   * );
+   *
+   * fullName.onChange((name) => console.log('Full name:', name));
+   * ```
+   */
+  computed: <T>(
+    deps: Array<keyof State & string>,
+    compute: () => T
+  ) => {
+    value: T;
+    onChange: (callback: (val: T) => void) => void;
+  };
+
+  /**
+   * Executes a function immediately after the component setup completes.
+   * Useful for initialization that needs the full context to be ready.
+   *
+   * @example
+   * ```typescript
+   * ctx.onMount(() => {
+   *   console.log('Component mounted');
+   *   fetchInitialData();
+   * });
+   * ```
+   */
+  onMount: (fn: () => void) => void;
+
+  /**
+   * Registers a cleanup function to run when the component is destroyed.
+   * Alias for `effect()` with a clearer name for lifecycle clarity.
+   *
+   * @example
+   * ```typescript
+   * ctx.onUnmount(() => {
+   *   console.log('Component unmounting');
+   *   saveState();
+   * });
+   * ```
+   */
+  onUnmount: (fn: () => void) => void;
+
+  /**
+   * Applies multiple pre-configured element transformers to an element.
+   * Accepts string selectors (resolved within component root) or HTMLElements.
+   *
+   * @example
+   * ```typescript
+   * ctx.chain(
+   *   '.submit-btn',
+   *   cls.add('btn', 'btn-primary'),
+   *   css({ padding: '10px' }),
+   *   modify({ text: 'Submit' })
+   * );
+   *
+   * // Or with refs
+   * ctx.chain(
+   *   ctx.refs.button,
+   *   cls.add('active'),
+   *   attr.set('disabled', false)
+   * );
+   * ```
+   */
+  chain: <T extends HTMLElement>(
+    elementOrSelector: T | string,
+    ...transforms: Array<(el: T) => any>
+  ) => T | null;
+
+  /**
+   * Executes multiple callback functions on an element.
+   * Accepts string selectors (resolved within component root) or HTMLElements.
+   *
+   * @example
+   * ```typescript
+   * const theme = ctx.state.theme;
+   * ctx.exec(
+   *   '.app-container',
+   *   el => cls.add(el)(`theme-${theme}`),
+   *   el => on(el)('click', handleClick),
+   *   el => console.log('Configured:', el)
+   * );
+   * ```
+   */
+  exec: <T extends HTMLElement>(
+    elementOrSelector: T | string,
+    ...operations: Array<(el: T) => any>
+  ) => T | null;
 }
 
 /**
@@ -9674,10 +10587,19 @@ export const defineComponent = <
 
   // 2. Lifecycle & Cleanup Manager
   const hooks = createListenerGroup();
+  const mountCallbacks: Array<() => void> = [];
 
   // 3. Resolve Scoped Refs & Groups
   const scopedRefs = refs(root) as R;
   const scopedGroups = groupRefs(root) as G;
+
+  // Helper: Resolve element from string selector or HTMLElement
+  const resolveElement = (elOrSelector: HTMLElement | string | null): HTMLElement | null => {
+    if (typeof elOrSelector === 'string') {
+      return find(root)(elOrSelector);
+    }
+    return elOrSelector;
+  };
 
   // 4. Construct Context
   const ctx: ComponentContext<R, G, S> = {
@@ -9685,6 +10607,7 @@ export const defineComponent = <
     refs: scopedRefs,
     groups: scopedGroups,
     state: store<S>(root),
+    store: createStore,
 
     find: find(root),
     findAll: findAll(root),
@@ -9703,11 +10626,170 @@ export const defineComponent = <
     },
 
     // Generic Cleanup
-    effect: (fn) => hooks.add(fn)
+    effect: (fn) => hooks.add(fn),
+
+    // Prebound Event Listener with Auto-Cleanup
+    on: (event, element, handler, options) => {
+      const target = resolveElement(element);
+      const unsubscribe = on(target)(event, handler as any, options);
+      hooks.add(unsubscribe);
+      return unsubscribe;
+    },
+
+    // Prebound Bind Utilities with Selector Resolution
+    bind: {
+      input: (inputOrSelector, stateKey) => {
+        const input = (typeof inputOrSelector === 'string'
+          ? find(root)(inputOrSelector)
+          : inputOrSelector) as HTMLInputElement;
+
+        if (!input) return;
+
+        // Determine input type
+        const inputType = input.type?.toLowerCase() || 'text';
+        const isCheckbox = inputType === 'checkbox';
+        const isRadio = inputType === 'radio';
+
+        // State -> Input
+        const updateInput = (val: any) => {
+          if (isCheckbox) {
+            input.checked = !!val;
+          } else if (isRadio) {
+            input.checked = input.value === String(val);
+          } else {
+            input.value = val ?? '';
+          }
+        };
+
+        // Input -> State
+        const updateState = () => {
+          if (isCheckbox) {
+            ctx.state[stateKey] = input.checked as any;
+          } else if (isRadio) {
+            if (input.checked) {
+              ctx.state[stateKey] = input.value as any;
+            }
+          } else {
+            ctx.state[stateKey] = input.value as any;
+          }
+        };
+
+        // Initialize input from state
+        updateInput(ctx.state[stateKey]);
+
+        // Listen to state changes
+        ctx.watch(stateKey, updateInput);
+
+        // Listen to input changes
+        const eventName = isCheckbox || isRadio ? 'change' : 'input';
+        hooks.add(on(input)(eventName as any, updateState));
+      },
+
+      text: (elOrSelector) => bind.text(resolveElement(elOrSelector)),
+      html: (elOrSelector) => bind.html(resolveElement(elOrSelector)),
+
+      attr: ((name: string, elOrSelector?: HTMLElement | string | null) => {
+        if (elOrSelector === undefined) {
+          return (el?: HTMLElement | string | null) => bind.attr(name, resolveElement(el || null));
+        }
+        return bind.attr(name, resolveElement(elOrSelector));
+      }) as any,
+
+      toggle: ((className: string, elOrSelector?: HTMLElement | string | null) => {
+        if (elOrSelector === undefined) {
+          return (el?: HTMLElement | string | null) => bind.toggle(className, resolveElement(el || null));
+        }
+        return bind.toggle(className, resolveElement(elOrSelector));
+      }) as any,
+
+      val: bind.val,
+
+      style: (elOrSelector, property) => bind.style(resolveElement(elOrSelector), property),
+      cssVar: (elOrSelector, varName) => bind.cssVar(resolveElement(elOrSelector), varName),
+      list: (containerOrSelector, renderItem) => bind.list(resolveElement(containerOrSelector), renderItem)
+    },
+
+    // Observer Utilities with Auto-Cleanup
+    observe: {
+      intersection: (elementOrSelector, callback, options) => {
+        const element = resolveElement(elementOrSelector);
+        if (!element) return;
+
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach(callback);
+        }, options);
+
+        observer.observe(element);
+        hooks.add(() => observer.disconnect());
+      },
+
+      resize: (elementOrSelector, callback) => {
+        const element = resolveElement(elementOrSelector);
+        if (!element) return;
+
+        const observer = new ResizeObserver((entries) => {
+          entries.forEach(callback);
+        });
+
+        observer.observe(element);
+        hooks.add(() => observer.disconnect());
+      }
+    },
+
+    // Computed Properties
+    computed: (deps, compute) => {
+      let currentValue = compute();
+      const listeners = new Set<(val: any) => void>();
+
+      // Watch all dependencies
+      deps.forEach((dep) => {
+        ctx.watch(dep, () => {
+          const newValue = compute();
+          if (!Object.is(currentValue, newValue)) {
+            currentValue = newValue;
+            listeners.forEach((fn) => fn(newValue));
+          }
+        });
+      });
+
+      return {
+        get value() { return currentValue; },
+        onChange: (callback) => {
+          listeners.add(callback);
+          // Optionally fire immediately
+          callback(currentValue);
+        }
+      };
+    },
+
+    // Lifecycle Hooks
+    onMount: (fn) => {
+      mountCallbacks.push(fn);
+    },
+
+    onUnmount: (fn) => hooks.add(fn),
+
+    // Element Transformation Utilities
+    chain: (<T extends HTMLElement>(elementOrSelector: T | string, ...transforms: Array<(el: T) => any>): T | null => {
+      const element = (typeof elementOrSelector === 'string'
+        ? find(root)(elementOrSelector)
+        : elementOrSelector) as T | null;
+      return chain(element, ...transforms);
+    }) as any,
+
+    exec: (<T extends HTMLElement>(elementOrSelector: T | string, ...operations: Array<(el: T) => any>): T | null => {
+      const element = (typeof elementOrSelector === 'string'
+        ? find(root)(elementOrSelector)
+        : elementOrSelector) as T | null;
+      return exec(element, ...operations);
+    }) as any
   };
 
   // 5. Initialize Logic
   const api = setup(ctx) || {} as API;
+
+  // Execute onMount callbacks after setup completes
+  mountCallbacks.forEach((fn) => fn());
 
   // 6. Return Instance
   return {
@@ -9725,6 +10807,47 @@ export const defineComponent = <
  * @param componentFn - The logic factory (from `defineComponent`)
  * @param target - Where to append the result
  * @param props - Initial props
+ * 
+ * @example
+ * ```typescript
+ * // 1. Define the template
+ * const ModalTemplate = view(({ title, message }) => html`
+ *   <div class="modal" data-ref="modal">
+ *     <div class="modal-content">
+ *       <h2 data-ref="title">${title}</h2>
+ *       <p data-ref="message">${message}</p>
+ *       <button data-ref="closeBtn">Close</button>
+ *     </div>
+ *   </div>
+ * `);
+ * 
+ * // 2. Define the component logic
+ * const ModalComponent = (root: HTMLElement) => defineComponent(root, (ctx) => {
+ *   ctx.bindEvents({
+ *     closeBtn: {
+ *       click: () => instance.destroy()
+ *     }
+ *   });
+ * 
+ *   return {
+ *     setTitle: (title: string) => modify(ctx.refs.title)({ text: title }),
+ *     setMessage: (msg: string) => modify(ctx.refs.message)({ text: msg })
+ *   };
+ * });
+ * 
+ * // 3. Spawn the modal
+ * const instance = mountComponent(
+ *   () => ModalTemplate({ title: 'Alert', message: 'Hello World!' }),
+ *   ModalComponent,
+ *   document.body
+ * );
+ * 
+ * // 4. Use the API
+ * instance.setTitle('New Title');
+ * 
+ * // 5. Cleanup when done
+ * instance.destroy(); // Removes DOM and cleans up listeners
+ * ```
  */
 export const mountComponent = <API>(
   templateFn: () => { root: HTMLElement | DocumentFragment },

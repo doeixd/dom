@@ -215,6 +215,12 @@ The `ctx` object passed to your setup function provides scoped, auto-cleaning ut
 | `ctx.observe` | Add Intersection/Resize observer (auto-disconnected). |
 | `ctx.effect` | Register arbitrary cleanup logic. |
 
+#### Learn More
+
+For comprehensive guides on components:
+- **[Component Documentation](./docs/components.md)** - Complete guide to components, TypeScript integration, lifecycle, state management, real-world examples, and best practices
+- **[Advanced Component Patterns](./docs/component-patterns.md)** - The binder pattern, custom hooks, plugin systems, state management strategies, dynamic components, and testing
+
 <br />
 
 ## The Toolkit: A Practical Guide
