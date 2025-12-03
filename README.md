@@ -74,39 +74,6 @@ const stopListening = on(btn)('click', () => {
 
 <br />
 
-## Type Utilities
-
-The library exports TypeScript types and interfaces for better type safety:
-
-| Type/Interface | Description |
-| :--- | :--- |
-| `ParseSelector<S>` | Infers element type from CSS selector string. |
-| `Unsubscribe` | Cleanup function type returned by event listeners. |
-| `EventMap<T>` | Event map for HTML elements, extensible for custom events. |
-| `ExtractEventDetail<T>` | Extracts detail type from CustomEvent. |
-| `ElementProps` | Properties for creating/modifying elements. |
-| `StrictElementProps<T>` | Element properties with element-specific validation. |
-| `DeepReadonly<T>` | Makes all properties deeply readonly. |
-| `DeepPartial<T>` | Makes all properties deeply partial. |
-| `FormElement` | Union type for form elements (input, select, textarea). |
-| `QueryValue` | Valid URL query parameter value types. |
-| `QueryParams` | Record of query parameters. |
-| `Ok<T>` | Success result type. |
-| `Err<E>` | Error result type. |
-| `Result<T, E>` | Union of Ok and Err types. |
-| `Setter<T>` | Setter function type. |
-| `EventSchema<R>` | Event schema for binding. |
-| `Refs<K>` | Record of element refs. |
-| `HttpMethod` | HTTP method types. |
-| `HttpStatus` | HTTP status code types. |
-| `HttpRequestInit` | HTTP request configuration. |
-| `HttpResponse<T>` | HTTP response type. |
-| `HttpConfig<H>` | HTTP client configuration. |
-| `ComponentContext` | Component context interface. |
-| `ComponentInstance<API>` | Component instance type. |
-
-<br />
-
 ## Design Philosophy
 
 The library is built on a few simple, powerful ideas.
@@ -411,6 +378,8 @@ For comprehensive guides on components:
 | `History.back` | Go back in history. | `History.back();` |
 | `History.forward` | Go forward in history. | `History.forward();` |
 
+<br />
+
 ### Advanced Utilities
 
 | Function | Description | Example |
@@ -446,6 +415,37 @@ For comprehensive guides on components:
 | `animate` | Animate element with Web Animations API. | `animate(el).fadeIn();` |
 | `Text.copy` | Copy text to clipboard. | `Text.copy('Hello');` |
 | `Text.paste` | Read from clipboard. | `const text = await Text.paste();` |
+
+## Type Utilities
+
+The library exports TypeScript types and interfaces for better type safety:
+
+| Type/Interface | Description |
+| :--- | :--- |
+| `ParseSelector<S>` | Infers element type from CSS selector string. |
+| `Unsubscribe` | Cleanup function type returned by event listeners. |
+| `EventMap<T>` | Event map for HTML elements, extensible for custom events. |
+| `ExtractEventDetail<T>` | Extracts detail type from CustomEvent. |
+| `ElementProps` | Properties for creating/modifying elements. |
+| `StrictElementProps<T>` | Element properties with element-specific validation. |
+| `DeepReadonly<T>` | Makes all properties deeply readonly. |
+| `DeepPartial<T>` | Makes all properties deeply partial. |
+| `FormElement` | Union type for form elements (input, select, textarea). |
+| `QueryValue` | Valid URL query parameter value types. |
+| `QueryParams` | Record of query parameters. |
+| `Ok<T>` | Success result type. |
+| `Err<E>` | Error result type. |
+| `Result<T, E>` | Union of Ok and Err types. |
+| `Setter<T>` | Setter function type. |
+| `EventSchema<R>` | Event schema for binding. |
+| `Refs<K>` | Record of element refs. |
+| `HttpMethod` | HTTP method types. |
+| `HttpStatus` | HTTP status code types. |
+| `HttpRequestInit` | HTTP request configuration. |
+| `HttpResponse<T>` | HTTP response type. |
+| `HttpConfig<H>` | HTTP client configuration. |
+| `ComponentContext` | Component context interface. |
+| `ComponentInstance<API>` | Component instance type. |
 
 <br />
 
