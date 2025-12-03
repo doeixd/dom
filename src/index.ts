@@ -10880,3 +10880,690 @@ export const mountComponent = <API>(
     }
   };
 };
+
+/**
+ * Control object passed to wrapped functions for fine-grained update control.
+ *
+ * @template R - The return/result type used for updates
+ *
+ * @example
+ * ```typescript
+ * const loadItems = sync((control) => {
+ *   control(0); // Immediate update: "Loading 0%"
+ *
+ *   for (let i = 0; i < items.length; i++) {
+ *     processItem(items[i]);
+ *     control((i + 1) / items.length * 100); // Progress updates
+ *   }
+ *
+ *   control.skip(); // Skip final auto-update (we already updated)
+ *   return items.length;
+ * });
+ * ```
+ */
+interface UpdateControl<R> {
+  /**
+   * Trigger an immediate update with the given value.
+   * Useful for progress indicators, intermediate states, or streaming updates.
+   *
+   * @param value - The value to pass to the updater function
+   *
+   * @example
+   * ```typescript
+   * const processFiles = sync((control) => {
+   *   files.forEach((file, i) => {
+   *     process(file);
+   *     control({ current: i + 1, total: files.length });
+   *   });
+   *   return files.length;
+   * });
+   * ```
+   */
+  (value: R): void;
+
+  /**
+   * Skip the automatic update that normally runs after function completion.
+   * Call this when you've handled updates manually and don't need a final one.
+   *
+   * @example
+   * ```typescript
+   * const manualUpdate = sync((control) => {
+   *   const result = compute();
+   *   control(result); // Manual update
+   *   control.skip();  // Don't update again with return value
+   *   return result;
+   * });
+   * ```
+   */
+  skip(): void;
+
+  /**
+   * Queue an update to run asynchronously (next microtask).
+   * Multiple queued updates within the same task are batched into one.
+   *
+   * @param value - The value to pass to the updater function
+   *
+   * @example
+   * ```typescript
+   * const batchedOps = sync((control) => {
+   *   control.queue(1); // Queued
+   *   control.queue(2); // Replaces previous (batched)
+   *   control.queue(3); // Replaces previous (batched)
+   *   // Only one update runs with value 3
+   *   return 3;
+   * });
+   * ```
+   */
+  queue(value: R): void;
+
+  /**
+   * Force all queued updates to run immediately.
+   * Useful when you need to ensure DOM is updated before continuing.
+   *
+   * @example
+   * ```typescript
+   * const withFlush = sync((control) => {
+   *   control.queue(intermediateValue);
+   *   control.flush(); // Force update now
+   *   measureDOM();    // Safe to measure after flush
+   *   return finalValue;
+   * });
+   * ```
+   */
+  flush(): void;
+}
+
+/**
+ * Updater function called when updates are triggered.
+ *
+ * @template T - The element type
+ * @template R - The result type from wrapped functions
+ *
+ * @param el - The target element
+ * @param result - The return value from the wrapped function (undefined on initial call)
+ *
+ * @example
+ * ```typescript
+ * // Simple text updater
+ * const textUpdater: Updater<HTMLElement, number> = (el, result) => {
+ *   el.textContent = result !== undefined ? String(result) : '0';
+ * };
+ *
+ * // Progress bar updater
+ * const progressUpdater: Updater<HTMLElement, number> = (el, percent) => {
+ *   el.style.width = `${percent ?? 0}%`;
+ *   el.setAttribute('aria-valuenow', String(percent ?? 0));
+ * };
+ * ```
+ */
+type Updater<T extends Element, R = unknown> = (el: T, result: R | undefined) => void;
+
+/**
+ * Function signature for wrapped functions that receive update control.
+ *
+ * @template Args - Argument types for the function
+ * @template R - Return type of the function
+ */
+type ControlledFn<Args extends any[], R> = (control: UpdateControl<R>, ...args: Args) => R;
+
+/**
+ * Function signature for simple wrapped functions without control.
+ *
+ * @template Args - Argument types for the function
+ * @template R - Return type of the function
+ */
+type SimpleFn<Args extends any[], R> = (...args: Args) => R;
+
+/**
+ * The resulting wrapped function type.
+ *
+ * @template Args - Argument types for the function
+ * @template R - Return type of the function
+ */
+type WrappedFn<Args extends any[], R> = (...args: Args) => R;
+
+/**
+ * Helper type to extract wrapped function types from a record.
+ */
+type WrapAll<T extends Record<string, ControlledFn<any[], any>>> = {
+  [K in keyof T]: T[K] extends ControlledFn<infer Args, infer R>
+  ? WrappedFn<Args, R>
+  : never;
+};
+
+/**
+ * Helper type for simple function wrapping.
+ */
+type WrapAllSimple<T extends Record<string, SimpleFn<any[], any>>> = {
+  [K in keyof T]: T[K] extends SimpleFn<infer Args, infer R>
+  ? WrappedFn<Args, R>
+  : never;
+};
+
+/**
+ * The update wrapper interface with all utilities.
+ *
+ * @template T - The target element type
+ *
+ * @example
+ * ```typescript
+ * let count = 0;
+ * const sync: UpdateWrapper<HTMLElement> = createUpdateAfter(
+ *   countEl,
+ *   (el, result) => { el.textContent = String(result ?? count); }
+ * );
+ *
+ * // Use various wrapper methods
+ * const increment = sync((ctrl) => ++count);
+ * const add = sync((ctrl, n: number) => count += n);
+ * const reset = sync.simple(() => count = 0);
+ * ```
+ */
+interface UpdateWrapper<T extends Element> {
+  /**
+   * Wrap a function that receives update control.
+   * The updater automatically runs after function completion with its return value.
+   *
+   * @template Args - The function's argument types
+   * @template R - The function's return type
+   * @param fn - Function receiving UpdateControl as first argument, followed by any args
+   * @returns A wrapped function with the same signature (minus control)
+   *
+   * @example
+   * ```typescript
+   * const sync = createUpdateAfter(el, (el, count) => {
+   *   el.textContent = `Count: ${count}`;
+   * });
+   *
+   * // With control for intermediate updates
+   * const incrementBy = sync((control, amount: number) => {
+   *   for (let i = 0; i < amount; i++) {
+   *     count++;
+   *     control(count); // Update after each increment
+   *   }
+   *   return count;
+   * });
+   *
+   * incrementBy(5); // Updates 5 times during, once after
+   * ```
+   */
+  <Args extends any[], R>(fn: ControlledFn<Args, R>): WrappedFn<Args, R>;
+
+  /**
+   * Wrap a simple function without update control.
+   * Convenient when you don't need intermediate updates.
+   *
+   * @template Args - The function's argument types
+   * @template R - The function's return type
+   * @param fn - Simple function to wrap
+   * @returns A wrapped function with identical signature
+   *
+   * @example
+   * ```typescript
+   * const increment = sync.simple(() => ++count);
+   * const add = sync.simple((n: number) => count += n);
+   * const reset = sync.simple(() => count = 0);
+   *
+   * increment();  // Updates with new count
+   * add(5);       // Updates with new count
+   * reset();      // Updates with 0
+   * ```
+   */
+  simple<Args extends any[], R>(fn: SimpleFn<Args, R>): WrappedFn<Args, R>;
+
+  /**
+   * Wrap multiple controlled functions at once.
+   *
+   * @template A - Record of controlled functions
+   * @param actions - Object mapping names to controlled functions
+   * @returns Object with same keys but wrapped functions
+   *
+   * @example
+   * ```typescript
+   * const actions = sync.all({
+   *   increment: (ctrl) => ++count,
+   *   decrement: (ctrl) => --count,
+   *   add: (ctrl, n: number) => count += n,
+   *   reset: (ctrl) => count = 0
+   * });
+   *
+   * actions.increment();  // Updates
+   * actions.add(10);      // Updates
+   * actions.reset();      // Updates
+   * ```
+   */
+  all<A extends Record<string, ControlledFn<any[], any>>>(actions: A): WrapAll<A>;
+
+  /**
+   * Wrap multiple simple functions at once.
+   *
+   * @template A - Record of simple functions
+   * @param actions - Object mapping names to simple functions
+   * @returns Object with same keys but wrapped functions
+   *
+   * @example
+   * ```typescript
+   * const actions = sync.allSimple({
+   *   increment: () => ++count,
+   *   decrement: () => --count,
+   *   double: () => count *= 2
+   * });
+   *
+   * actions.increment();
+   * actions.double();
+   * ```
+   */
+  allSimple<A extends Record<string, SimpleFn<any[], any>>>(actions: A): WrapAllSimple<A>;
+
+  /**
+   * Batch multiple operations, running only ONE update at the end.
+   * All wrapped function calls inside the batch are executed,
+   * but their individual updates are suppressed until the batch completes.
+   *
+   * @template R - Return type of the batch function
+   * @param fn - Function containing multiple wrapped calls
+   * @returns The return value of fn
+   *
+   * @example
+   * ```typescript
+   * // Without batch: 3 DOM updates
+   * increment(); increment(); increment();
+   *
+   * // With batch: 1 DOM update
+   * sync.batch(() => {
+   *   increment();
+   *   increment();
+   *   increment();
+   * });
+   *
+   * // Batch with return value
+   * const finalCount = sync.batch(() => {
+   *   increment();
+   *   increment();
+   *   return count;
+   * });
+   * ```
+   */
+  batch<R>(fn: () => R): R;
+
+  /**
+   * Manually trigger an update with a specific value.
+   * Useful for forcing updates outside of wrapped functions.
+   *
+   * @template R - The value type
+   * @param value - Value to pass to the updater
+   *
+   * @example
+   * ```typescript
+   * // Force update with specific value
+   * sync.update(42);
+   *
+   * // Update after external change
+   * count = someExternalValue;
+   * sync.update(count);
+   * ```
+   */
+  update<R>(value: R): void;
+
+  /**
+   * Trigger an update with undefined (same as initial update).
+   * Useful when the updater reads from external state.
+   *
+   * @example
+   * ```typescript
+   * const sync = createUpdateAfter(el, (el) => {
+   *   el.textContent = String(count); // Reads from closure
+   * });
+   *
+   * count = 100;
+   * sync.refresh(); // Updates to show 100
+   * ```
+   */
+  refresh(): void;
+
+  /**
+   * Check if currently inside a batch operation.
+   */
+  readonly isBatching: boolean;
+
+  /**
+   * The target element (may be null if element wasn't found).
+   */
+  readonly el: T | null;
+}
+
+
+/**
+ * Stage 1: Only element provided, waiting for updater.
+ */
+type ElementStage<T extends Element> = {
+  <R>(updater: Updater<T, R>): UpdateWrapper<T>;
+  <R>(updater: Updater<T, R>, initialValue: R): UpdateWrapper<T>;
+};
+
+// ============================================================================
+// OVERLOADS
+// ============================================================================
+
+/**
+ * Creates an update wrapper that syncs DOM state after function execution.
+ *
+ * This utility bridges imperative state changes with DOM updates by:
+ * 1. Running an initial update immediately (optional)
+ * 2. Wrapping functions to trigger updates after they complete
+ * 3. Passing return values to the updater for reactive-style updates
+ * 4. Supporting intermediate updates, batching, and async operations
+ *
+ * @template T - The target element type (inferred from selector/element)
+ *
+ * @example
+ * ```typescript
+ * // Basic counter with automatic DOM sync
+ * let count = 0;
+ * const countEl = find('#count');
+ *
+ * const sync = createUpdateAfter(countEl, (el, result) => {
+ *   el.textContent = String(result ?? count);
+ * });
+ *
+ * const increment = sync.simple(() => ++count);
+ * const decrement = sync.simple(() => --count);
+ *
+ * increment(); // DOM shows 1
+ * increment(); // DOM shows 2
+ * decrement(); // DOM shows 1
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // Progress indicator with intermediate updates
+ * const progressBar = find('.progress-bar');
+ *
+ * const sync = createUpdateAfter(progressBar, (el, percent) => {
+ *   el.style.width = `${percent ?? 0}%`;
+ *   el.textContent = `${percent ?? 0}%`;
+ * });
+ *
+ * const processFiles = sync(async (control, files: File[]) => {
+ *   for (let i = 0; i < files.length; i++) {
+ *     await uploadFile(files[i]);
+ *     control(Math.round((i + 1) / files.length * 100));
+ *   }
+ *   return 100;
+ * });
+ *
+ * await processFiles(myFiles); // Progress updates during upload
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // Batching multiple updates
+ * const sync = createUpdateAfter(el, (el, value) => {
+ *   el.textContent = String(value);
+ * });
+ *
+ * const inc = sync.simple(() => ++count);
+ *
+ * // Without batch: 3 DOM updates
+ * inc(); inc(); inc();
+ *
+ * // With batch: 1 DOM update at the end
+ * sync.batch(() => {
+ *   inc(); inc(); inc();
+ * });
+ * ```
+ */
+// Overload 1: Just element -> returns function waiting for updater
+export function createUpdateAfter<T extends Element>(
+  el: T | null
+): ElementStage<T>;
+
+// Overload 2: Element + updater -> returns wrapper
+export function createUpdateAfter<T extends Element, R = unknown>(
+  el: T | null,
+  updater: Updater<T, R>
+): UpdateWrapper<T>;
+
+// Overload 3: Element + updater + initial value -> returns wrapper (runs initial update with value)
+export function createUpdateAfter<T extends Element, R>(
+  el: T | null,
+  updater: Updater<T, R>,
+  initialValue: R
+): UpdateWrapper<T>;
+
+// ============================================================================
+// IMPLEMENTATION
+// ============================================================================
+
+export function createUpdateAfter<T extends Element, R = unknown>(
+  el: T | null,
+  updater?: Updater<T, R>,
+  initialValue?: R
+): ElementStage<T> | UpdateWrapper<T> {
+  /**
+   * Core factory that creates the wrapper given an updater.
+   */
+  const createWrapper = <Result>(
+    update: Updater<T, Result>,
+    initial?: Result
+  ): UpdateWrapper<T> => {
+    // Batching state
+    let isBatching = false;
+    let batchedValue: Result | undefined;
+    let hasBatchedValue = false;
+
+    // Queued update state (for microtask batching)
+    let queuedValue: Result | undefined;
+    let hasQueuedUpdate = false;
+    let queuedMicrotask: Promise<void> | null = null;
+
+    /**
+     * Execute the updater if element exists.
+     */
+    const runUpdate = (value: Result | undefined): void => {
+      if (!el) return;
+
+      if (isBatching) {
+        // Store for batch completion
+        batchedValue = value;
+        hasBatchedValue = true;
+        return;
+      }
+
+      update(el, value);
+    };
+
+    /**
+     * Process queued updates (runs as microtask).
+     */
+    const flushQueue = (): void => {
+      if (!hasQueuedUpdate) return;
+
+      const value = queuedValue;
+      queuedValue = undefined;
+      hasQueuedUpdate = false;
+      queuedMicrotask = null;
+
+      runUpdate(value);
+    };
+
+    /**
+     * Queue an update for the next microtask.
+     */
+    const queueUpdate = (value: Result): void => {
+      queuedValue = value;
+      hasQueuedUpdate = true;
+
+      if (!queuedMicrotask) {
+        queuedMicrotask = Promise.resolve().then(flushQueue);
+      }
+    };
+
+    /**
+     * Create the UpdateControl object for a wrapped function.
+     */
+    const createControl = (): UpdateControl<Result> & { _skip: boolean } => {
+      let shouldSkip = false;
+
+      const control = ((value: Result) => {
+        runUpdate(value);
+      }) as UpdateControl<Result> & { _skip: boolean };
+
+      control.skip = () => {
+        shouldSkip = true;
+      };
+
+      control.queue = (value: Result) => {
+        queueUpdate(value);
+      };
+
+      control.flush = () => {
+        flushQueue();
+      };
+
+      Object.defineProperty(control, '_skip', {
+        get: () => shouldSkip
+      });
+
+      return control;
+    };
+
+    /**
+     * Wrap a controlled function.
+     */
+    const wrapControlled = <Args extends any[], Ret>(
+      fn: ControlledFn<Args, Ret>
+    ): WrappedFn<Args, Ret> => {
+      return (...args: Args): Ret => {
+        const control = createControl() as unknown as UpdateControl<Ret> & { _skip: boolean };
+        const result = fn(control, ...args);
+
+        // Handle async functions
+        if (result instanceof Promise) {
+          return result.then((resolved) => {
+            if (!control._skip) {
+              runUpdate(resolved as unknown as Result);
+            }
+            return resolved;
+          }) as Ret;
+        }
+
+        // Sync: update after unless skipped
+        if (!control._skip) {
+          runUpdate(result as unknown as Result);
+        }
+
+        return result;
+      };
+    };
+
+    /**
+     * Wrap a simple function (no control).
+     */
+    const wrapSimple = <Args extends any[], Ret>(
+      fn: SimpleFn<Args, Ret>
+    ): WrappedFn<Args, Ret> => {
+      return (...args: Args): Ret => {
+        const result = fn(...args);
+
+        // Handle async
+        if (result instanceof Promise) {
+          return result.then((resolved) => {
+            runUpdate(resolved as unknown as Result);
+            return resolved;
+          }) as Ret;
+        }
+
+        runUpdate(result as unknown as Result);
+        return result;
+      };
+    };
+
+    // Run initial update
+    if (el) {
+      update(el, initial);
+    }
+
+    // Build the wrapper object
+    const wrapper = (<Args extends any[], Ret>(
+      fn: ControlledFn<Args, Ret>
+    ): WrappedFn<Args, Ret> => {
+      return wrapControlled(fn);
+    }) as UpdateWrapper<T>;
+
+    wrapper.simple = wrapSimple;
+
+    wrapper.all = <A extends Record<string, ControlledFn<any[], any>>>(
+      actions: A
+    ): WrapAll<A> => {
+      return Object.fromEntries(
+        Object.entries(actions).map(([key, fn]) => [key, wrapControlled(fn)])
+      ) as WrapAll<A>;
+    };
+
+    wrapper.allSimple = <A extends Record<string, SimpleFn<any[], any>>>(
+      actions: A
+    ): WrapAllSimple<A> => {
+      return Object.fromEntries(
+        Object.entries(actions).map(([key, fn]) => [key, wrapSimple(fn)])
+      ) as WrapAllSimple<A>;
+    };
+
+    wrapper.batch = <Ret>(fn: () => Ret): Ret => {
+      const wasBatching = isBatching;
+      isBatching = true;
+      hasBatchedValue = false;
+
+      const result = fn();
+
+      // Handle async batch
+      if (result instanceof Promise) {
+        return result.then((resolved) => {
+          isBatching = wasBatching;
+          if (hasBatchedValue && !wasBatching) {
+            runUpdate(batchedValue);
+          }
+          return resolved;
+        }) as Ret;
+      }
+
+      // Sync batch: restore state and flush
+      isBatching = wasBatching;
+      if (hasBatchedValue && !wasBatching) {
+        runUpdate(batchedValue);
+      }
+
+      return result;
+    };
+
+    wrapper.update = <Ret>(value: Ret): void => {
+      runUpdate(value as unknown as Result);
+    };
+
+    wrapper.refresh = (): void => {
+      runUpdate(undefined);
+    };
+
+    Object.defineProperty(wrapper, 'isBatching', {
+      get: () => isBatching
+    });
+
+    Object.defineProperty(wrapper, 'el', {
+      value: el,
+      writable: false
+    });
+
+    return wrapper;
+  };
+
+  // Route based on arguments
+  if (updater === undefined) {
+    // Stage 1: Return function waiting for updater
+    return (<Result>(upd: Updater<T, Result>, init?: Result) => {
+      return createWrapper(upd, init);
+    }) as ElementStage<T>;
+  }
+
+  // Stage 2+: Create wrapper directly
+  return createWrapper(updater, initialValue);
+}
