@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.6](https://github.com/doeixd/dom/compare/v0.0.5...v0.0.6) (2025-12-04)
+
+
+### Features
+
+* create fdom, a functional, target-first, type-safe DOM library. ([fd4e1d7](https://github.com/doeixd/dom/commit/fd4e1d76c51a67ebc6870139ab8e576e23165d35))
+* Implement `createBinder` for enhanced data binding, `hyperscript` for declarative DOM, `list` utilities, and `viewRefs` for component structures. ([46eead4](https://github.com/doeixd/dom/commit/46eead4019523de544ebfc3aa7602995d291991e))
+* introduce @doeixd/dom, a target-first and type-safe DOM library. ([d517ba2](https://github.com/doeixd/dom/commit/d517ba2f5cd82ccbc81fff235287f622e4de5d47))
+* Introduce functional DOM utilities and a comprehensive programming guide. ([3546751](https://github.com/doeixd/dom/commit/35467513c7970c75389d8f16f5197c82b6f85441))
+
+
+### Bug Fixes
+
+* updated comment ([e4f25b7](https://github.com/doeixd/dom/commit/e4f25b70ff53979e32aa0d86a5eca9ba0f0789de))
+
 ### [0.0.5](https://github.com/doeixd/dom/compare/v0.0.4...v0.0.5) (2025-11-24)
 
 
