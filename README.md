@@ -513,6 +513,276 @@ on(profile.editBtn)('click', () => openEditModal());
 
 <br />
 
+## Advanced Features
+
+The library includes powerful features for building modern, reactive UIs without a framework.
+
+### h/tags - Hyperscript Element Creation
+
+VanJS-style element creation using Proxy-based property access. Cleaner syntax than `el()` with automatic SVG namespace handling.
+
+```typescript
+import { h, refs } from '@doeixd/dom';
+
+// Create elements with clean syntax
+const card = h.div({ class: { card: true } }, [
+  h.h2({ dataRef: 'title' }, ['Card Title']),
+  h.p({ dataRef: 'content' }, ['Card description']),
+  h.button({ dataRef: 'btn' }, ['Action'])
+]);
+
+// SVG elements get correct namespace automatically
+const icon = h.svg({ attr: { viewBox: '0 0 24 24', width: '24', height: '24' } }, [
+  h.path({ attr: { d: 'M12 2L2 12h3v8h5v-6h4v6h5v-8h3z', fill: 'currentColor' } })
+]);
+
+// Extract refs for type-safe access
+const { title, content, btn } = refs(card);
+title.textContent = 'Updated Title';
+```
+
+**When to use:**
+- Building declarative UI hierarchies
+- Creating SVG graphics (automatic namespace)
+- Component templates with viewRefs()
+
+📖 [Full Documentation](./docs/45-hyperscript.md)
+
+### viewRefs() - Typed Component Templates
+
+Create reusable component templates with automatic ref extraction and smart update methods.
+
+```typescript
+import { viewRefs, h } from '@doeixd/dom';
+
+// Define typed template
+interface CardRefs {
+  title: HTMLElement;
+  content: HTMLElement;
+  button: HTMLElement;
+}
+
+const Card = viewRefs<CardRefs>(({ refs }) =>
+  h.div({ class: { card: true } }, [
+    h.h2({ dataRef: 'title' }),
+    h.p({ dataRef: 'content' }),
+    h.button({ dataRef: 'button' }, ['Click'])
+  ])
+);
+
+// Create instances with full type safety
+const { element, refs, updateRefs, bind } = Card({
+  className: 'featured-card'
+});
+
+// Smart updates handle strings, numbers, and ElementProps
+updateRefs({
+  title: 'Card Title',
+  content: 'Description text',
+  button: { text: 'Buy Now', class: { primary: true } }
+});
+
+// Get setter functions for individual refs
+const setTitle = bind('title');
+setTitle('Updated Title');
+
+document.body.appendChild(element);
+```
+
+**When to use:**
+- Reusable component patterns
+- Type-safe ref access
+- Dynamic UI that needs frequent updates
+
+📖 [Full Documentation](./docs/47-viewrefs.md)
+
+### List() - Reactive Array Binding
+
+Efficient DOM rendering for dynamic collections with three reconciliation strategies.
+
+```typescript
+import { List, h } from '@doeixd/dom';
+
+interface Todo {
+  id: number;
+  text: string;
+  done: boolean;
+}
+
+const container = document.querySelector('#todos');
+
+// Keyed mode for efficient updates
+const list = List<Todo>(container, {
+  key: todo => todo.id,  // Enables smart diffing
+  render: (todo) => h.li({
+    class: { done: todo.done }
+  }, [
+    h.input({ attr: { type: 'checkbox', checked: todo.done } }),
+    h.span({}, [todo.text])
+  ]),
+  update: (el, todo) => {
+    // Optional: efficient update without re-rendering
+    el.classList.toggle('done', todo.done);
+  }
+});
+
+// Rich API for list manipulation
+list.set([
+  { id: 1, text: 'Buy groceries', done: false },
+  { id: 2, text: 'Walk dog', done: true }
+]);
+
+list.append([{ id: 3, text: 'Call mom', done: false }]);
+list.remove(todo => todo.done);  // Remove completed items
+```
+
+**Three modes:**
+- **Default**: Simple blow-away (fast for small lists)
+- **Keyed**: Efficient diffing with key function (reuses elements)
+- **Custom**: User-provided reconciliation (e.g., morphdom)
+
+📖 [Full Documentation](./docs/46-list.md)
+
+### createBinder() - Type-Safe Data Binding
+
+Schema-based binding between data and DOM with automatic dirty checking.
+
+```typescript
+import { createBinder, bind, refs, h } from '@doeixd/dom';
+
+const form = h.form({}, [
+  h.input({ dataRef: 'nameInput', attr: { type: 'text' } }),
+  h.input({ dataRef: 'emailInput', attr: { type: 'email' } }),
+  h.button({ dataRef: 'submitBtn' }, ['Submit']),
+  h.div({ dataRef: 'errorMsg', class: { error: true } })
+]);
+
+const formRefs = refs(form);
+
+// Create binder with schema
+const ui = createBinder(formRefs, {
+  nameInput: bind.value,
+  emailInput: bind.value,
+  submitBtn: (el) => bind.prop('disabled', el),
+  errorMsg: bind.text
+});
+
+// Update UI declaratively
+ui({
+  nameInput: 'John Doe',
+  emailInput: 'john@example.com',
+  submitBtn: false,
+  errorMsg: ''
+});
+
+// Individual setters for event handlers
+ui.set.errorMsg('Invalid email address');
+
+// Batch updates
+ui.batch(() => {
+  ui({ submitBtn: true });
+  ui({ errorMsg: 'Submitting...' });
+});
+```
+
+**Bind primitives:**
+- `bind.text` - Text content
+- `bind.html` - Inner HTML
+- `bind.value` - Input values (with dirty checking)
+- `bind.prop()` - Element properties (disabled, checked, etc.)
+- `bind.classes` - Multiple class toggles
+- `bind.show` - Show/hide elements
+- `bind.attr()` - HTML attributes
+- `bind.toggle()` - Single class toggle
+
+📖 [Full Documentation](./docs/48-binder.md)
+
+### Complete Example: Todo App
+
+Combining all features for a complete reactive UI:
+
+```typescript
+import { h, viewRefs, List, createBinder, bind, refs } from '@doeixd/dom';
+
+// 1. Define component template
+interface TodoRefs {
+  checkbox: HTMLElement;
+  text: HTMLElement;
+  deleteBtn: HTMLElement;
+}
+
+const TodoItem = viewRefs<TodoRefs>(({ refs }) =>
+  h.li({ class: { 'todo-item': true } }, [
+    h.input({ dataRef: 'checkbox', attr: { type: 'checkbox' } }),
+    h.span({ dataRef: 'text' }),
+    h.button({ dataRef: 'deleteBtn' }, ['×'])
+  ])
+);
+
+// 2. Create form with binder
+const form = h.div({ class: { 'todo-app': true } }, [
+  h.input({ dataRef: 'input', attr: { type: 'text', placeholder: 'Add todo...' } }),
+  h.button({ dataRef: 'addBtn' }, ['Add']),
+  h.ul({ dataRef: 'list' })
+]);
+
+const { input, addBtn, list } = refs(form);
+
+const formUI = createBinder({ input, addBtn }, {
+  input: bind.value,
+  addBtn: (el) => bind.prop('disabled', el)
+});
+
+// 3. Create reactive list
+interface Todo {
+  id: number;
+  text: string;
+  done: boolean;
+}
+
+let todos: Todo[] = [];
+
+const todoList = List<Todo>(list, {
+  key: todo => todo.id,
+  render: (todo) => {
+    const { element, refs } = TodoItem();
+    const ui = createBinder(refs, {
+      checkbox: (el) => bind.prop('checked', el),
+      text: bind.text
+    });
+
+    ui({ checkbox: todo.done, text: todo.text });
+
+    refs.checkbox.addEventListener('change', () => {
+      todo.done = (refs.checkbox as HTMLInputElement).checked;
+      todos = [...todos];  // Trigger re-render
+      todoList.set(todos);
+    });
+
+    refs.deleteBtn.onclick = () => {
+      todos = todos.filter(t => t.id !== todo.id);
+      todoList.set(todos);
+    };
+
+    return element;
+  }
+});
+
+// 4. Add todo handler
+addBtn?.addEventListener('click', () => {
+  const text = (input as HTMLInputElement)?.value.trim();
+  if (text) {
+    todos.push({ id: Date.now(), text, done: false });
+    todoList.set(todos);
+    formUI({ input: '' });
+  }
+});
+
+document.body.appendChild(form);
+```
+
+<br />
+
 ## Troubleshooting & Common Patterns
 
 ### Gotchas & Things to Know
