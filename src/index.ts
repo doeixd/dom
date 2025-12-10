@@ -8701,11 +8701,64 @@ export const History = {
 // =============================================================================
 
 /**
+ * Represents a function that can be called either Data-First or Data-Last.
+ */
+interface DualModeFn<D, A extends any[], R> {
+  // Signature 1: Data First (Standard)
+  (data: D, ...args: A): R;
+
+  // Signature 2: Data Last (Inverted)
+  // Uses Variadic Tuple Types to append D to the end of A
+  (...argsThenData: [...A, D]): R;
+}
+
+
+/**
  * A collection of functional programming helpers for composition, currying,
  * and creating point-free logic. Essential for building complex behaviors
  * from small, reusable functions.
  */
 export const Fn = {
+
+/**
+ * Creates a function that accepts data as either the first OR the last argument.
+ * 
+ * @param fn - The original function (must be written as Data-First: (data, ...args) => result)
+ * @param isData - A Type Guard to identify the Data argument at runtime.
+ */
+ makeDataFirstOrLast<D, A extends any[], R>(
+  fn: (data: D, ...args: A) => R,
+  isData: (input: any) => input is D
+): DualModeFn<D, A, R> {
+  
+  // We return a new function that handles the logic
+  return ((...args: any[]): R => {
+    
+    // Runtime Logic: Check if the FIRST argument is Data
+    if (args.length > 0 && isData(args[0])) {
+      // MODE: Data First -> fn(data, ...args)
+      const data = args[0] as D;
+      const rest = args.slice(1) as A;
+      return fn(data, ...rest);
+    } 
+    
+    // Runtime Logic: Check if the LAST argument is Data
+    const lastIndex = args.length - 1;
+    if (lastIndex >= 0 && isData(args[lastIndex])) {
+      // MODE: Data Last -> fn(...args, data)
+      const data = args[lastIndex] as D;
+      const rest = args.slice(0, lastIndex) as A;
+      // We must cast 'rest' to A because runtime slicing is loose
+      return fn(data, ...rest as unknown as A);
+    }
+
+    throw new Error(
+      "Could not determine call signature: Data argument not found at start or end."
+    );
+  }) as DualModeFn<D, A, R>; // Cast implementation to the overloaded interface
+}
+
+ 
   /**
    * (B-Combinator) Chains functions in left-to-right order.
    * `pipe(f, g, h)(x)` is equivalent to `h(g(f(x)))`.
