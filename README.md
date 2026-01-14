@@ -221,6 +221,8 @@ For comprehensive guides on components:
 | `css` | Apply inline styles. | `css(el)({ color: 'red', opacity: '1' })` |
 | `tempStyle` | Apply styles temporarily, returns revert function. | `const revert = tempStyle(el)({ opacity: '0.5' });` |
 | `el` | Create a new element with props and children. | `el('div')({ class:{box:1} })([child])` |
+| `h` | Hyperscript proxy for element creation. | `h.div({ class: { box: true } }, ['Hi'])` |
+| `tags` | Alias for `h` (tag factory). | `tags.button({})(['Click'])` |
 | `html` | Create an element from a template literal. | ```const div = html`<div>${name}</div>`;``` |
 | `htmlMany` | Create a DocumentFragment from HTML. | ```const frag = htmlMany`<li>A</li><li>B</li>`;``` |
 | `createWebComponent` | Register a custom element with defaults. | `createWebComponent(MyEl, { name: 'my-el' })` |
@@ -231,6 +233,7 @@ For comprehensive guides on components:
 | `remove` | Remove an element from the DOM. | `remove(modal)` |
 | `empty` | Remove all children from an element. | `empty(listContainer)` |
 | `wrap` | Wrap an element with another element. | `wrap(img)(figure)` |
+| `mount` | Append and auto-unsubscribe on cleanup. | `mount(parent)(child)` |
 | `clone` | Deep clone a node. | `const copy = clone(template);` |
 | `sanitizeHTMLSimple` | Sanitize HTML by removing dangerous tags and attributes. | `const safe = sanitizeHTMLSimple(userInput);` |
 | `sanitizeHTMLTextOnly` | Extract text content only from HTML. | `const text = sanitizeHTMLTextOnly(html);` |
@@ -265,6 +268,7 @@ For comprehensive guides on components:
 
 | Function | Description | Example |
 | :--- | :--- | :--- |
+| `cls` | Class helpers (add/remove/toggle/etc.). | `cls.add(el)('active')` |
 | `cls.add` | Add one or more CSS classes. | `cls.add(el)('active', 'visible')` |
 | `cls.remove` | Remove one or more CSS classes. | `cls.remove(el)('loading')` |
 | `cls.toggle` | Toggle a class, with optional force boolean. | `cls.toggle(el)('open', isOpen)` |
@@ -318,6 +322,7 @@ For comprehensive guides on components:
 | :--- | :--- | :--- |
 | `refs` | Get all `data-ref` elements as object. | `const {btn, input} = refs(root);` |
 | `groupRefs` | Get grouped `data-ref` elements as arrays. | `const {items} = groupRefs(root);` |
+| `viewRefs` | Create a view with typed refs. | `const view = viewRefs<Refs>((ctx) => ...);` |
 | `component` | Create typed component from refs. | `const c = component<T>('#root');` |
 | `store` | Attach arbitrary data to an element. | `store(el).set('count', 5);` |
 | `batch` | Batch operations on element collection. | `batch(items).addClass('active');` |
@@ -392,16 +397,32 @@ For comprehensive guides on components:
 | `def` | Create hybrid curried/imperative functions. | `const fn = def((el, val) => el.value = val);` |
 | `$` | jQuery-like fluent API wrapper. | `$('.btn').modify({text: 'Hi'}).addClass('active');` |
 | `$$` | Collection wrapper for batch operations. | `$$('button').forEach(b => modify(b)({disabled: false}));` |
+| `bind` | Reactive binding primitives. | `bind.text(el)('Hi')` |
 | `bind.text` | Two-way bind text content. | `bind.text(el, () => count, v => count = v);` |
 | `bind.value` | Two-way bind input value. | `bind.value(input, getter, setter);` |
+| `Input.watchComposed` | Input watcher with IME support. | `Input.watchComposed(input)(handler)` |
 | `bindEvents` | Bind multiple events at once. | `bindEvents(el, {click: h1, input: h2});` |
+| `onClickOutside` | Handle clicks outside a target. | `onClickOutside(menu, close)` |
+| `autoResize` | Auto-resize a textarea. | `autoResize(textarea, { maxHeight: 300 })` |
+| `createUpload` | Dropzone + file picker helper. | `createUpload(zone, { accept: ['image/*'] })` |
+| `createSortable` | Basic sortable list helper. | `createSortable(list, { items: 'li' })` |
+| `draggable` | Make an element draggable. | `draggable(el, { axis: 'y' })` |
+| `createBinder` | Create a typed binder from refs. | `createBinder(refs, schema)` |
 | `binder` | Bind events to refs with schema. | `binder(refs, schema);` |
 | `view` | Create views from HTML strings. | `const v = view('<div></div>');` |
+| `chain` | Apply a list of transforms to an element. | `chain(el, cls.add('active'))` |
+| `exec` | Execute callbacks on an element. | `exec(el, el => console.log(el))` |
+| `createUpdateAfter` | Batch DOM updates after async work. | `createUpdateAfter(el, updater)` |
 | `apply` | Apply setters to state. | `apply(setters)(state);` |
 | `createBus` | Create typed event bus (pub/sub). | `const bus = createBus<Events>();` |
 | `createStore` | Create reactive store. | `const store = createStore({count: 0});` |
+| `createMediaQuery` | Reactive media query helper. | `createMediaQuery({ mobile: '(max-width: 640px)' })` |
 | `defineComponent` | Define a component with lifecycle. | `defineComponent('#app', (ctx) => {...});` |
 | `domCtx` | Create a scoped component context. | `const ctx = domCtx('#root');` |
+| `A11y.announce` | Screen reader announcement. | `A11y.announce('Saved', 'polite')` |
+| `A11y.setExpanded` | Manage aria-expanded/controls. | `A11y.setExpanded(btn, panel)` |
+| `A11y.setSelected` | Manage aria-selected in listbox. | `A11y.setSelected(option, listbox)` |
+| `A11y.roving` | Roving tabindex navigation. | `A11y.roving(toolbar, 'button')` |
 | `mountComponent` | Mount a component instance. | `mountComponent(instance, '#root');` |
 | `Result.ok` | Create success result. | `return Result.ok(value);` |
 | `Result.err` | Create error result. | `return Result.err(error);` |
@@ -434,15 +455,45 @@ The library exports TypeScript types and interfaces for better type safety:
 
 | Type/Interface | Description |
 | :--- | :--- |
-| `ParseSelector<S>` | Infers element type from CSS selector string. |
+| `ParseSelector` | Infers element type from CSS selector string. |
+| `ElementInput` | Element or selector input union. |
+| `SelectorFunction` | Dual-mode selector function signature. |
+| `SVGElementTags` | Supported SVG tag names. |
 | `Unsubscribe` | Cleanup function type returned by event listeners. |
-| `EventMap<T>` | Event map for HTML elements, extensible for custom events. |
-| `ExtractEventDetail<T>` | Extracts detail type from CustomEvent. |
+| `EventMap` | Event map for HTML elements, extensible for custom events. |
+| `ExtractEventDetail` | Extracts detail type from CustomEvent. |
 | `ElementProps` | Properties for creating/modifying elements. |
-| `StrictElementProps<T>` | Element properties with element-specific validation. |
-| `DeepReadonly<T>` | Makes all properties deeply readonly. |
-| `DeepPartial<T>` | Makes all properties deeply partial. |
+| `HElementProps` | Hyperscript element props. |
+| `StrictElementProps` | Element properties with element-specific validation. |
+| `DeepReadonly` | Makes all properties deeply readonly. |
+| `DeepPartial` | Makes all properties deeply partial. |
+
 | `Path` | String or array path for `Obj.get/set`. |
+| `FormSerializeOptions` | Options for `Form.serialize`. |
+| `ClickOutsideOptions` | Options for `onClickOutside`. |
+| `AutoResizeOptions` | Options for `autoResize`. |
+| `UploadOptions` | Options for `createUpload`. |
+| `UploadController` | Return type for `createUpload`. |
+| `DraggableBounds` | Boundaries for draggable. |
+| `DraggableOptions` | Options for `draggable`. |
+| `SortableOptions` | Options for `createSortable`. |
+| `SortableController` | Return type for `createSortable`. |
+| `MediaQueryMap` | Map of media query strings. |
+| `MediaQueryMatches` | Match state for queries. |
+| `MediaQueryController` | Controller from `createMediaQuery`. |
+| `A11yRovingOptions` | Options for `A11y.roving`. |
+| `ListOptions` | List helper configuration. |
+| `BoundList` | Bound list helper type. |
+| `ViewRefsOptions` | Options for `viewRefs`. |
+| `ViewRefsContext` | Context passed to `viewRefs`. |
+| `ViewRefsInstance` | Instance returned by `viewRefs`. |
+| `BindPrimitives` | Binding primitive type map. |
+| `BinderSchema` | Binder schema type. |
+| `InferBinderData` | Infers binder input data. |
+| `EnhancedBinder` | Enhanced binder interface. |
+| `HttpInterceptors` | HTTP interceptors. |
+| `HttpAbortController` | Abortable HTTP result. |
+| `HttpRequestResult` | Promise or abortable HTTP result. |
 | `CreateWebComponentOptions` | Options for `createWebComponent`. |
 | `WithArgMapped` | Result type for `Fn.withArg`. |
 | `WithArgFn` | Type signature for `Fn.withArg`. |
@@ -456,20 +507,20 @@ The library exports TypeScript types and interfaces for better type safety:
 | `FormElement` | Union type for form elements (input, select, textarea). |
 | `QueryValue` | Valid URL query parameter value types. |
 | `QueryParams` | Record of query parameters. |
-| `Ok<T>` | Success result type. |
-| `Err<E>` | Error result type. |
-| `Result<T, E>` | Union of Ok and Err types. |
-| `Setter<T>` | Setter function type. |
-| `EventSchema<R>` | Event schema for binding. |
-| `Refs<K>` | Record of element refs. |
+| `Ok` | Success result type. |
+| `Err` | Error result type. |
+| `Result` | Union of Ok and Err types. |
+| `Setter` | Setter function type. |
+| `EventSchema` | Event schema for binding. |
+| `Refs` | Record of element refs. |
 | `HttpMethod` | HTTP method types. |
 | `HttpStatus` | HTTP status code types. |
 | `HttpRequestInit` | HTTP request configuration. |
-| `HttpResponse<T>` | HTTP response type. |
-| `HttpConfig<H>` | HTTP client configuration. |
+| `HttpResponse` | HTTP response type. |
+| `HttpConfig` | HTTP client configuration. |
 | `ComponentContext` | Component context interface. |
 | `DomContext` | Context type returned by `domCtx`. |
-| `ComponentInstance<API>` | Component instance type. |
+| `ComponentInstance` | Component instance type. |
 
 <br />
 

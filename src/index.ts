@@ -3320,6 +3320,15 @@ export const Params = {
  * };
  * ```
  */
+export interface FormSerializeOptions {
+  /** Use dot-notation to create nested objects. */
+  nested?: boolean;
+  /** Include FileList values from file inputs. */
+  includeFiles?: boolean;
+  /** Include disabled fields (default: false). */
+  includeDisabled?: boolean;
+}
+
 export const Form = {
   /**
    * Serializes form inputs into a plain object.
@@ -3332,10 +3341,17 @@ export const Form = {
    * - Select → string
    * - Textarea → string
    * 
+   * Options:
+   * - `nested`: Supports dot-notation for nested objects
+   * - `includeFiles`: Includes FileList values
+   * - `includeDisabled`: Includes disabled inputs
+   * 
    * Only includes inputs with a `name` attribute.
    * 
    * @param root - The form or container element
+   * @param options - Serialization options
    * @returns Object with field names as keys and values
+
    * 
    * @example
    * ```typescript
@@ -3364,16 +3380,61 @@ export const Form = {
    * });
    * ```
    */
-  serialize: (root: HTMLElement | null) => {
+  serialize: (root: HTMLElement | null, options: FormSerializeOptions = {}) => {
     const data: Record<string, any> = {};
     if (!root) return data;
+
+    const { nested = false, includeFiles = false, includeDisabled = false } = options;
+    const isNumeric = (value: string) => /^\d+$/.test(value);
+
+    const setNested = (target: Record<string, any>, path: string[], value: any) => {
+      let current: any = target;
+      path.forEach((segment, index) => {
+        const isLast = index === path.length - 1;
+        if (isLast) {
+          current[segment] = value;
+          return;
+        }
+
+        const nextSegment = path[index + 1];
+        const shouldBeArray = typeof nextSegment === 'string' && isNumeric(nextSegment);
+
+        if (current[segment] === undefined || typeof current[segment] !== 'object') {
+          current[segment] = shouldBeArray ? [] : {};
+        }
+
+        current = current[segment];
+      });
+    };
+
+    const setValue = (name: string, value: any) => {
+      if (nested) {
+        setNested(data, name.split('.').filter(Boolean), value);
+      } else {
+        data[name] = value;
+      }
+    };
+
     root.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input, select, textarea').forEach(el => {
       if (!el.name) return;
-      if ((el as HTMLInputElement).type === 'checkbox') data[el.name] = (el as HTMLInputElement).checked;
-      else if ((el as HTMLInputElement).type === 'radio') { if ((el as HTMLInputElement).checked) data[el.name] = el.value; }
-      else if ((el as HTMLInputElement).type === 'number') data[el.name] = Number(el.value);
-      else data[el.name] = el.value;
+      if (!includeDisabled && el.disabled) return;
+
+      if (el instanceof HTMLInputElement && el.type === 'file') {
+        if (includeFiles) setValue(el.name, el.files);
+        return;
+      }
+
+      if (el instanceof HTMLInputElement && el.type === 'checkbox') {
+        setValue(el.name, el.checked);
+      } else if (el instanceof HTMLInputElement && el.type === 'radio') {
+        if (el.checked) setValue(el.name, el.value);
+      } else if (el instanceof HTMLInputElement && el.type === 'number') {
+        setValue(el.name, Number(el.value));
+      } else {
+        setValue(el.name, el.value);
+      }
     });
+
     return data;
   },
 
@@ -7700,12 +7761,7 @@ export const $ = <T extends HTMLElement>(target: T | null) => {
      * @returns {Unsubscribe} Function to stop listening
      */
     clickOutside: (handler: () => void) => {
-      if (!target) return () => { };
-      const listener = (e: Event) => {
-        if (target && !target.contains(e.target as Node)) handler();
-      };
-      document.addEventListener('click', listener);
-      return () => document.removeEventListener('click', listener);
+      return onClickOutside(target, () => handler());
     },
 
     /**
@@ -8222,7 +8278,44 @@ export const Input = {
   },
 
   /**
+   * Watches input while respecting IME composition events.
+   * Fires on compositionend or non-composing input.
+   *
+   * @example Input.watchComposed(input)(value => update(value));
+   */
+  watchComposed: (el: FormElement | null) => {
+    return (callback: (val: any, e: Event) => void): Unsubscribe => {
+      if (!el) return () => { };
+      let composing = false;
+
+      const handleCompositionStart = () => {
+        composing = true;
+      };
+
+      const handleCompositionEnd = (e: Event) => {
+        composing = false;
+        callback(Input.get(el), e);
+      };
+
+      const handleInput = (e: Event) => {
+        if (!composing) callback(Input.get(el), e);
+      };
+
+      el.addEventListener('compositionstart', handleCompositionStart);
+      el.addEventListener('compositionend', handleCompositionEnd);
+      el.addEventListener('input', handleInput);
+
+      return () => {
+        el.removeEventListener('compositionstart', handleCompositionStart);
+        el.removeEventListener('compositionend', handleCompositionEnd);
+        el.removeEventListener('input', handleInput);
+      };
+    };
+  },
+
+  /**
    * Watches the 'input' event with a DEBOUNCE.
+
    * Perfect for search bars.
    * 
    * @example Input.watchDebounced(search)(query => api.search(query), 500);
@@ -8270,8 +8363,470 @@ export const Input = {
 };
 
 // =============================================================================
+// 29.5 INPUT EXTRAS
+// =============================================================================
+
+export interface AutoResizeOptions {
+  /** Maximum height before enabling scroll. */
+  maxHeight?: number;
+}
+
+/**
+ * Automatically resizes a textarea to fit its content.
+ *
+ * @param textarea - Target textarea
+ * @param options - Resize options
+ * @returns Cleanup function
+ */
+export const autoResize = (
+  textarea: HTMLTextAreaElement | null,
+  options: AutoResizeOptions = {}
+): Unsubscribe => {
+  if (!textarea) return () => { };
+
+  const { maxHeight } = options;
+  const resize = () => {
+    textarea.style.height = 'auto';
+    const height = textarea.scrollHeight;
+    const nextHeight = maxHeight ? Math.min(height, maxHeight) : height;
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY = maxHeight && height > maxHeight ? 'auto' : 'hidden';
+  };
+
+  resize();
+  textarea.addEventListener('input', resize);
+
+  return () => textarea.removeEventListener('input', resize);
+};
+
+export interface UploadOptions {
+  /** Accepted file types (e.g., ['image/*', '.pdf']). */
+  accept?: string[];
+  /** Maximum file size in bytes. */
+  maxSize?: number;
+  /** Allow multiple file selection. */
+  multiple?: boolean;
+  /** Called when files are selected and validated. */
+  onFiles?: (files: File[]) => void;
+  /** Progress callback (used by optional upload handler). */
+  onProgress?: (file: File, percent: number) => void;
+  /** Called when a file upload completes. */
+  onComplete?: (file: File, response: any) => void;
+  /** Called when a file fails validation or upload. */
+  onError?: (file: File, error: Error) => void;
+  /** Optional upload handler for automatic uploads. */
+  upload?: (file: File, onProgress: (percent: number) => void) => Promise<any>;
+}
+
+export interface UploadController {
+  /** Opens the native file picker. */
+  open: () => void;
+  /** Removes listeners and input element. */
+  destroy: () => void;
+  /** Internal file input element. */
+  input: HTMLInputElement | null;
+}
+
+/**
+ * Creates a drag-and-drop + click file upload controller.
+ *
+ * @param dropzone - Target element or selector
+ * @param options - Upload configuration
+ * @returns Upload controller with open/destroy
+ */
+export const createUpload = (
+  dropzone: HTMLElement | string | null,
+  options: UploadOptions = {}
+): UploadController => {
+  const target = typeof dropzone === 'string' ? find(document)(dropzone) : dropzone;
+  if (!target) {
+    return {
+      open: () => { },
+      destroy: () => { },
+      input: null
+    };
+  }
+
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.multiple = !!options.multiple;
+  if (options.accept?.length) {
+    input.accept = options.accept.join(',');
+  }
+  input.style.display = 'none';
+  target.appendChild(input);
+
+  const acceptsFile = (file: File) => {
+    if (!options.accept || options.accept.length === 0) return true;
+    return options.accept.some((rule) => {
+      if (rule.endsWith('/*')) {
+        const prefix = rule.replace('/*', '');
+        return file.type.startsWith(prefix);
+      }
+      if (rule.startsWith('.')) {
+        return file.name.toLowerCase().endsWith(rule.toLowerCase());
+      }
+      return file.type === rule;
+    });
+  };
+
+  const handleFiles = async (files: File[]) => {
+    const validFiles: File[] = [];
+
+    files.forEach((file) => {
+      if (!acceptsFile(file)) {
+        options.onError?.(file, new Error('File type not accepted.'));
+        return;
+      }
+      if (options.maxSize && file.size > options.maxSize) {
+        options.onError?.(file, new Error('File exceeds maximum size.'));
+        return;
+      }
+      validFiles.push(file);
+    });
+
+    if (validFiles.length === 0) return;
+    options.onFiles?.(validFiles);
+
+    if (options.upload) {
+      for (const file of validFiles) {
+        try {
+          const response = await options.upload(file, (percent) => {
+            options.onProgress?.(file, percent);
+          });
+          options.onComplete?.(file, response);
+        } catch (error) {
+          options.onError?.(
+            file,
+            error instanceof Error ? error : new Error(String(error))
+          );
+        }
+      }
+    }
+  };
+
+  const handleInputChange = () => {
+    const files = input.files ? Array.from(input.files) : [];
+    handleFiles(files);
+    input.value = '';
+  };
+
+  const handleDragOver = (e: DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e: DragEvent) => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer?.files ?? []);
+    handleFiles(files);
+  };
+
+  const handleClick = () => input.click();
+
+  input.addEventListener('change', handleInputChange);
+  target.addEventListener('click', handleClick);
+  target.addEventListener('dragover', handleDragOver);
+  target.addEventListener('drop', handleDrop);
+
+  return {
+    open: () => input.click(),
+    destroy: () => {
+      input.removeEventListener('change', handleInputChange);
+      target.removeEventListener('click', handleClick);
+      target.removeEventListener('dragover', handleDragOver);
+      target.removeEventListener('drop', handleDrop);
+      input.remove();
+    },
+    input
+  };
+};
+
+export interface DraggableBounds {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+export interface DraggableOptions {
+  /** Bounds for dragging (element, selector, or rect). */
+  bounds?: HTMLElement | DOMRect | DraggableBounds | string;
+  /** Axis constraint (default: both). */
+  axis?: 'x' | 'y' | 'both';
+  /** Drag callback with current translation. */
+  onDrag?: (pos: { x: number; y: number }) => void;
+  /** Called when dragging ends. */
+  onDrop?: (pos: { x: number; y: number }) => void;
+}
+
+/**
+ * Makes an element draggable with optional bounds.
+ *
+ * @param element - Element to drag
+ * @param options - Drag behavior options
+ * @returns Cleanup function
+ */
+export const draggable = (
+  element: HTMLElement | null,
+  options: DraggableOptions = {}
+): Unsubscribe => {
+  if (!element) return () => { };
+
+  const axis = options.axis ?? 'both';
+  let isDragging = false;
+  let startX = 0;
+  let startY = 0;
+  let currentX = 0;
+  let currentY = 0;
+  let originX = 0;
+  let originY = 0;
+  let boundsRect: DOMRect | DraggableBounds | null = null;
+  let startRect: DOMRect | null = null;
+
+  const resolveBounds = (): DOMRect | DraggableBounds | null => {
+    if (!options.bounds) return null;
+    if (typeof options.bounds === 'string') {
+      const el = find(document)(options.bounds);
+      return el ? el.getBoundingClientRect() : null;
+    }
+    if (options.bounds instanceof HTMLElement) {
+      return options.bounds.getBoundingClientRect();
+    }
+    if (options.bounds instanceof DOMRect) {
+      return options.bounds;
+    }
+    return options.bounds;
+  };
+
+  const applyTransform = (x: number, y: number) => {
+    element.style.transform = `translate(${x}px, ${y}px)`;
+  };
+
+  const handlePointerMove = (e: PointerEvent) => {
+    if (!isDragging) return;
+
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    let nextX = axis === 'y' ? originX : originX + dx;
+    let nextY = axis === 'x' ? originY : originY + dy;
+
+    if (boundsRect && startRect) {
+      const minX = boundsRect.left - startRect.left;
+      const maxX = boundsRect.right - startRect.right;
+      const minY = boundsRect.top - startRect.top;
+      const maxY = boundsRect.bottom - startRect.bottom;
+
+      if (axis !== 'y') nextX = Math.min(Math.max(nextX, minX), maxX);
+      if (axis !== 'x') nextY = Math.min(Math.max(nextY, minY), maxY);
+    }
+
+    currentX = nextX;
+    currentY = nextY;
+    applyTransform(currentX, currentY);
+    options.onDrag?.({ x: currentX, y: currentY });
+  };
+
+  const handlePointerUp = () => {
+    if (!isDragging) return;
+    isDragging = false;
+    document.removeEventListener('pointermove', handlePointerMove);
+    document.removeEventListener('pointerup', handlePointerUp);
+    options.onDrop?.({ x: currentX, y: currentY });
+  };
+
+  const handlePointerDown = (e: PointerEvent) => {
+    if (e.button !== 0) return;
+    isDragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    originX = currentX;
+    originY = currentY;
+    boundsRect = resolveBounds();
+    startRect = element.getBoundingClientRect();
+
+    element.setPointerCapture?.(e.pointerId);
+    document.addEventListener('pointermove', handlePointerMove);
+    document.addEventListener('pointerup', handlePointerUp);
+  };
+
+  element.addEventListener('pointerdown', handlePointerDown);
+
+  return () => {
+    element.removeEventListener('pointerdown', handlePointerDown);
+    document.removeEventListener('pointermove', handlePointerMove);
+    document.removeEventListener('pointerup', handlePointerUp);
+  };
+};
+
+export interface SortableOptions {
+  /** Selector for sortable items within the container. */
+  items: string;
+  /** Optional drag handle selector. */
+  handle?: string;
+  /** Called when items are reordered. */
+  onReorder?: (fromIndex: number, toIndex: number) => void;
+}
+
+export interface SortableController {
+  /** Refreshes item bindings (useful when DOM changes). */
+  refresh: () => void;
+  /** Removes all listeners. */
+  destroy: () => void;
+}
+
+/**
+ * Enables basic sortable reordering for a list.
+ *
+ * @param container - Container element
+ * @param options - Sortable options
+ * @returns Sortable controller
+ */
+export const createSortable = (
+  container: HTMLElement | null,
+  options: SortableOptions
+): SortableController => {
+  if (!container) {
+    return {
+      refresh: () => { },
+      destroy: () => { }
+    };
+  }
+
+  const { items, handle, onReorder } = options;
+  let dragging: HTMLElement | null = null;
+  let fromIndex = -1;
+
+  const getItems = () => Array.from(container.querySelectorAll<HTMLElement>(items));
+
+  const onDragStart = (e: DragEvent) => {
+    const target = e.currentTarget as HTMLElement;
+    if (handle && !(e.target as HTMLElement | null)?.closest(handle)) {
+      e.preventDefault();
+      return;
+    }
+    dragging = target;
+    fromIndex = getItems().indexOf(target);
+    e.dataTransfer?.setData('text/plain', '');
+  };
+
+  const onDragEnd = () => {
+    if (!dragging) return;
+    const toIndex = getItems().indexOf(dragging);
+    if (fromIndex !== -1 && toIndex !== -1 && fromIndex !== toIndex) {
+      onReorder?.(fromIndex, toIndex);
+    }
+    dragging = null;
+    fromIndex = -1;
+  };
+
+  const onDragOver = (e: DragEvent) => {
+    e.preventDefault();
+    if (!dragging) return;
+    const target = (e.target as HTMLElement | null)?.closest(items) as HTMLElement | null;
+    if (!target || target === dragging) return;
+
+    const currentItems = getItems();
+    const draggingIndex = currentItems.indexOf(dragging);
+    const targetIndex = currentItems.indexOf(target);
+
+    if (draggingIndex < targetIndex) {
+      container.insertBefore(dragging, target.nextSibling);
+    } else {
+      container.insertBefore(dragging, target);
+    }
+  };
+
+  const onDrop = (e: DragEvent) => {
+    e.preventDefault();
+  };
+
+  const bindItems = () => {
+    getItems().forEach((item) => {
+      item.draggable = true;
+      item.addEventListener('dragstart', onDragStart);
+      item.addEventListener('dragend', onDragEnd);
+    });
+  };
+
+  const unbindItems = () => {
+    getItems().forEach((item) => {
+      item.removeEventListener('dragstart', onDragStart);
+      item.removeEventListener('dragend', onDragEnd);
+    });
+  };
+
+  bindItems();
+  container.addEventListener('dragover', onDragOver);
+  container.addEventListener('drop', onDrop);
+
+  return {
+    refresh: () => {
+      unbindItems();
+      bindItems();
+    },
+    destroy: () => {
+      unbindItems();
+      container.removeEventListener('dragover', onDragOver);
+      container.removeEventListener('drop', onDrop);
+    }
+  };
+};
+
+// =============================================================================
 // 30. EVENT HELPERS
 // =============================================================================
+
+export interface ClickOutsideOptions {
+  /** Elements/selectors to ignore. */
+  ignore?: Array<ElementInput>;
+  /** Use capture phase (default: true). */
+  capture?: boolean;
+}
+
+/**
+ * Runs a handler when a click occurs outside of a target element.
+ *
+ * @param target - Element or selector to watch
+ * @param handler - Callback to run on outside click
+ * @param options - Ignore list and capture flag
+ * @returns Cleanup function
+ */
+export const onClickOutside = (
+  target: ElementInput,
+  handler: (event: Event) => void,
+  options: ClickOutsideOptions = {}
+): Unsubscribe => {
+  const resolve = (input: ElementInput): Element | null => {
+    if (typeof input === 'function') return input();
+    if (typeof input === 'string') return find(document)(input);
+    return input;
+  };
+
+  const root = resolve(target);
+  if (!root) return () => { };
+
+  const ignore = (options.ignore ?? [])
+    .map(resolve)
+    .filter((el): el is Element => !!el);
+
+  const capture = options.capture ?? true;
+
+  const listener = (event: Event) => {
+    const path = (event as any).composedPath?.() as EventTarget[] | undefined;
+    const eventTarget = event.target as Node | null;
+    const isInside = path ? path.includes(root) : !!eventTarget && root.contains(eventTarget);
+    if (isInside) return;
+
+    const isIgnored = ignore.some((el) =>
+      path ? path.includes(el) : !!eventTarget && el.contains(eventTarget)
+    );
+
+    if (!isIgnored) handler(event);
+  };
+
+  document.addEventListener('pointerdown', listener, { capture });
+  return () => document.removeEventListener('pointerdown', listener, { capture });
+};
 
 export const Evt = {
   /**
@@ -8333,8 +8888,91 @@ export const Evt = {
 };
 
 // =============================================================================
-// 31. KEYBOARD & FOCUS INTERACTIONS
+// 31. MEDIA QUERIES
 // =============================================================================
+
+export type MediaQueryMap = Record<string, string>;
+
+export type MediaQueryMatches<T extends MediaQueryMap> = {
+  [K in keyof T]: boolean;
+};
+
+export interface MediaQueryController<T extends MediaQueryMap> {
+  /** Current match state for each query. */
+  matches: MediaQueryMatches<T>;
+  /** Subscribe to a query key. */
+  on: (key: keyof T, handler: (matches: boolean) => void) => Unsubscribe;
+  /** Remove all listeners. */
+  destroy: () => void;
+}
+
+/**
+ * Creates a reactive media query controller.
+ *
+ * @param queries - Map of query names to media queries
+ * @returns Controller with matches and subscriptions
+ */
+export const createMediaQuery = <T extends MediaQueryMap>(
+  queries: T
+): MediaQueryController<T> => {
+  if (typeof window === 'undefined' || typeof window.matchMedia === 'undefined') {
+    return {
+      matches: {} as MediaQueryMatches<T>,
+      on: () => () => { },
+      destroy: () => { }
+    };
+  }
+
+  const matches = {} as MediaQueryMatches<T>;
+  const listeners: Array<() => void> = [];
+  const mqlMap = new Map<keyof T, MediaQueryList>();
+
+  (Object.keys(queries) as Array<keyof T>).forEach((key) => {
+    const query = queries[key];
+    const mql = window.matchMedia(query);
+    matches[key] = mql.matches;
+    mqlMap.set(key, mql);
+  });
+
+  const on = (key: keyof T, handler: (match: boolean) => void) => {
+    const mql = mqlMap.get(key);
+    if (!mql) return () => { };
+
+    const listener = (e: MediaQueryListEvent) => {
+      matches[key] = e.matches;
+      handler(e.matches);
+    };
+
+    matches[key] = mql.matches;
+    handler(mql.matches);
+
+    if ('addEventListener' in mql) {
+      mql.addEventListener('change', listener);
+      listeners.push(() => mql.removeEventListener('change', listener));
+      return () => mql.removeEventListener('change', listener);
+    }
+
+    const legacyListener = (e: MediaQueryListEvent) => listener(e);
+    (mql as any).addListener(legacyListener);
+    const cleanup = () => (mql as any).removeListener(legacyListener);
+    listeners.push(cleanup);
+    return cleanup;
+  };
+
+  return {
+    matches,
+    on,
+    destroy: () => {
+      listeners.forEach((cleanup) => cleanup());
+      listeners.length = 0;
+    }
+  };
+};
+
+// =============================================================================
+// 32. KEYBOARD & FOCUS INTERACTIONS
+// =============================================================================
+
 
 export const Key = {
   /**
@@ -8444,7 +9082,216 @@ export const Focus = {
 };
 
 // =============================================================================
-// 32. TEXT QUERYING
+// 33. ACCESSIBILITY
+// =============================================================================
+
+export interface A11yRovingOptions {
+  /** Arrow key axis to respond to. */
+  axis?: 'horizontal' | 'vertical' | 'both';
+  /** Loop focus from end to start. */
+  loop?: boolean;
+  /** Initial active index or element. */
+  initial?: number | HTMLElement;
+}
+
+export const A11y = (() => {
+  let liveRegion: HTMLElement | null = null;
+
+  const ensureLiveRegion = () => {
+    if (typeof document === 'undefined' || !document.body) return null;
+    if (!liveRegion || !document.body.contains(liveRegion)) {
+      liveRegion = document.createElement('div');
+      liveRegion.setAttribute('aria-live', 'polite');
+      liveRegion.setAttribute('aria-atomic', 'true');
+      liveRegion.setAttribute('role', 'status');
+      liveRegion.style.position = 'absolute';
+      liveRegion.style.width = '1px';
+      liveRegion.style.height = '1px';
+      liveRegion.style.margin = '-1px';
+      liveRegion.style.padding = '0';
+      liveRegion.style.border = '0';
+      liveRegion.style.overflow = 'hidden';
+      liveRegion.style.clip = 'rect(0 0 0 0)';
+      liveRegion.style.clipPath = 'inset(50%)';
+      liveRegion.style.whiteSpace = 'nowrap';
+      document.body.appendChild(liveRegion);
+    }
+    return liveRegion;
+  };
+
+  const resolve = (input: ElementInput): HTMLElement | null => {
+    if (typeof input === 'function') return input() as HTMLElement | null;
+    if (typeof input === 'string') return find(document)(input) as HTMLElement | null;
+    return input as HTMLElement | null;
+  };
+
+  return {
+    /**
+     * Announces a message to screen readers.
+     *
+     * @param message - Message to announce
+     * @param politeness - 'polite' or 'assertive'
+     */
+    announce: (message: string, politeness: 'polite' | 'assertive' = 'polite') => {
+      const region = ensureLiveRegion();
+      if (!region) return;
+      region.setAttribute('aria-live', politeness);
+      region.setAttribute('role', politeness === 'assertive' ? 'alert' : 'status');
+      region.textContent = '';
+      const announceNow = () => {
+        region.textContent = message;
+      };
+      if (typeof requestAnimationFrame !== 'undefined') {
+        requestAnimationFrame(announceNow);
+      } else {
+        setTimeout(announceNow, 0);
+      }
+    },
+
+    /**
+     * Sets aria-expanded and aria-controls on a trigger/panel pair.
+     *
+     * @param triggerInput - Trigger element or selector
+     * @param panelInput - Panel element or selector
+     * @param expanded - Optional expanded state (defaults to toggle)
+     * @returns Final expanded state
+     */
+    setExpanded: (
+      triggerInput: ElementInput,
+      panelInput: ElementInput,
+      expanded?: boolean
+    ) => {
+      const trigger = resolve(triggerInput);
+      const panel = resolve(panelInput);
+      if (!trigger || !panel) return null;
+
+      const current = trigger.getAttribute('aria-expanded') === 'true';
+      const next = expanded ?? !current;
+      const panelId = panel.id || `panel-${Math.random().toString(36).slice(2, 9)}`;
+      panel.id = panelId;
+      trigger.setAttribute('aria-controls', panelId);
+      trigger.setAttribute('aria-expanded', String(next));
+      return next;
+    },
+
+    /**
+     * Sets aria-selected for an option and clears siblings within a listbox.
+     *
+     * @param optionInput - Option element or selector
+     * @param listboxInput - Optional listbox container
+     * @param selected - Selected state (default: true)
+     */
+    setSelected: (
+      optionInput: ElementInput,
+      listboxInput?: ElementInput,
+      selected: boolean = true
+    ) => {
+      const option = resolve(optionInput);
+      if (!option) return null;
+
+      const listbox = listboxInput ? resolve(listboxInput) : null;
+      if (listbox) {
+        listbox.querySelectorAll<HTMLElement>('[aria-selected="true"]').forEach((el) => {
+          if (el !== option) {
+            el.setAttribute('aria-selected', 'false');
+          }
+        });
+      }
+
+      option.setAttribute('aria-selected', String(selected));
+      return selected;
+    },
+
+    /**
+     * Creates roving tabindex behavior for composite widgets.
+     *
+     * @param root - Widget root element
+     * @param selector - Selector for focusable items
+     * @param options - Roving options
+     * @returns Cleanup function
+     */
+    roving: (
+      root: HTMLElement | null,
+      selector: string,
+      options: A11yRovingOptions = {}
+    ): Unsubscribe => {
+      if (!root) return () => { };
+
+      const items = Array.from(root.querySelectorAll<HTMLElement>(selector));
+      if (items.length === 0) return () => { };
+
+      const axis = options.axis ?? 'both';
+      const loop = options.loop ?? true;
+
+      const resolveInitial = () => {
+        if (typeof options.initial === 'number') {
+          return Math.min(Math.max(options.initial, 0), items.length - 1);
+        }
+        if (options.initial instanceof HTMLElement) {
+          const idx = items.indexOf(options.initial);
+          if (idx >= 0) return idx;
+        }
+        const existing = items.findIndex((item) => item.tabIndex === 0);
+        return existing >= 0 ? existing : 0;
+      };
+
+      let currentIndex = resolveInitial();
+
+      const setActive = (index: number, focusItem: boolean) => {
+        currentIndex = index;
+        items.forEach((item, i) => {
+          item.tabIndex = i === index ? 0 : -1;
+        });
+        if (focusItem) {
+          items[index]?.focus();
+        }
+      };
+
+      setActive(currentIndex, false);
+
+      const handleKey = (e: KeyboardEvent) => {
+        const key = e.key;
+        const isHorizontal = axis === 'horizontal' || axis === 'both';
+        const isVertical = axis === 'vertical' || axis === 'both';
+
+        let nextIndex = currentIndex;
+
+        if (key === 'Home') {
+          nextIndex = 0;
+        } else if (key === 'End') {
+          nextIndex = items.length - 1;
+        } else if (isHorizontal && key === 'ArrowRight') {
+          nextIndex = currentIndex + 1;
+        } else if (isHorizontal && key === 'ArrowLeft') {
+          nextIndex = currentIndex - 1;
+        } else if (isVertical && key === 'ArrowDown') {
+          nextIndex = currentIndex + 1;
+        } else if (isVertical && key === 'ArrowUp') {
+          nextIndex = currentIndex - 1;
+        } else {
+          return;
+        }
+
+        e.preventDefault();
+
+        if (loop) {
+          if (nextIndex < 0) nextIndex = items.length - 1;
+          if (nextIndex >= items.length) nextIndex = 0;
+        } else {
+          nextIndex = Math.min(Math.max(nextIndex, 0), items.length - 1);
+        }
+
+        setActive(nextIndex, true);
+      };
+
+      root.addEventListener('keydown', handleKey);
+      return () => root.removeEventListener('keydown', handleKey);
+    }
+  };
+})();
+
+// =============================================================================
+// 34. TEXT QUERYING
 // =============================================================================
 
 export const Text = {
@@ -11044,6 +11891,8 @@ export interface HttpRequestInit extends Omit<RequestInit, 'body'> {
   retryDelay?: number;
   /** Transform response before returning */
   transform?: (data: any) => any;
+  /** Enable abortable requests (returns promise + abort). */
+  abortable?: boolean;
 }
 
 /**
@@ -11074,6 +11923,18 @@ export interface HttpResponse<T = any> {
 }
 
 /**
+ * Optional interceptor hooks for HTTP clients.
+ */
+export interface HttpInterceptors {
+  /** Runs before request execution. */
+  request?: (init: HttpRequestInit) => HttpRequestInit | Promise<HttpRequestInit>;
+  /** Runs after response creation (for both ok and error responses). */
+  response?: <T = any>(res: HttpResponse<T>) => HttpResponse<T> | Promise<HttpResponse<T>>;
+  /** Runs when response is not ok or network failure occurs. */
+  error?: <T = any>(res: HttpResponse<T>) => HttpResponse<T> | Promise<HttpResponse<T>>;
+}
+
+/**
  * HTTP client configuration.
  * Defines defaults for all requests made by this client.
  * 
@@ -11090,11 +11951,21 @@ export interface HttpConfig<H extends string = string> {
   retries?: number;
   /** Delay between retries */
   retryDelay?: number;
-  /** Request interceptor (runs before fetch) */
+  /** Request interceptor (runs before fetch). */
   interceptRequest?: (init: HttpRequestInit) => HttpRequestInit | Promise<HttpRequestInit>;
-  /** Response interceptor (runs after fetch) */
+  /** Response interceptor (runs after fetch). */
   interceptResponse?: <T = any>(res: HttpResponse<T>) => HttpResponse<T> | Promise<HttpResponse<T>>;
+  /** Interceptors grouped by lifecycle stage. */
+  interceptors?: HttpInterceptors;
 }
+
+export type HttpAbortController<T = any> = {
+  promise: Promise<HttpResponse<T>>;
+  abort: () => void;
+};
+
+export type HttpRequestResult<T = any> = Promise<HttpResponse<T>> | HttpAbortController<T>;
+
 
 /**
  * Merges two header objects with type safety.
@@ -11306,6 +12177,9 @@ export const Http = {
    * 
    * Use this for applications that need centralized configuration, interceptors,
    * or per-client defaults (baseURL, timeout, retries, custom headers).
+   * Supports grouped interceptors (`interceptors.request/response/error`) and
+   * per-request abort controls via `abortable: true`.
+
    * 
    * For simple one-off requests, use the static methods: Http.get, Http.post, etc.
    * 
@@ -11333,25 +12207,51 @@ export const Http = {
    * ```
    */
   create: <H extends string = string>(config: HttpConfig<H> = {}) => {
-    const {
-      baseURL: defaultBaseURL,
-      headers: defaultHeaders,
-      timeout: defaultTimeout = 0,
-      retries: defaultRetries = 0,
-      retryDelay: defaultRetryDelay = 1000,
-      interceptRequest,
-      interceptResponse
-    } = config;
+      const {
+        baseURL: defaultBaseURL,
+        headers: defaultHeaders,
+        timeout: defaultTimeout = 0,
+        retries: defaultRetries = 0,
+        retryDelay: defaultRetryDelay = 1000,
+        interceptRequest,
+        interceptResponse,
+        interceptors
+      } = config;
 
-    /**
-     * Executes an HTTP request.
-     * @internal
-     */
-    const _request = async <T = any>(
+
+      const applyRequestInterceptors = async (init: HttpRequestInit) => {
+        let nextInit = init;
+        if (interceptRequest) {
+          nextInit = await interceptRequest(nextInit);
+        }
+        if (interceptors?.request) {
+          nextInit = await interceptors.request(nextInit);
+        }
+        return nextInit;
+      };
+
+      const applyResponseInterceptors = async <T = any>(res: HttpResponse<T>) => {
+        let nextRes = interceptResponse ? await interceptResponse(res) : res;
+        if (interceptors?.response) {
+          nextRes = await interceptors.response(nextRes);
+        }
+        if (!nextRes.ok && interceptors?.error) {
+          nextRes = await interceptors.error(nextRes);
+        }
+        return nextRes;
+      };
+
+      /**
+       * Executes an HTTP request.
+       * @internal
+       */
+      const _request = async <T = any>(
+
       method: HttpMethod,
       path: string,
       init: HttpRequestInit = {}
     ): Promise<HttpResponse<T>> => {
+      const requestInit = await applyRequestInterceptors(init);
       const {
         body,
         baseURL = defaultBaseURL,
@@ -11360,8 +12260,9 @@ export const Http = {
         retries = defaultRetries,
         retryDelay = defaultRetryDelay,
         transform,
+        abortable: _abortable,
         ...restInit
-      } = init;
+      } = requestInit;
 
       // Merge headers (default + request-specific)
       const headers = _mergeHeaders(
@@ -11375,7 +12276,7 @@ export const Http = {
       }
 
       // Build fetch init
-      let fetchInit: any = {
+      const fetchInit: RequestInit = {
         ...restInit,
         method,
         headers
@@ -11386,14 +12287,9 @@ export const Http = {
         fetchInit.body = _encodeBody(body);
       }
 
-      // Run request interceptor
-      if (interceptRequest) {
-        const intercepted = await interceptRequest(init);
-        fetchInit = { ...fetchInit, ...intercepted } as any;
-      }
-
       // Build full URL with params
       const url = _buildUrl(path, baseURL, params);
+
 
       // Execute fetch with retry logic
       let response: globalThis.Response;
@@ -11408,8 +12304,9 @@ export const Http = {
           error: error instanceof Error ? error : new Error(String(error)),
           response: null as any
         };
-        return interceptResponse ? await interceptResponse(httpRes) : httpRes;
+        return applyResponseInterceptors(httpRes);
       }
+
 
       // Parse response data
       let data: T | null = null;
@@ -11430,7 +12327,26 @@ export const Http = {
       };
 
       // Run response interceptor
-      return interceptResponse ? await interceptResponse(httpRes) : httpRes;
+      return applyResponseInterceptors(httpRes);
+    };
+
+    const requestWithAbort = <T = any>(
+      method: HttpMethod,
+      path: string,
+      init: HttpRequestInit = {}
+    ): HttpRequestResult<T> => {
+      const { abortable, ...restInit } = init;
+      if (abortable) {
+        const controller = new AbortController();
+        const signal = restInit.signal ?? controller.signal;
+        const promise = _request<T>(method, path, { ...restInit, signal });
+        return {
+          promise,
+          abort: () => controller.abort()
+        };
+      }
+
+      return _request<T>(method, path, restInit);
     };
 
     return {
@@ -11444,9 +12360,12 @@ export const Http = {
        * @example
        * ```typescript
        * const res = await http.get<User>('/users/123')({});
+       *
+       * const { promise, abort } = http.get<User>('/users/123')({ abortable: true });
+       * abort();
        * ```
        */
-      get: <T = any>(path: string) => (init: HttpRequestInit = {}) => _request<T>('GET', path, init),
+      get: <T = any>(path: string) => (init: HttpRequestInit = {}) => requestWithAbort<T>('GET', path, init),
 
       /**
        * Performs a POST request.
@@ -11462,7 +12381,7 @@ export const Http = {
        * });
        * ```
        */
-      post: <T = any>(path: string) => (init: HttpRequestInit = {}) => _request<T>('POST', path, init),
+      post: <T = any>(path: string) => (init: HttpRequestInit = {}) => requestWithAbort<T>('POST', path, init),
 
       /**
        * Performs a PUT request.
@@ -11471,7 +12390,7 @@ export const Http = {
        * @param path - Endpoint path
        * @returns A curried function that accepts request config with body
        */
-      put: <T = any>(path: string) => (init: HttpRequestInit = {}) => _request<T>('PUT', path, init),
+      put: <T = any>(path: string) => (init: HttpRequestInit = {}) => requestWithAbort<T>('PUT', path, init),
 
       /**
        * Performs a DELETE request.
@@ -11480,7 +12399,7 @@ export const Http = {
        * @param path - Endpoint path
        * @returns A curried function that accepts request config
        */
-      delete: <T = any>(path: string) => (init: HttpRequestInit = {}) => _request<T>('DELETE', path, init),
+      delete: <T = any>(path: string) => (init: HttpRequestInit = {}) => requestWithAbort<T>('DELETE', path, init),
 
       /**
        * Performs a PATCH request.
@@ -11489,7 +12408,7 @@ export const Http = {
        * @param path - Endpoint path
        * @returns A curried function that accepts request config with body
        */
-      patch: <T = any>(path: string) => (init: HttpRequestInit = {}) => _request<T>('PATCH', path, init),
+      patch: <T = any>(path: string) => (init: HttpRequestInit = {}) => requestWithAbort<T>('PATCH', path, init),
 
       /**
        * Checks if an HTTP response is successful (2xx).
