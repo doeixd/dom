@@ -1,5 +1,5 @@
 /**
- * fdom (Functional DOM) - v2.0.0
+ * @doeixd/dom
  * ==========================================
  * A production-grade, target-first, type-safe DOM library.
  *
@@ -76,6 +76,21 @@
  * ```
  */
 export type ParseSelector<S extends string> = S extends keyof HTMLElementTagNameMap ? HTMLElementTagNameMap[S] : S extends keyof SVGElementTagNameMap ? SVGElementTagNameMap[S] : S extends `#${string}` ? HTMLElement : S extends `.${string}` ? HTMLElement : HTMLElement;
+/**
+ * Input that can be an element, selector string, function returning element, or null.
+ * Used by selector-enabled utilities to accept flexible input types.
+ */
+export type ElementInput<S extends string = string> = ParseSelector<S> | S | (() => ParseSelector<S> | null) | null;
+/**
+ * Function signature for selector-enabled utilities with dual-mode support.
+ * Supports both immediate execution and curried application.
+ */
+export type SelectorFunction<_T extends HTMLElement, A extends any[], R> = {
+    /** Immediate mode: all arguments provided at once */
+    <S extends string>(input: ElementInput<S>, ...args: A): R;
+    /** Curried mode: input provided first, returns function accepting remaining args */
+    <S extends string>(input: ElementInput<S>): (...args: A) => R;
+};
 /**
  * A cleanup/unsubscribe function returned by event listeners and subscriptions.
  *
@@ -192,6 +207,192 @@ export type DeepReadonly<T> = {
 export type DeepPartial<T> = {
     [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
 };
+/**
+ * SVG element tag names that require special namespace handling in h() proxy.
+ */
+export type SVGElementTags = 'svg' | 'g' | 'path' | 'circle' | 'rect' | 'line' | 'polygon' | 'polyline' | 'ellipse' | 'text' | 'tspan' | 'defs' | 'clipPath' | 'linearGradient' | 'radialGradient' | 'stop' | 'mask' | 'pattern' | 'marker' | 'symbol' | 'use' | 'image' | 'foreignObject';
+/**
+ * Extended ElementProps that includes dataRef support for h() proxy.
+ *
+ * @example
+ * ```typescript
+ * const props: HElementProps = {
+ *   class: { active: true },
+ *   dataRef: 'myElement'  // Will set data-ref="myElement"
+ * };
+ * ```
+ */
+export interface HElementProps extends ElementProps {
+    /** Reference name for element extraction via refs() */
+    dataRef?: string;
+}
+/**
+ * Options for configuring a List instance.
+ *
+ * @template T - The data item type
+ *
+ * @example
+ * ```typescript
+ * // Simple list (default blow-away mode)
+ * const options: ListOptions<string> = {
+ *   render: (item) => h.li({}, [item])
+ * };
+ *
+ * // Keyed list (efficient diffing)
+ * const options: ListOptions<User> = {
+ *   key: user => user.id,
+ *   render: (user) => h.li({}, [user.name]),
+ *   update: (el, user) => { el.textContent = user.name; }
+ * };
+ * ```
+ */
+export interface ListOptions<T> {
+    /** Function to render each item to an element (required) */
+    render: (item: T, index: number) => HTMLElement;
+    /** Optional key function - if provided, enables keyed reconciliation */
+    key?: (item: T) => string | number;
+    /** Optional update function for efficient keyed updates */
+    update?: (element: HTMLElement, item: T, index: number) => void;
+    /** Optional lifecycle hooks */
+    onRemove?: (element: HTMLElement, item: T) => void;
+    onAdd?: (element: HTMLElement, item: T) => void;
+    /**
+     * Optional custom reconciliation function for full control.
+     * When provided, this function is responsible for all DOM updates.
+     *
+     * @example
+     * ```typescript
+     * // Use morphdom for custom reconciliation
+     * reconcile: (oldItems, newItems, container, renderFn) => {
+     *   const newHtml = newItems.map(renderFn).map(el => el.outerHTML).join('');
+     *   morphdom(container, '<div>' + newHtml + '</div>');
+     * }
+     * ```
+     */
+    reconcile?: (oldItems: T[], newItems: T[], container: HTMLElement, renderFn: (item: T, index: number) => HTMLElement) => void;
+}
+/**
+ * Bound list instance with reactive update methods.
+ *
+ * @template T - The data item type
+ */
+export interface BoundList<T> {
+    /** Replace entire list with new items */
+    set(items: T[]): void;
+    /** Append items to end of list */
+    append(items: T[]): void;
+    /** Prepend items to start of list */
+    prepend(items: T[]): void;
+    /** Insert items at specific index */
+    insert(index: number, items: T[]): void;
+    /** Remove items matching predicate */
+    remove(predicate: (item: T) => boolean): void;
+    /** Update items matching predicate */
+    update(predicate: (item: T) => boolean, updater: (item: T) => T): void;
+    /** Clear all items */
+    clear(): void;
+    /** Get current items array (readonly) */
+    items(): readonly T[];
+    /** Get current elements array (readonly) */
+    elements(): readonly HTMLElement[];
+    /** Destroy the list and cleanup */
+    destroy(): void;
+}
+/**
+ * Options for configuring a viewRefs template instance.
+ */
+export interface ViewRefsOptions {
+    /** Optional root element class names */
+    className?: string | string[];
+    /** Optional root element ID */
+    id?: string;
+    /** Optional initial properties for root element */
+    props?: ElementProps;
+}
+/**
+ * Context passed to viewRefs template factory.
+ *
+ * @template R - The refs shape
+ */
+export interface ViewRefsContext<R extends Record<string, HTMLElement>> {
+    /** Extracted refs object (populated after template execution) */
+    refs: R;
+}
+/**
+ * Instance returned by viewRefs factory.
+ *
+ * @template R - The refs shape
+ */
+export interface ViewRefsInstance<R extends Record<string, HTMLElement>> {
+    /** The root element */
+    element: HTMLElement;
+    /** Typed refs object */
+    refs: R;
+    /** Update root element properties */
+    update(props: ElementProps): void;
+    /** Update individual refs with smart value handling */
+    updateRefs(updates: Partial<{
+        [K in keyof R]: any;
+    }>): void;
+    /** Get a setter function for a specific ref */
+    bind<K extends keyof R>(key: K): (value: any) => void;
+    /** Destroy element and cleanup */
+    destroy(): void;
+}
+/**
+ * Schema defining how refs map to setters.
+ *
+ * @template R - The refs shape
+ */
+export type BinderSchema<R extends Record<string, HTMLElement>> = {
+    [K in keyof R]: Setter<any>;
+};
+/**
+ * Infers the data shape from a binder schema.
+ *
+ * @template S - The binder schema type
+ */
+export type InferBinderData<S extends Record<string, Setter<any>>> = {
+    [K in keyof S]: S[K] extends Setter<infer T> ? T : never;
+};
+/**
+ * Enhanced binder with batch updates and type-safe setters.
+ *
+ * @template R - The refs shape
+ */
+export interface EnhancedBinder<R extends Record<string, HTMLElement>> {
+    /** Call with data object to update multiple refs */
+    (data: Partial<InferBinderData<BinderSchema<R>>>): void;
+    /** Individual setter functions */
+    set: BinderSchema<R>;
+    /** Batch multiple updates into single operation */
+    batch(fn: () => void): void;
+    /** Get current refs object */
+    refs(): R;
+}
+/**
+ * Primitive binding functions for common DOM operations.
+ */
+export interface BindPrimitives {
+    /** Bind to textContent */
+    text(el: HTMLElement | null): Setter<string>;
+    /** Bind to innerHTML */
+    html(el: HTMLElement | null): Setter<string>;
+    /** Bind to attribute */
+    attr(name: string): (el: HTMLElement | null) => Setter<string | null>;
+    /** Bind to property */
+    prop<K extends keyof HTMLElement>(name: K): (el: HTMLElement | null) => Setter<HTMLElement[K]>;
+    /** Bind to CSS class toggle */
+    toggle(className: string): (el: HTMLElement | null) => Setter<boolean>;
+    /** Bind to multiple CSS classes */
+    classes(el: HTMLElement | null): Setter<Record<string, boolean>>;
+    /** Bind to style properties */
+    style(el: HTMLElement | null): Setter<Partial<CSSStyleDeclaration>>;
+    /** Bind to form input value */
+    value(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null): Setter<string | number>;
+    /** Bind to element visibility */
+    show(el: HTMLElement | null): Setter<boolean>;
+}
 /**
  * Hybrid Function Builder.
  * Creates a function that supports both Curried and Imperative usage.
@@ -398,89 +599,119 @@ export declare function has(element: ParentNode | null): <S extends string>(sele
 export declare function index(node: Element | null): number;
 export declare function index(root: ParentNode | null): (node: Element | null) => number;
 /**
+ * Handler type for events
+ */
+type EventHandler<T extends EventTarget, K extends keyof HTMLElementEventMap> = (event: HTMLElementEventMap[K], target: T) => void;
+/**
+ * Event setup stage: attach listener with event type and handler
+ */
+type EventSetup<T extends EventTarget> = {
+    <K extends keyof HTMLElementEventMap>(eventType: K, handler: EventHandler<T, K>, options?: boolean | AddEventListenerOptions): Unsubscribe;
+};
+/**
  * Attaches an event listener to the target element.
  *
  * Returns a cleanup function to remove the listener. Supports all standard
  * DOM events with full type inference. The handler receives both the event
  * and the target element for convenience.
  *
- * @template T - The event target type (EventTarget or more specific)
- * @template K - The event type key from HTMLElementEventMap
- * @param target - The element to attach the listener to (null-safe)
- * @returns A curried function that accepts event type, handler, and options
+ * Supports multiple calling styles:
+ * ```typescript
+ * // Curried
+ * on(button)('click', handler);
+ *
+ * // Imperative
+ * on(button, 'click', handler);
+ * ```
  *
  * @example
  * ```typescript
- * // Basic click handler
- * const button = document.querySelector('button');
- * const cleanup = on(button)('click', (e, target) => {
- *   console.log('Clicked!', target); // target is typed as the button
+ * const button = find('button');
+ *
+ * // Curried - great for reuse
+ * const onButton = on(button);
+ * onButton('click', (e, target) => console.log('Clicked!', target));
+ * onButton('mouseenter', (e, target) => cls.add(target)('hovered'));
+ *
+ * // Imperative - concise one-offs
+ * on(button, 'click', (e, target) => {
  *   e.preventDefault();
+ *   submit();
  * });
  *
- * // Later: remove the listener
- * cleanup();
- *
- * // Input events with type inference
- * const input = document.querySelector('input');
- * on(input)('input', (e) => {
- *   console.log(e.target.value); // e is InputEvent
- * });
- *
- * // Keyboard events
- * on(document)('keydown', (e) => {
- *   if (e.key === 'Escape') {
- *     console.log('Escape pressed');
- *   }
- * });
- *
- * // With options (capture, once, passive)
- * on(window)('scroll', handler, { passive: true });
+ * // With options
+ * on(window, 'scroll', handler, { passive: true });
  * on(button)('click', handler, { once: true });
  *
  * // Null-safe: returns no-op cleanup if target is null
- * const missing = document.querySelector('.missing');
- * const noop = on(missing)('click', handler); // Safe, returns () => {}
+ * const missing = find('.missing');
+ * on(missing, 'click', handler); // Safe, returns () => {}
+ *
+ * // Type inference works throughout:
+ * on(input, 'input', (e) => {
+ *   console.log(e.data);  // e is InputEvent
+ * });
+ *
+ * on(document, 'keydown', (e) => {
+ *   if (e.key === 'Escape') close();  // e is KeyboardEvent
+ * });
  * ```
  */
-export declare const on: <T extends EventTarget = EventTarget>(target: T | null) => <K extends keyof HTMLElementEventMap>(eventType: K, handler: (event: HTMLElementEventMap[K], target: T) => void, options?: boolean | AddEventListenerOptions) => Unsubscribe;
+export declare function on<T extends EventTarget>(target: T | null): EventSetup<T>;
+export declare function on<T extends EventTarget, K extends keyof HTMLElementEventMap>(target: T | null, eventType: K, handler: EventHandler<T, K>, options?: boolean | AddEventListenerOptions): Unsubscribe;
+/**
+ * Handler type for delegated events
+ */
+type DelegatedHandler<S extends string, K extends keyof HTMLElementEventMap> = (event: HTMLElementEventMap[K], match: ParseSelector<S>) => void;
+/**
+ * Final stage: attach event listener
+ */
+type DelegatedEventSetup<S extends string> = {
+    <K extends keyof HTMLElementEventMap>(eventType: K, handler: DelegatedHandler<S, K>, options?: boolean | AddEventListenerOptions): Unsubscribe;
+};
+/**
+ * Middle stage: select target elements
+ * Supports both curried and imperative styles
+ */
+type DelegatedSelectorSetup = {
+    <S extends string>(selector: S): DelegatedEventSetup<S>;
+    <S extends string, K extends keyof HTMLElementEventMap>(selector: S, eventType: K, handler: DelegatedHandler<S, K>, options?: boolean | AddEventListenerOptions): Unsubscribe;
+};
 /**
  * Attaches a **Delegated Event Listener** using event bubbling.
  *
- * 🧠 **Architecture**: `Root -> Selector -> Event`
- * This ordering allows you to group interactions by the target element type.
+ * Supports multiple calling styles:
+ * ```typescript
+ * // Fully curried
+ * onDelegated(root)('li')('click', handler);
  *
- * 🛡️ **Type Safety**:
- * - The `match` argument is inferred from the CSS selector (e.g. `'button'` -> `HTMLButtonElement`).
- * - The `event` argument is inferred from the event name (e.g. `'click'` -> `MouseEvent`).
+ * // Partially curried
+ * onDelegated(root, 'li')('click', handler);
+ * onDelegated(root)('li', 'click', handler);
  *
- * @param root - The container element (e.g. `<ul>`, `form`, `document`).
+ * // Fully imperative
+ * onDelegated(root, 'li', 'click', handler);
+ * ```
  *
  * @example
  * ```typescript
- * // 1. Define the scope (e.g. a User Table)
- * const table = find(document)('#user-table');
- * const onTable = onDelegated(table);
+ * const list = find('#user-list');
  *
- * // 2. Define interactions for specific child elements
- * // Type inference knows 'tr' is HTMLTableRowElement
- * const onRow = onTable('tr');
+ * // Curried - great for reuse
+ * const onListItem = onDelegated(list)('li');
+ * onListItem('click', (e, li) => console.log(li.textContent));
+ * onListItem('mouseenter', (e, li) => cls.add(li)('hovered'));
  *
- * onRow('click', (e, row) => {
- *   console.log('Row clicked', row.dataset.id);
- *   cls.toggle(row)('selected');
- * });
- *
- * // 3. Define interactions for buttons
- * // Type inference knows 'button.delete' is HTMLButtonElement
- * onTable('button.delete')('click', (e, btn) => {
+ * // Imperative - concise one-offs
+ * onDelegated(list, 'button.delete', 'click', (e, btn) => {
  *   e.stopPropagation();
- *   const id = btn.dataset.id;
- *   api.delete(id);
+ *   deleteItem(btn.dataset.id);
  * });
  * ```
  */
-export declare const onDelegated: (root?: ParentNode | null) => <S extends string>(selector: S) => <K extends keyof HTMLElementEventMap>(eventType: K, handler: (event: HTMLElementEventMap[K], match: ParseSelector<S>) => void, options?: boolean | AddEventListenerOptions) => Unsubscribe;
+export declare function onDelegated(root: ParentNode | null): DelegatedSelectorSetup;
+export declare function onDelegated<S extends string>(root: ParentNode | null, selector: S): DelegatedEventSetup<S>;
+export declare function onDelegated<S extends string, K extends keyof HTMLElementEventMap>(root: ParentNode | null, selector: S, eventType: K, handler: DelegatedHandler<S, K>, options?: boolean | AddEventListenerOptions): Unsubscribe;
 /**
  * Dispatches a CustomEvent from the target element.
  *
@@ -527,125 +758,86 @@ export declare const onDelegated: (root?: ParentNode | null) => <S extends strin
  */
 export declare const dispatch: (target: EventTarget | null) => <T = any>(eventName: string, detail?: T, options?: EventInit) => EventTarget | null;
 /**
- * Declaratively modifies an element's properties.
+ * Declaratively modifies an element's properties with full type safety.
  *
- * Provides a unified API for setting text, HTML, styles, classes, attributes,
- * and dataset values. All modifications are applied in a single call. Returns
- * the element for chaining.
+ * Provides a unified API for setting text, styles, classes, attributes, and more.
+ * Supports three calling styles for maximum flexibility.
  *
- * @template T - The HTML element type
- * @param element - The element to modify (null-safe)
- * @returns A curried function that accepts props and returns the modified element
+ * @template T - The HTML element type, which is preserved.
  *
+ * @overload
+ * <caption>**1. Config-First (Curried):** `modify(props)(element)`</caption>
+ * Best for creating reusable modifiers in functional pipelines.
+ * @param props - The properties to apply.
+ * @returns A function that accepts an element and returns it.
  * @example
  * ```typescript
- * const button = document.querySelector('button');
+ * import { Fn, find } from '@doeixd/dom';
  *
- * // Imperative (cleaner DX)
- * modify(button, { text: 'Click me!' });
- *
- * // Curried (pipeline friendly)
- * modify(button)({ text: 'Click me!' });
- *
- * // Multiple properties at once
- * modify(button)({
- *   text: 'Submit',
- *   class: { active: true, disabled: false },
- *   dataset: { userId: '123', action: 'save' },
- *   style: { backgroundColor: 'blue', color: 'white' },
- *   attr: { 'aria-label': 'Submit form', type: 'submit' }
+ * const makePrimary = modify({
+ *   class: { 'btn-primary': true },
+ *   attr: { 'aria-disabled': false }
  * });
  *
- * // Form inputs
- * const input = document.querySelector('input');
- * modify(input)({
- *   value: 'John Doe',
- *   disabled: false,
- *   attr: { placeholder: 'Enter name', required: true }
- * });
+ * Fn.pipe(
+ *   find('#submit-btn'),
+ *   makePrimary
+ * );
+ * ```
  *
- * // Conditional classes
- * modify(element)({
- *   class: {
- *     loading: isLoading,
- *     error: hasError,
- *     success: isSuccess
- *   }
- * });
+ * @overload
+ * <caption>**2. Element-First (Curried):** `modify(element)(props)`</caption>
+ * Best for applying multiple, separate modifications to the same element.
+ * @param element - The element to modify (null-safe).
+ * @returns A function that accepts properties and returns the element.
+ * @example
+ * ```typescript
+ * const btn = find('button');
+ * const modifyBtn = modify(btn);
  *
- * // Data attributes (auto-converts to kebab-case)
- * modify(element)({
- *   dataset: {
- *     userId: 123,        // becomes data-user-id="123"
- *     isActive: true,     // becomes data-is-active="true"
- *     config: { a: 1 }    // becomes data-config='{"a":1}'
- *   }
- * });
+ * modifyBtn({ text: 'Step 1' });
+ * // ... later
+ * modifyBtn({ class: { success: true }, text: 'Complete' });
+ * ```
  *
- * // Null-safe: returns null if element is null
- * modify(null)({ text: 'test' }); // null
+ * @overload
+ * <caption>**3. Imperative:** `modify(element, props)`</caption>
+ * Best for simple, one-off modifications. Cleanest syntax.
+ * @param element - The element to modify (null-safe).
+ * @param props - The properties to apply.
+ * @returns The modified element.
+ * @example
+ * ```typescript
+ * const btn = find('button');
+ * modify(btn, { text: 'Click Me' });
  * ```
  */
-export declare const modify: {
-    (target: HTMLElement | null, props: ElementProps): HTMLElement | null;
-    (target: HTMLElement | null): (props: ElementProps) => HTMLElement | null;
-};
+export declare function modify<T extends HTMLElement>(props: ElementProps): (element: T | null) => T | null;
+export declare function modify<T extends HTMLElement>(element: T | null, props: ElementProps): T | null;
+export declare function modify<T extends HTMLElement>(element: T | null): (props: ElementProps) => T | null;
 /**
  * Sets properties on an element.
  *  @alias modify
  */
-export declare const set: {
-    (target: HTMLElement | null, props: ElementProps): HTMLElement | null;
-    (target: HTMLElement | null): (props: ElementProps) => HTMLElement | null;
-};
+export declare const set: typeof modify;
 /**
- * Applies inline CSS styles to an element.
+ * Applies inline CSS styles to an element. Supports multiple calling styles.
  *
- * Merges the provided styles with existing inline styles. For removing styles,
- * set the property to empty string. Returns the element for chaining.
+ * @overload <caption>**1. Config-First:** `css(styles)(element)`</caption>
+ * @param styles - The CSS styles to apply.
+ * @returns A function that accepts an element.
  *
- * @param element - The element to style (null-safe)
- * @returns A curried function that accepts styles and returns the element
+ * @overload <caption>**2. Element-First:** `css(element)(styles)`</caption>
+ * @param element - The element to style.
+ * @returns A function that accepts styles.
  *
- * @example
- * ```typescript
- * const div = document.querySelector('div');
- *
- * // Imperative (cleaner DX)
- * css(div, { color: 'red', fontSize: '16px' });
- *
- * // Curried (pipeline friendly)
- * css(div)({
- *   color: 'red',
- *   fontSize: '16px',
- *   marginTop: '10px'
- * });
- *
- * // CSS custom properties (variables)
- * css(div)({
- *   '--primary-color': '#007bff',
- *   '--spacing': '1rem'
- * } as any);
- *
- * // Remove a style (set to empty string)
- * css(div)({ display: '' });
- *
- * // Animation and transitions
- * css(div)({
- *   transition: 'all 0.3s ease',
- *   transform: 'translateX(100px)',
- *   opacity: '0.5'
- * });
- *
- * // Chaining with modify
- * const element = modify(div)({ text: 'Hello' });
- * css(element)({ color: 'blue' });
- * ```
+ * @overload <caption>**3. Imperative:** `css(element, styles)`</caption>
+ * @param element - The element to style.
+ * @param styles - The CSS styles to apply.
  */
-export declare const css: {
-    (target: HTMLElement | null, styles: Partial<CSSStyleDeclaration>): HTMLElement | null;
-    (target: HTMLElement | null): (styles: Partial<CSSStyleDeclaration>) => HTMLElement | null;
-};
+export declare function css(styles: Partial<CSSStyleDeclaration>): <T extends HTMLElement>(element: T | null) => T | null;
+export declare function css<T extends HTMLElement>(element: T | null, styles: Partial<CSSStyleDeclaration>): T | null;
+export declare function css<T extends HTMLElement>(element: T | null): (styles: Partial<CSSStyleDeclaration>) => T | null;
 /**
  * Applies styles temporarily and returns a revert function.
  *
@@ -944,6 +1136,63 @@ export declare const mount: {
     (target: string | Element | null, child: Element | null): Unsubscribe;
     (target: string | Element | null): (child: Element | null) => Unsubscribe;
 };
+export interface CreateWebComponentOptions {
+    /** Optional custom element name (overrides class name). */
+    name?: string;
+    /** Auto-define the component (default: true). */
+    define?: boolean;
+    /** Options passed to `customElements.define`. */
+    defineOptions?: ElementDefinitionOptions;
+}
+/**
+ * Registers a custom element with smart defaults and flexible call styles.
+ *
+ * Defaults to a kebab-case name derived from the class name. If the derived
+ * name lacks a hyphen, `-el` is appended to make it valid.
+ *
+ * Supports both call styles:
+ * - `createWebComponent(MyElement, options?)`
+ * - `createWebComponent(options?)(MyElement)`
+ *
+ * @template T - Custom element constructor
+ * @param ctor - Custom element class
+ * @param options - Optional registration configuration
+ * @returns Metadata about the registration
+ *
+ * @example
+ * ```typescript
+ * class MyButton extends HTMLElement {}
+ * const { name } = createWebComponent(MyButton);
+ * // name === 'my-button'
+ * ```
+ *
+ * @example
+ * ```typescript
+ * class FancyInput extends HTMLInputElement {}
+ * createWebComponent(FancyInput, {
+ *   name: 'fancy-input',
+ *   defineOptions: { extends: 'input' }
+ * });
+ * ```
+ *
+ * @example
+ * ```typescript
+ * class ModalDialog extends HTMLElement {}
+ * const register = createWebComponent({ define: false, name: 'modal-dialog' });
+ * const info = register(ModalDialog);
+ * // info.defined === false
+ * ```
+ */
+export declare function createWebComponent<T extends CustomElementConstructor>(ctor: T, options?: CreateWebComponentOptions): {
+    name: string;
+    ctor: T;
+    defined: boolean;
+};
+export declare function createWebComponent(options?: CreateWebComponentOptions): <T extends CustomElementConstructor>(ctor: T) => {
+    name: string;
+    ctor: T;
+    defined: boolean;
+};
 /**
  * Creates a DOM element with full type inference.
  *
@@ -1104,6 +1353,72 @@ export declare const htmlMany: (strings: TemplateStringsArray, ...values: any[])
  * ```
  */
 export declare const clone: <T extends Node>(node: T | null) => (deep?: boolean) => T | null;
+/**
+ * VanJS-style hyperscript proxy for element creation.
+ *
+ * Provides a Proxy-based API where property access creates element factories.
+ * Supports both HTML and SVG elements with automatic namespace detection.
+ *
+ * **Performance Note**: The Proxy has minimal overhead (~5% vs direct el() calls).
+ * For performance-critical loops with 1000s of elements, prefer el() directly.
+ *
+ * **Type Safety**: Returns `HTMLElement` rather than specific element types due to
+ * Proxy limitations. Use type assertions if you need specific element types.
+ *
+ * @example
+ * ```typescript
+ * import { h } from '@doeixd/dom';
+ *
+ * // Basic HTML elements
+ * const card = h.div({ class: { card: true } }, [
+ *   h.h2({}, ['Title']),
+ *   h.p({ text: 'Content' }),
+ *   h.button({ dataRef: 'submit' }, ['Submit'])
+ * ]);
+ *
+ * // SVG elements (automatically use SVG namespace)
+ * const icon = h.svg({ attr: { viewBox: '0 0 24 24', width: '24', height: '24' } }, [
+ *   h.path({ attr: { d: 'M12 2L2 7v10c0 5.5 3.8 10.7 10 12 6.2-1.3 10-6.5 10-12V7l-10-5z' } })
+ * ]);
+ *
+ * // Nested structures
+ * const list = h.ul({ class: { 'todo-list': true } }, [
+ *   h.li({}, ['Item 1']),
+ *   h.li({}, ['Item 2']),
+ *   h.li({}, ['Item 3'])
+ * ]);
+ *
+ * // With refs for later access
+ * const form = h.form({}, [
+ *   h.input({ dataRef: 'name', attr: { type: 'text', placeholder: 'Name' } }),
+ *   h.input({ dataRef: 'email', attr: { type: 'email', placeholder: 'Email' } }),
+ *   h.button({ dataRef: 'submit', attr: { type: 'submit' } }, ['Submit'])
+ * ]);
+ *
+ * // Extract refs
+ * const formRefs = refs(form);
+ * console.log(formRefs.name, formRefs.email, formRefs.submit);
+ * ```
+ */
+export declare const h: Record<string, (props?: HElementProps, children?: (string | Node)[]) => HTMLElement>;
+/**
+ * Alias for `h` proxy. Provides alternative naming for hyperscript-style element creation.
+ *
+ * Some developers prefer `tags` as it's more explicit about creating HTML tags.
+ * Functionally identical to `h`.
+ *
+ * @example
+ * ```typescript
+ * import { tags } from '@doeixd/dom';
+ *
+ * const page = tags.div({ class: { container: true } }, [
+ *   tags.header({}, [tags.h1({}, ['My App'])]),
+ *   tags.main({}, [tags.p({}, ['Content'])]),
+ *   tags.footer({}, [tags.small({}, ['© 2024'])])
+ * ]);
+ * ```
+ */
+export declare const tags: Record<string, (props?: HElementProps, children?: (string | Node)[]) => HTMLElement>;
 /**
  * Utilities for manipulating CSS classes on elements.
  *
@@ -1631,8 +1946,95 @@ export declare const watchAttr: {
  * ```
  */
 export declare const watchText: {
-    (target: Element | null, callback: (text: string) => void): Unsubscribe;
-    (target: Element | null): (callback: (text: string) => void) => Unsubscribe;
+    (target: Element | null, callback: (text: string, el: Element) => void): Unsubscribe;
+    (target: Element | null): (callback: (text: string, el: Element) => void) => Unsubscribe;
+};
+/**
+ * Unified watch helpers for classes, attributes, text, and mutations.
+ *
+ * Supports both direct calls (`watch.class(el, 'active', cb)`) and
+ * fluent calls (`watch(el).class('active', cb)`).
+ *
+ * @example
+ * ```typescript
+ * watch.class(el, 'open', (isOpen) => console.log(isOpen));
+ * watch(el).attr('disabled', (value) => console.log(value));
+ * watch.mutations(el, { subtree: true }, (records) => console.log(records.length));
+ * ```
+ */
+export declare const watch: (<T extends Element>(target: ElementInput | null) => {
+    class: (className: string, callback: (isPresent: boolean, el: T) => void) => Unsubscribe;
+    attr: (attrName: string, callback: (value: string | null, el: T) => void) => Unsubscribe;
+    text: (callback: (text: string, el: T) => void) => Unsubscribe;
+    mutations: (optionsOrCallback?: MutationObserverInit | ((records: MutationRecord[], observer: MutationObserver, el: T) => void), maybeCallback?: (records: MutationRecord[], observer: MutationObserver, el: T) => void) => Unsubscribe;
+}) & {
+    /**
+     * Observe class changes for a specific class name.
+     *
+     * @param target - Element, selector, or resolver
+     * @param className - Class to watch
+     * @param callback - Called when class toggles
+     * @returns Cleanup function
+     *
+     * @example
+     * ```typescript
+     * const stop = watch.class(btn, 'active', (isActive) => {
+     *   console.log(isActive);
+     * });
+     * ```
+     */
+    class: <T extends Element>(target: ElementInput | null, className: string, callback: (isPresent: boolean, el: T) => void) => Unsubscribe;
+    /**
+     * Observe attribute changes for a specific attribute.
+     *
+     * @param target - Element, selector, or resolver
+     * @param attrName - Attribute to watch
+     * @param callback - Called when attribute changes
+     * @returns Cleanup function
+     *
+     * @example
+     * ```typescript
+     * watch.attr(input, 'aria-invalid', (value) => {
+     *   console.log(value);
+     * });
+     * ```
+     */
+    attr: <T extends Element>(target: ElementInput | null, attrName: string, callback: (value: string | null, el: T) => void) => Unsubscribe;
+    /**
+     * Observe text content changes.
+     *
+     * @param target - Element, selector, or resolver
+     * @param callback - Called when text changes
+     * @returns Cleanup function
+     *
+     * @example
+     * ```typescript
+     * watch.text(status, (text) => console.log(text));
+     * ```
+     */
+    text: <T extends Element>(target: ElementInput | null, callback: (text: string, el: T) => void) => Unsubscribe;
+    /**
+     * Observe DOM mutations for a target element.
+     *
+     * Defaults to `{ attributes: true, childList: true, subtree: false }`.
+     *
+     * @param target - Element, selector, or resolver
+     * @param options - Mutation observer options or callback
+     * @param callback - Mutation observer callback
+     * @returns Cleanup function
+     *
+     * @example
+     * ```typescript
+     * const stop = watch.mutations(el, (records) => {
+     *   console.log(records.length);
+     * });
+     *
+     * watch.mutations(el, { subtree: true }, (records) => {
+     *   console.log(records);
+     * });
+     * ```
+     */
+    mutations: <T extends Element>(target: ElementInput | null, optionsOrCallback?: MutationObserverInit | ((records: MutationRecord[], observer: MutationObserver, el: T) => void), maybeCallback?: (records: MutationRecord[], observer: MutationObserver, el: T) => void) => Unsubscribe;
 };
 /**
  * Gets or sets an attribute on an element.
@@ -1866,10 +2268,11 @@ export declare const onMount: {
  * ```
  *
  * **Memory Leak Prevention**: The observer automatically disconnects when the
- * condition is met. If the element is null, the promise never resolves (consider
+ * condition is met. If the element is null, the promise rejects (consider
  * null-checking before calling).
  *
- * @param target - The element to observe (null-unsafe: promise won't resolve if null)
+ * @param target - The element to observe (null-unsafe: promise rejects if null)
+
  * @returns A curried function that accepts a predicate and returns a Promise
  *
  * @example
@@ -2062,6 +2465,18 @@ export declare const Params: {
  * };
  * ```
  */
+export interface FormSerializeOptions {
+    /** Use dot-notation to create nested objects. */
+    nested?: boolean;
+    /** Include FileList values from file inputs. */
+    includeFiles?: boolean;
+    /** Include disabled fields (default: false). */
+    includeDisabled?: boolean;
+}
+export interface Register {
+    <T extends Unsubscribe>(cleanup: T): T;
+}
+export type AutoCleanup = <T>(fn: (r: Register) => T | Promise<T>) => T | Promise<T>;
 export declare const Form: {
     /**
      * Serializes form inputs into a plain object.
@@ -2074,10 +2489,17 @@ export declare const Form: {
      * - Select → string
      * - Textarea → string
      *
+     * Options:
+     * - `nested`: Supports dot-notation for nested objects
+     * - `includeFiles`: Includes FileList values
+     * - `includeDisabled`: Includes disabled inputs
+     *
      * Only includes inputs with a `name` attribute.
      *
      * @param root - The form or container element
+     * @param options - Serialization options
      * @returns Object with field names as keys and values
+  
      *
      * @example
      * ```typescript
@@ -2106,7 +2528,7 @@ export declare const Form: {
      * });
      * ```
      */
-    serialize: (root: HTMLElement | null) => Record<string, any>;
+    serialize: (root: HTMLElement | null, options?: FormSerializeOptions) => Record<string, any>;
     /**
      * Populates form inputs from a plain object.
      *
@@ -2230,16 +2652,14 @@ export declare const cssTemplate: (strings: TemplateStringsArray, ...values: any
 /**
  * Flexible, type-aware DOM traversal utilities.
  *
- * Each method supports three invocation styles:
+ * Each method supports two invocation styles:
  *
  * 1. **Element-first** (immediate):
  *    Traverse.next(el)                     → Element | null
+ *    Traverse.next(el, "span.highlight")   → Element | null
  *
  * 2. **Selector-first**:
  *    Traverse.next(".item")                → Element | null
- *
- * 3. **Curried**:
- *    Traverse.next(el)("span.highlight")   → Element | null
  *
  * All operations are:
  *   - **Null-safe**: All functions gracefully return `null` or `[]`.
@@ -2260,7 +2680,7 @@ export declare const Traverse: {
      * // Curried
      * const specific = Traverse.parent(el)(".box");
      */
-    parent(elOrSelector?: Element | string | null): HTMLElement | ((selector?: string) => Element | null) | null;
+    parent(elOrSelector?: Element | string | null, selector?: string): HTMLElement | null;
     /**
      * Get the next sibling element.
      *
@@ -2269,7 +2689,7 @@ export declare const Traverse: {
      * Traverse.next(".active");     // next of .active
      * Traverse.next(el)("button");  // next button sibling
      */
-    next(elOrSelector?: Element | string | null): Element | ((selector?: string) => Element | null) | null;
+    next(elOrSelector?: Element | string | null, selector?: string): Element | null;
     /**
      * Get the previous sibling element.
      *
@@ -2278,7 +2698,7 @@ export declare const Traverse: {
      * Traverse.prev(".selected");
      * Traverse.prev(el)(".item");
      */
-    prev(elOrSelector?: Element | string | null): Element | ((selector?: string) => Element | null) | null;
+    prev(elOrSelector?: Element | string | null, selector?: string): Element | null;
     /**
      * Get child elements, with optional selector filtering.
      *
@@ -2287,7 +2707,7 @@ export declare const Traverse: {
      * Traverse.children(".list");    // children of element matching .list
      * Traverse.children(el)("li");   // only <li> children
      */
-    children(elOrSelector?: Element | string | null): Element[] | ((selector?: string) => Element[]);
+    children(elOrSelector?: Element | string | null, selector?: string): Element[];
     /**
       * Get sibling elements (excluding the original element).
       *
@@ -2296,7 +2716,7 @@ export declare const Traverse: {
       * Traverse.siblings("#active");
       * Traverse.siblings(el)(".item");
       */
-    siblings(elOrSelector?: Element | string | null): Element[] | ((selector?: string) => Element[]);
+    siblings(elOrSelector?: Element | string | null, selector?: string): Element[];
     /**
      * Get all ancestor elements up to the document root.
      *
@@ -2734,6 +3154,127 @@ export declare const Obj: {
      */
     pick: <T extends object, K extends keyof T>(obj: T, keys: K[]) => Pick<T, K>;
     /**
+     * Maps an object's entries into a new object.
+     *
+     * Supports two styles:
+     * - Entry mapping: `(entry) => [newKey, newValue]`
+     * - Value mapping: `(value, key) => newValue` (keys preserved)
+     *
+     * @template T - The object type
+     * @template K - The original key type
+     * @template V - The original value type
+     * @returns A new mapped object
+     *
+     * @example
+     * ```typescript
+     * const user = { id: 1, name: 'Ada', role: 'admin' };
+     *
+     * // Value mapping (keys preserved)
+     * const upper = Obj.map(user, (value) => String(value).toUpperCase());
+     * // { id: '1', name: 'ADA', role: 'ADMIN' }
+     *
+     * // Entry mapping (change keys + values)
+     * const pairs = Obj.map(user, ([key, value]) => [`user_${key}`, value]);
+     * // { user_id: 1, user_name: 'Ada', user_role: 'admin' }
+     * ```
+     */
+    map: {
+        <T extends Record<string, any>, R>(obj: T, mapper: (value: T[keyof T], key: keyof T) => R): { [K in keyof T]: R; };
+        <T extends Record<string, any>, NK extends PropertyKey, NV>(obj: T, mapper: (entry: [keyof T, T[keyof T]]) => [NK, NV]): Record<NK, NV>;
+    };
+    /**
+     * Renames a key on an object (immutable).
+     *
+     * Supports both call styles:
+     * - `Obj.renameKey(obj, from, to)`
+     * - `Obj.renameKey(from, to)(obj)`
+     *
+     * If the source key is missing, returns a shallow copy of the original.
+     *
+     * @template T - The object type
+     * @template F - Key to rename
+     * @template N - New key name
+     * @returns A new object with the renamed key
+     *
+     * @example
+     * ```typescript
+     * const user = { id: 1, name: 'Ada' };
+     *
+     * const renamed = Obj.renameKey(user, 'name', 'fullName');
+     * // { id: 1, fullName: 'Ada' }
+     *
+     * const rename = Obj.renameKey('id', 'userId');
+     * const renamed2 = rename(user);
+     * // { userId: 1, name: 'Ada' }
+     * ```
+     */
+    renameKey: {
+        <T extends object, F extends keyof T, N extends PropertyKey>(obj: T, from: F, to: N): Omit<T, F> & Record<N, T[F]>;
+        <F extends PropertyKey, N extends PropertyKey>(from: F, to: N): <T extends Record<F, any>>(obj: T) => Omit<T, F> & Record<N, T[F]>;
+    };
+    /**
+     * Safely reads a nested value by path.
+     *
+     * Supports string paths (`"a.b.0.c"`) and array paths (`['a', 'b', 0, 'c']`).
+     * Returns `fallback` when the path cannot be resolved.
+     *
+     * Supports both call styles:
+     * - `Obj.get(obj, path, fallback?)`
+     * - `Obj.get(path, fallback?)(obj)`
+     *
+     * @template T - The object type
+     * @template R - The fallback type
+     * @param obj - The source object
+     * @param path - Path to read
+     * @param fallback - Optional fallback when missing
+     * @returns The resolved value or fallback
+     *
+     * @example
+     * ```typescript
+     * const state = { user: { profile: { name: 'Ada' } }, items: [{ id: 1 }] };
+     *
+     * Obj.get(state, 'user.profile.name'); // 'Ada'
+     * Obj.get(state, ['items', 0, 'id']); // 1
+     * Obj.get(state, 'user.missing', 'Unknown'); // 'Unknown'
+     *
+     * const getUserName = Obj.get('user.profile.name');
+     * getUserName(state); // 'Ada'
+     * ```
+     */
+    get: {
+        <T extends object, R = undefined>(obj: T, path: Path, fallback?: R): R | any;
+        <R = undefined>(path: Path, fallback?: R): <T extends object>(obj: T) => R | any;
+    };
+    /**
+     * Sets a nested value by path (immutable).
+     *
+     * Creates missing objects/arrays as needed. Numeric path segments create arrays.
+     * Supports both call styles:
+     * - `Obj.set(obj, path, value)`
+     * - `Obj.set(path, value)(obj)`
+     *
+     * @template T - The object type
+     * @param obj - The source object
+     * @param path - Path to set
+     * @param value - Value to assign
+     * @returns A new object with the updated value
+     *
+     * @example
+     * ```typescript
+     * const state = { user: { profile: { name: 'Ada' } }, items: [] };
+     *
+     * const updated = Obj.set(state, 'user.profile.name', 'Grace');
+     * const updated2 = Obj.set(state, ['items', 0, 'id'], 42);
+     *
+     * const setName = Obj.set('user.profile.name', 'Lin');
+     * setName(state);
+     * ```
+     */
+    set: {
+        <T extends object>(obj: T, path: Path, value: any): T;
+        <T extends object>(path: Path, value: any): (obj: T) => T;
+    };
+    /**
      * Creates a new object excluding the specified keys.
      *
      * @template T - The object type
@@ -2867,6 +3408,91 @@ export declare const batch: <T extends Element>(list: Iterable<T> | ArrayLike<T>
  */
 export declare const groupBy: <T extends Element>(list: Iterable<T> | ArrayLike<T> | null) => (keyFn: (el: T) => string) => Record<string, T[]>;
 /**
+ * Creates a reactive list binding with flexible rendering strategies.
+ *
+ * Provides three modes:
+ * 1. **Default** (no `key`): Simple blow-away rendering - fast for small lists
+ * 2. **Keyed** (with `key`): Efficient DOM diffing using Map-based reconciliation
+ * 3. **Custom** (with `reconcile`): User-provided reconciliation for full control
+ *
+ * **Performance**:
+ * - Default mode: O(n) render, best for lists <50 items that rarely change
+ * - Keyed mode: O(n) diffing, best for dynamic lists with frequent updates
+ * - Custom mode: Depends on user implementation (e.g., morphdom, nanomorph)
+ *
+ * **Memory**: Call `destroy()` when done to prevent memory leaks, especially
+ * for keyed mode which maintains internal Maps.
+ *
+ * @template T - The data item type
+ * @param container - The parent element to render into (null-safe)
+ * @param options - Configuration for rendering strategy
+ * @returns BoundList instance with reactive methods
+ *
+ * @example
+ * ```typescript
+ * import { List, h } from '@doeixd/dom';
+ *
+ * interface Todo {
+ *   id: number;
+ *   text: string;
+ *   done: boolean;
+ * }
+ *
+ * // Simple default mode (blow-away rendering)
+ * const simpleList = List<string>(container, {
+ *   render: (item) => h.li({}, [item])
+ * });
+ *
+ * simpleList.set(['Item 1', 'Item 2', 'Item 3']);
+ *
+ * // Keyed mode (efficient diffing)
+ * const todoList = List<Todo>(container, {
+ *   key: todo => todo.id,
+ *   render: (todo, index) => h.li({
+ *     class: { done: todo.done }
+ *   }, [
+ *     h.input({
+ *       attr: { type: 'checkbox' },
+ *       dataRef: `todo-${todo.id}`
+ *     }),
+ *     h.span({}, [`${index + 1}. ${todo.text}`])
+ *   ]),
+ *   update: (el, todo, index) => {
+ *     // Efficient: only update changed parts
+ *     const checkbox = el.querySelector('input')!;
+ *     checkbox.checked = todo.done;
+ *     el.querySelector('span')!.textContent = `${index + 1}. ${todo.text}`;
+ *     el.classList.toggle('done', todo.done);
+ *   },
+ *   onAdd: (el) => el.classList.add('fade-in'),
+ *   onRemove: (el) => el.classList.add('fade-out')
+ * });
+ *
+ * // Rich API
+ * todoList.set(todos);
+ * todoList.append([{ id: 4, text: 'New todo', done: false }]);
+ * todoList.remove(todo => todo.done);
+ * todoList.update(todo => todo.id === 1, todo => ({ ...todo, done: true }));
+ *
+ * // Custom reconciliation mode
+ * import morphdom from 'morphdom';
+ *
+ * const customList = List<User>(container, {
+ *   render: (user) => h.div({}, [user.name]),
+ *   reconcile: (oldItems, newItems, container, renderFn) => {
+ *     const newHTML = '<div>' +
+ *       newItems.map(renderFn).map(el => el.outerHTML).join('') +
+ *       '</div>';
+ *     morphdom(container, newHTML);
+ *   }
+ * });
+ *
+ * // Cleanup when done
+ * todoList.destroy();
+ * ```
+ */
+export declare function List<T>(container: HTMLElement | null, options: ListOptions<T>): BoundList<T>;
+/**
  * Collects elements with `data-ref` attributes into a typed object.
  *
  * Scans the root element for children with `data-ref` attributes and creates
@@ -2972,6 +3598,96 @@ export declare const refs: (root: ParentNode | null) => Record<string, HTMLEleme
  * ```
  */
 export declare const groupRefs: (root: ParentNode | null) => Record<string, HTMLElement[]>;
+/**
+ * Creates a typed template factory with automatic ref extraction.
+ *
+ * Combines element creation with ref extraction into a single, type-safe pattern.
+ * Perfect for reusable component templates where you need structured access to
+ * internal elements.
+ *
+ * **Type Safety**: Generic parameter ensures refs are properly typed, providing
+ * autocomplete and compile-time safety.
+ *
+ * **Pattern**: Template factory receives a context object that will be populated
+ * with refs after the element is created, enabling advanced use cases.
+ *
+ * @template R - The shape of the refs object (interface mapping names to element types)
+ * @param templateFactory - Function that creates the template element
+ * @returns A factory function that creates instances with refs
+ *
+ * @example
+ * ```typescript
+ * import { viewRefs, h } from '@doeixd/dom';
+ *
+ * // Define the refs interface for type safety
+ * interface CardRefs {
+ *   title: HTMLHeadingElement;
+ *   content: HTMLParagraphElement;
+ *   action: HTMLButtonElement;
+ * }
+ *
+ * // Create the template factory
+ * const Card = viewRefs<CardRefs>(({ refs }) =>
+ *   h.div({ class: { card: true } }, [
+ *     h.h2({ dataRef: 'title' }, ['Default Title']),
+ *     h.p({ dataRef: 'content' }, ['Default content']),
+ *     h.button({ dataRef: 'action' }, ['Click Me'])
+ *   ])
+ * );
+ *
+ * // Create instance
+ * const { element, refs, update } = Card();
+ *
+ * // Modify refs (fully typed!)
+ * refs.title.textContent = 'My Card'; // ✅ Type-safe
+ * refs.content.textContent = 'Some content';
+ *
+ * // Update root element
+ * update({ class: { highlighted: true } });
+ *
+ * // Mount to DOM
+ * document.body.appendChild(element);
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // Advanced: With initial configuration
+ * const card = Card({
+ *   className: 'featured-card',
+ *   props: { class: { featured: true } }
+ * });
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // Integration with List
+ * interface TodoItemRefs {
+ *   checkbox: HTMLInputElement;
+ *   label: HTMLSpanElement;
+ *   deleteBtn: HTMLButtonElement;
+ * }
+ *
+ * const TodoItem = viewRefs<TodoItemRefs>(({ refs }) =>
+ *   h.li({}, [
+ *     h.input({ dataRef: 'checkbox', attr: { type: 'checkbox' } }),
+ *     h.span({ dataRef: 'label' }),
+ *     h.button({ dataRef: 'deleteBtn' }, ['×'])
+ *   ])
+ * );
+ *
+ * const todoList = List<Todo>(container, {
+ *   key: todo => todo.id,
+ *   render: (todo) => {
+ *     const { element, refs } = TodoItem();
+ *     refs.label.textContent = todo.text;
+ *     refs.checkbox.checked = todo.done;
+ *     refs.deleteBtn.onclick = () => deleteTodo(todo.id);
+ *     return element;
+ *   }
+ * });
+ * ```
+ */
+export declare function viewRefs<R extends Record<string, HTMLElement>>(templateFactory: (ctx: ViewRefsContext<R>) => HTMLElement): (options?: ViewRefsOptions) => ViewRefsInstance<R>;
 /**
  * Converts a color to a specific color space.
  *
@@ -4245,6 +4961,7 @@ export declare const SW: {
 export declare const createListenerGroup: () => {
     /**
      * Registers a cleanup function or unsubscribe callback.
+     * Returns the cleanup for convenient chaining.
      *
      * @param fn - The cleanup function to register
      *
@@ -4265,7 +4982,37 @@ export declare const createListenerGroup: () => {
      * });
      * ```
      */
-    add: (fn: Unsubscribe) => void;
+    add: (fn: Unsubscribe) => Unsubscribe;
+    /**
+     * Registers multiple cleanup functions at once.
+     *
+     * @example
+     * ```typescript
+     * group.addMany(
+     *   on(btn)('click', handler),
+     *   on(window)('resize', resizeHandler)
+     * );
+     * ```
+     */
+    addMany: (...fns: Unsubscribe[]) => Unsubscribe[];
+    /**
+     * Runs a generator and auto-registers any cleanups it returns.
+     * If the group is cleared before async work completes, late cleanups
+     * are executed immediately.
+     *
+     * @example
+     * ```typescript
+     * group.auto((register) => {
+     *   register(on(btn)('click', handler));
+     *   return 'ready';
+     * });
+     * ```
+     */
+    auto: <T>(gen: (r: Register) => T | Promise<T>) => T | Promise<T>;
+    /**
+     * Returns the number of registered cleanups.
+     */
+    size: () => number;
     /**
      * Executes all registered cleanup functions and clears the list.
      *
@@ -4874,7 +5621,7 @@ export declare const $: <T extends HTMLElement>(target: T | null) => {
      * @param options - Event options (capture, passive, etc.)
      * @returns {this} Fluent wrapper for chaining
      */
-    on: (eventType: keyof HTMLElementEventMap, handler: (event: PointerEvent | MouseEvent | UIEvent | Event | ErrorEvent | AnimationEvent | ClipboardEvent | CompositionEvent | DragEvent | FocusEvent | FormDataEvent | InputEvent | KeyboardEvent | ProgressEvent<EventTarget> | SecurityPolicyViolationEvent | SubmitEvent | ToggleEvent | TouchEvent | TransitionEvent | WheelEvent, target: EventTarget) => void, options?: boolean | AddEventListenerOptions | undefined) => /*elided*/ any;
+    on: () => /*elided*/ any;
     /**
      * Dispatches a custom event.
      * @param name - Name of the event
@@ -5123,7 +5870,7 @@ export declare const $: <T extends HTMLElement>(target: T | null) => {
      * @param handler - Callback function
      * @returns {Unsubscribe} Function to stop listening
      */
-    clickOutside: (handler: () => void) => () => void;
+    clickOutside: (handler: () => void) => Unsubscribe;
     /**
      * Checks if element contains text.
      * @param text - String or RegExp to search
@@ -5170,15 +5917,15 @@ export declare const $: <T extends HTMLElement>(target: T | null) => {
      */
     transitionWith: (name: string, updateFn: () => void) => ViewTransition | null;
     /** Parent element */
-    parent: HTMLElement | ((selector?: string) => Element | null) | null;
+    parent: HTMLElement | null;
     /** Next sibling element */
-    next: Element | ((selector?: string) => Element | null) | null;
+    next: Element | null;
     /** Previous sibling element */
-    prev: Element | ((selector?: string) => Element | null) | null;
+    prev: Element | null;
     /** Child elements */
-    children: Element[] | ((selector?: string) => Element[]);
+    children: Element[];
     /** Sibling elements */
-    siblings: Element[] | ((selector?: string) => Element[]);
+    siblings: Element[];
     /**
      * Gets the bounding client rect.
      * @returns {DOMRect | undefined}
@@ -5474,7 +6221,18 @@ export declare const Input: {
      */
     watch: (el: FormElement | null) => (callback: (val: any, e: Event) => void) => Unsubscribe;
     /**
+     * Watches input while respecting IME composition events.
+     * Fires on compositionend or non-composing input.
+     *
+     * @example
+     * ```typescript
+     * Input.watchComposed(input)((value) => update(value));
+     * ```
+     */
+    watchComposed: (el: FormElement | null) => (callback: (val: any, e: Event) => void) => Unsubscribe;
+    /**
      * Watches the 'input' event with a DEBOUNCE.
+  
      * Perfect for search bars.
      *
      * @example Input.watchDebounced(search)(query => api.search(query), 500);
@@ -5496,6 +6254,153 @@ export declare const Input: {
      */
     validate: (el: FormElement | null) => (msg?: string) => boolean;
 };
+export interface AutoResizeOptions {
+    /** Maximum height before enabling scroll. */
+    maxHeight?: number;
+}
+/**
+ * Automatically resizes a textarea to fit its content.
+ *
+ * @param textarea - Target textarea
+ * @param options - Resize options
+ * @returns Cleanup function
+ *
+ * @example
+ * ```typescript
+ * const stop = autoResize(textarea, { maxHeight: 300 });
+ * // stop() to remove listeners
+ * ```
+ */
+export declare const autoResize: (textarea: HTMLTextAreaElement | null, options?: AutoResizeOptions) => Unsubscribe;
+export interface UploadOptions {
+    /** Accepted file types (e.g., ['image/*', '.pdf']). */
+    accept?: string[];
+    /** Maximum file size in bytes. */
+    maxSize?: number;
+    /** Allow multiple file selection. */
+    multiple?: boolean;
+    /** Called when files are selected and validated. */
+    onFiles?: (files: File[]) => void;
+    /** Progress callback (used by optional upload handler). */
+    onProgress?: (file: File, percent: number) => void;
+    /** Called when a file upload completes. */
+    onComplete?: (file: File, response: any) => void;
+    /** Called when a file fails validation or upload. */
+    onError?: (file: File, error: Error) => void;
+    /** Optional upload handler for automatic uploads. */
+    upload?: (file: File, onProgress: (percent: number) => void) => Promise<any>;
+}
+export interface UploadController {
+    /** Opens the native file picker. */
+    open: () => void;
+    /** Removes listeners and input element. */
+    destroy: () => void;
+    /** Internal file input element. */
+    input: HTMLInputElement | null;
+}
+/**
+ * Creates a drag-and-drop + click file upload controller.
+ *
+ * @param dropzone - Target element or selector
+ * @param options - Upload configuration
+ * @returns Upload controller with open/destroy
+ *
+ * @example
+ * ```typescript
+ * const upload = createUpload(zone, {
+ *   accept: ['image/*'],
+ *   maxSize: 5 * 1024 * 1024,
+ *   onFiles: (files) => console.log(files)
+ * });
+ * ```
+ */
+export declare const createUpload: (dropzone: HTMLElement | string | null, options?: UploadOptions) => UploadController;
+export interface DraggableBounds {
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+}
+export interface DraggableOptions {
+    /** Bounds for dragging (element, selector, or rect). */
+    bounds?: HTMLElement | DOMRect | DraggableBounds | string;
+    /** Axis constraint (default: both). */
+    axis?: 'x' | 'y' | 'both';
+    /** Drag callback with current translation. */
+    onDrag?: (pos: {
+        x: number;
+        y: number;
+    }) => void;
+    /** Called when dragging ends. */
+    onDrop?: (pos: {
+        x: number;
+        y: number;
+    }) => void;
+}
+/**
+ * Makes an element draggable with optional bounds.
+ *
+ * @param element - Element to drag
+ * @param options - Drag behavior options
+ * @returns Cleanup function
+ *
+ * @example
+ * ```typescript
+ * const stop = draggable(card, { axis: 'y', bounds: container });
+ * ```
+ */
+export declare const draggable: (element: HTMLElement | null, options?: DraggableOptions) => Unsubscribe;
+export interface SortableOptions {
+    /** Selector for sortable items within the container. */
+    items: string;
+    /** Optional drag handle selector. */
+    handle?: string;
+    /** Called when items are reordered. */
+    onReorder?: (fromIndex: number, toIndex: number) => void;
+}
+export interface SortableController {
+    /** Refreshes item bindings (useful when DOM changes). */
+    refresh: () => void;
+    /** Removes all listeners. */
+    destroy: () => void;
+}
+/**
+ * Enables basic sortable reordering for a list.
+ *
+ * @param container - Container element
+ * @param options - Sortable options
+ * @returns Sortable controller
+ *
+ * @example
+ * ```typescript
+ * const sortable = createSortable(list, {
+ *   items: 'li',
+ *   handle: '.drag-handle',
+ *   onReorder: (from, to) => console.log(from, to)
+ * });
+ * ```
+ */
+export declare const createSortable: (container: HTMLElement | null, options: SortableOptions) => SortableController;
+export interface ClickOutsideOptions {
+    /** Elements/selectors to ignore. */
+    ignore?: Array<ElementInput>;
+    /** Use capture phase (default: true). */
+    capture?: boolean;
+}
+/**
+ * Runs a handler when a click occurs outside of a target element.
+ *
+ * @param target - Element or selector to watch
+ * @param handler - Callback to run on outside click
+ * @param options - Ignore list and capture flag
+ * @returns Cleanup function
+ *
+ * @example
+ * ```typescript
+ * const stop = onClickOutside(menu, close, { ignore: [trigger] });
+ * ```
+ */
+export declare const onClickOutside: (target: ElementInput, handler: (event: Event) => void, options?: ClickOutsideOptions) => Unsubscribe;
 export declare const Evt: {
     /**
      * Stops propagation (bubbling) of the event.
@@ -5533,7 +6438,46 @@ export declare const Evt: {
         y: number;
     };
 };
+export type MediaQueryMap = Record<string, string>;
+export type MediaQueryMatches<T extends MediaQueryMap> = {
+    [K in keyof T]: boolean;
+};
+export interface MediaQueryController<T extends MediaQueryMap> {
+    /** Current match state for each query. */
+    matches: MediaQueryMatches<T>;
+    /** Subscribe to a query key. */
+    on: (key: keyof T, handler: (matches: boolean) => void) => Unsubscribe;
+    /** Remove all listeners. */
+    destroy: () => void;
+}
+/**
+ * Creates a reactive media query controller.
+ *
+ * @param queries - Map of query names to media queries
+ * @returns Controller with matches and subscriptions
+ *
+ * @example
+ * ```typescript
+ * const screen = createMediaQuery({ mobile: '(max-width: 640px)' });
+ * screen.on('mobile', (matches) => console.log(matches));
+ * ```
+ */
+export declare const createMediaQuery: <T extends MediaQueryMap>(queries: T) => MediaQueryController<T>;
 export declare const Key: {
+    /**
+     * Returns true if the keyboard event matches a key or predicate.
+     * Supports optional currying.
+     *
+     * @example
+     * ```typescript
+     * if (Key.matches(e, 'Enter')) onSubmit();
+     * if (Key.matches(['ArrowUp', 'ArrowDown'])(e)) moveFocus();
+     * ```
+     */
+    matches: {
+        (event: KeyboardEvent, key: string | string[] | ((key: string) => boolean)): boolean;
+        (key: string | string[] | ((key: string) => boolean)): (event: KeyboardEvent) => boolean;
+    };
     /**
      * Listens for a specific key press.
      * @example Key.is(input)('Enter', onSubmit);
@@ -5579,6 +6523,69 @@ export declare const Focus: {
      * Prevents Tab from leaving the target container.
      */
     trap: (target: HTMLElement | null) => () => void;
+};
+export interface A11yRovingOptions {
+    /** Arrow key axis to respond to. */
+    axis?: 'horizontal' | 'vertical' | 'both';
+    /** Loop focus from end to start. */
+    loop?: boolean;
+    /** Initial active index or element. */
+    initial?: number | HTMLElement;
+}
+export declare const A11y: {
+    /**
+     * Announces a message to screen readers.
+     *
+     * @param message - Message to announce
+     * @param politeness - 'polite' or 'assertive'
+     *
+     * @example
+     * ```typescript
+     * A11y.announce('Saved', 'polite');
+     * ```
+     */
+    announce: (message: string, politeness?: "polite" | "assertive") => void;
+    /**
+     * Sets aria-expanded and aria-controls on a trigger/panel pair.
+     *
+     * @param triggerInput - Trigger element or selector
+     * @param panelInput - Panel element or selector
+     * @param expanded - Optional expanded state (defaults to toggle)
+     * @returns Final expanded state
+     *
+     * @example
+     * ```typescript
+     * A11y.setExpanded(button, panel, true);
+     * ```
+     */
+    setExpanded: (triggerInput: ElementInput, panelInput: ElementInput, expanded?: boolean) => boolean | null;
+    /**
+     * Sets aria-selected for an option and clears siblings within a listbox.
+     *
+     * @param optionInput - Option element or selector
+     * @param listboxInput - Optional listbox container
+     * @param selected - Selected state (default: true)
+     *
+     * @example
+     * ```typescript
+     * A11y.setSelected(option, listbox, true);
+     * ```
+     */
+    setSelected: (optionInput: ElementInput, listboxInput?: ElementInput, selected?: boolean) => boolean | null;
+    /**
+     * Creates roving tabindex behavior for composite widgets.
+     *
+     * @param root - Widget root element
+     * @param selector - Selector for focusable items
+     * @param options - Roving options
+     * @returns Cleanup function
+     *
+     * @example
+     * ```typescript
+     * const stop = A11y.roving(toolbar, 'button', { axis: 'horizontal' });
+     * ```
+     */
+    roving: (root: HTMLElement | null, selector: string, options?: A11yRovingOptions) => Unsubscribe;
 };
 export declare const Text: {
     /**
@@ -5848,73 +6855,707 @@ export declare const History: {
    */
     syncToUrl: (paramName: string, debounceMs?: number) => (target: HTMLElement | null) => Unsubscribe;
 };
+export type WithArgMapped<E, F extends Array<(arg: E, ...args: any[]) => any>> = {
+    [K in keyof F]: F[K] extends (arg: E, ...args: infer A) => infer R ? (...args: A) => R : never;
+};
+export type WithArgFn = {
+    <E>(arg: E): <F extends Array<(arg: E, ...args: any[]) => any>>(...fns: F) => WithArgMapped<E, F>;
+    <E, F extends Array<(arg: E, ...args: any[]) => any>>(arg: E, ...fns: F): WithArgMapped<E, F>;
+};
+export type DataLastFn<D, A extends any[], R> = {
+    (...args: [...A, D]): R;
+    (...args: A): (data: D) => R;
+};
+export type DataLastMapped<D, F extends Array<(data: D, ...args: any[]) => any>> = {
+    [K in keyof F]: F[K] extends (data: D, ...args: infer A) => infer R ? DataLastFn<D, A, R> : never;
+};
+export type DataLastPredFn = {
+    <D>(isData: (value: unknown) => value is D): <F extends Array<(data: D, ...args: any[]) => any>>(...fns: F) => DataLastMapped<D, F>;
+    <D, F extends Array<(data: D, ...args: any[]) => any>>(isData: (value: unknown) => value is D, ...fns: F): DataLastMapped<D, F>;
+};
+export type DataLastElFn = {
+    <D extends ElementInput, F extends Array<(data: D, ...args: any[]) => any>>(...fns: F): DataLastMapped<D, F>;
+};
+export type FlexFn<D, A extends any[], R> = {
+    (data: D, ...args: A): R;
+    (...args: [...A, D]): R;
+    (data: D): (...args: A) => R;
+    (...args: A): (data: D) => R;
+};
+export type FlexMapped<D, F extends Array<(data: D, ...args: any[]) => any>> = {
+    [K in keyof F]: F[K] extends (data: D, ...args: infer A) => infer R ? FlexFn<D, A, R> : never;
+};
+export type FlexElFn = {
+    <D extends ElementInput, F extends Array<(data: D, ...args: any[]) => any>>(...fns: F): FlexMapped<D, F>;
+};
+export type Path = string | Array<string | number>;
+/**
+ * Represents a function that can be called either Data-First or Data-Last.
+ */
+interface DualModeFn<D, A extends any[], R> {
+    (data: D, ...args: A): R;
+    (...argsThenData: [...A, D]): R;
+}
+/**
+ * A collection of functional programming helpers for composition, currying,
+ * and creating point-free logic. Essential for building complex behaviors
+ * from small, reusable functions.
+ */
 export declare const Fn: {
+    def: <T, A extends any[], R>(fn: (target: T | null, ...args: A) => R) => {
+        (target: T | null, ...args: A): R;
+        (target: T | null): (...args: A) => R;
+    };
     /**
-     * Standard Left-to-Right composition.
-     * Passes the output of one function as the input to the next.
-     * @example pipe(getName, toUpper, log)(user);
+     * Creates a function that accepts data as either the first OR the last argument.
+     *
+     * @param fn - The original function (must be written as Data-First: (data, ...args) => result)
+     * @param isData - A Type Guard to identify the Data argument at runtime.
      */
-    pipe: <T>(...fns: Function[]) => (x: T) => T;
+    makeDataFirstOrLast<D, A extends any[], R>(fn: (data: D, ...args: A) => R, isData: (input: any) => input is D): DualModeFn<D, A, R>;
     /**
-     * Curries a binary function.
-     * Turns `fn(a, b)` into `fn(a)(b)`.
-     * @example const add = curry((a, b) => a + b); add(1)(2);
+     * (B-Combinator) Chains functions in left-to-right order.
+     * `pipe(f, g, h)(x)` is equivalent to `h(g(f(x)))`.
+     *
+     * @param fns - The sequence of functions to apply.
+     * @returns A new function that applies the sequence to its input.
+     *
+     * @example
+     * ```typescript
+     * import { Fn, modify, cls } from '@doeixd/dom';
+     *
+     * const makeActive = Fn.pipe(
+     *   modify({ text: 'Active' }),
+     *   cls.add('is-active')
+     * );
+     *
+     * makeActive(myButton);
+     * ```
+     */
+    pipe: <T>(...fns: Array<(arg: any) => any>) => (x: T) => any;
+    /**
+     * Alias for `chain` utility.
+     */
+    chain: typeof chain;
+    /**
+     * Alias for `exec` utility.
+     */
+    exec: typeof exec;
+    /**
+     * Converts a function that takes two arguments `fn(a, b)` into a curried
+     * function that takes them one at a time `fn(a)(b)`.
+     *
+     * @param fn - The binary function to curry.
+     *
+     * @example
+     * ```typescript
+     * const add = (a: number, b: number) => a + b;
+     * const curriedAdd = Fn.curry(add);
+     * const add5 = curriedAdd(5);
+     * add5(3); // 8
+     * ```
      */
     curry: <A, B, R>(fn: (a: A, b: B) => R) => (a: A) => (b: B) => R;
     /**
-     * Swaps the arguments of a curried function.
-     * Turns `fn(a)(b)` into `fn(b)(a)`.
-     * Useful for converting "Config-First" to "Target-First" or vice versa.
+     * Prefills the first argument for multiple functions.
+     *
+     * Supports both call styles:
+     * - `Fn.withArg(arg, fn1, fn2)`
+     * - `Fn.withArg(arg)(fn1, fn2)`
+     *
+     * Returns a tuple of functions with `arg` applied as the first parameter.
+     *
+     * @template E - The first argument type
+     * @template F - Tuple of functions that accept `E` first
+     * @param arg - The argument to prefill
+     * @param fns - Functions to prefill with `arg`
+     * @returns Tuple of functions with `arg` applied
      *
      * @example
-     * // Suppose style(prop)(el)
-     * const styleEl = swap(style)(el);
-     * styleEl('color');
+     * ```typescript
+     * import { Fn, on, modify } from '@doeixd/dom';
+     *
+     * const [onButton, modifyButton] = Fn.withArg(button, on, modify);
+     * onButton('click', handler);
+     * modifyButton({ text: 'Save' });
+     *
+     * const [onCard, modifyCard] = Fn.withArg(card)(on, modify);
+     * onCard('mouseenter', handler);
+     * modifyCard({ class: { active: true } });
+     * ```
+     */
+    withArg: WithArgFn;
+    /**
+     * Converts a data-first function into a data-last, dual-mode function.
+     *
+     * Turns `(data, ...args) => result` into:
+     * - Immediate: `(...args, data) => result`
+     * - Curried: `(...args) => (data) => result`
+     *
+     * Detection defaults to arity (`fn.length`) and can be customized with:
+     * - `arity`: expected argument count (including data)
+     * - `isData`: predicate for the last argument
+     *
+     * @template D - The data type
+     * @template A - Argument tuple (excluding data)
+     * @template R - Return type
+     * @param fn - Data-first function
+     * @param config - Optional arity or predicate config
+     * @returns Dual-mode data-last function
+     *
+     * @example
+     * ```typescript
+     * import { Fn, on } from '@doeixd/dom';
+     *
+     * const onLast = Fn.dataLast(on, { arity: 3 });
+     * onLast('click', handler, button); // Immediate
+     * onLast('click', handler)(button); // Curried
+     * ```
+     *
+     * @example
+     * ```typescript
+     * import { Fn, modify } from '@doeixd/dom';
+     *
+     * const modifyLast = Fn.dataLast(modify, (value): value is HTMLElement => value instanceof HTMLElement);
+     * modifyLast({ text: 'Save' }, button);
+     * modifyLast({ text: 'Save' })(button);
+     * ```
+     */
+    dataLast: <D, A extends any[], R>(fn: (data: D, ...args: A) => R, config?: number | ((value: unknown) => value is D) | {
+        arity?: number;
+        isData?: (value: unknown) => value is D;
+    }) => DataLastFn<D, A, R>;
+    /**
+     * Builds a data-last transformer from a predicate.
+     *
+     * Useful when arity detection is ambiguous or when the data argument can be
+     * inferred by shape (like elements, selectors, or custom objects).
+     *
+     * Supports both call styles:
+     * - `Fn.dataLastPred(isData, fn1, fn2)`
+     * - `Fn.dataLastPred(isData)(fn1, fn2)`
+     *
+     * @param isData - Predicate that identifies the data argument
+     * @returns Data-last versions of the provided functions
+     *
+     * @example
+     * ```typescript
+     * import { Fn, on } from '@doeixd/dom';
+     *
+     * const isElement = (value: unknown): value is HTMLElement => value instanceof HTMLElement;
+     * const [onLast] = Fn.dataLastPred(isElement)(on);
+     *
+     * onLast('click', handler, button);
+     * onLast('click', handler)(button);
+     * ```
+     *
+     * @example
+     * ```typescript
+     * import { Fn, modify, cls } from '@doeixd/dom';
+     *
+     * const isTarget = (value: unknown): value is HTMLElement | null =>
+     *   value === null || value instanceof HTMLElement;
+     *
+     * const [modifyLast, addClassLast] = Fn.dataLastPred(isTarget)(modify, cls.add);
+     * modifyLast({ text: 'Save' }, button);
+     * addClassLast('active', button);
+     * ```
+     */
+    dataLastPred: DataLastPredFn;
+    /**
+     * Element/selector-aware data-last helper.
+     *
+     * Uses a built-in predicate that treats `ElementInput` as the data argument,
+     * enabling immediate vs curried behavior for element/selector inputs.
+     *
+     * @returns Data-last versions of the provided functions
+     *
+     * @example
+     * ```typescript
+     * import { Fn, on, modify } from '@doeixd/dom';
+     *
+     * const [onLast, modifyLast] = Fn.dataLastEl(on, modify);
+     *
+     * onLast('click', handler, button);
+     * onLast('click', handler)(button);
+     * onLast('click', handler, '#save');
+     * onLast('click', handler)('#save');
+     *
+     * modifyLast({ text: 'Save' }, button);
+     * modifyLast({ text: 'Save' })('#save');
+     * ```
+     */
+    dataLastEl: DataLastElFn;
+    /**
+     * Makes a function flexible about the position of its first argument.
+     *
+     * Supports all of the following call styles:
+     * - `fnFlex(firstArg, ...rest)`
+     * - `fnFlex(firstArg)(...rest)`
+     * - `fnFlex(...rest, firstArg)`
+     * - `fnFlex(...rest)(firstArg)`
+     *
+     * For ambiguous signatures, pass a predicate to identify the first argument
+     * (the "subject") so immediate vs curried behavior is deterministic.
+     *
+     * @template D - The first argument type
+     * @template A - Remaining arguments tuple
+     * @template R - Return type
+     * @param fn - Function to wrap
+     * @param isFirstArg - Optional predicate for the first argument
+     * @returns A flexible function with both data-first and data-last usage
+     *
+     * @example
+     * ```typescript
+     * import { Fn, on } from '@doeixd/dom';
+     *
+     * const isElement = (value: unknown): value is HTMLElement => value instanceof HTMLElement;
+     * const onFlex = Fn.flex(on, isElement);
+     *
+     * onFlex(button, 'click', handler);
+     * onFlex(button)('click', handler);
+     * onFlex('click', handler, button);
+     * onFlex('click', handler)(button);
+     * ```
+     *
+     * @example
+     * ```typescript
+     * import { Fn, modify } from '@doeixd/dom';
+     *
+     * const isTarget = (value: unknown): value is HTMLElement | null =>
+     *   value === null || value instanceof HTMLElement;
+     *
+     * const modifyFlex = Fn.flex(modify, isTarget);
+     * modifyFlex(button, { text: 'Save' });
+     * modifyFlex({ text: 'Save' }, button);
+     * ```
+     */
+    flex: <D, A extends any[], R>(fn: (data: D, ...args: A) => R, isFirstArg?: (value: unknown) => value is D) => FlexFn<D, A, R>;
+    /**
+     * Element/selector-aware flex helper.
+     *
+     * Uses the same ElementInput predicate as `dataLastEl`, enabling flexible
+     * first/last positioning for element/selector inputs.
+     *
+     * @returns Flexible versions of the provided functions
+     *
+     * @example
+     * ```typescript
+     * import { Fn, on, modify } from '@doeixd/dom';
+     *
+     * const [onFlex, modifyFlex] = Fn.flexEl(on, modify);
+     *
+     * onFlex(button, 'click', handler);
+     * onFlex('click', handler, button);
+     * onFlex('click', handler)(button);
+     *
+     * modifyFlex(button, { text: 'Save' });
+     * modifyFlex({ text: 'Save' }, '#save');
+     * ```
+     */
+    flexEl: FlexElFn;
+    /**
+     * (C-Combinator) Swaps the arguments of a curried function.
+     * Transforms `fn(config)(target)` into `fn(target)(config)`.
+     *
+     * Essential for using config-first functions (like `cls.add`) in contexts
+     * like `Array.map` that provide the target first.
+     *
+     * @param fn - The curried function to swap.
+     *
+     * @example
+     * ```typescript
+     * import { Fn, findAll, cls } from '@doeixd/dom';
+     *
+     * const buttons = findAll('button');
+     * const addActiveClass = Fn.swap(cls.add)('is-active');
+     *
+     * buttons.forEach(addActiveClass); // point-free style
+     * ```
      */
     swap: <A, B, R>(fn: (a: A) => (b: B) => R) => (b: B) => (a: A) => R;
     /**
-     * Flips the arguments of a standard binary function.
-     * Turns `fn(a, b)` into `fn(b, a)`.
+     * Flips the arguments of a non-curried binary function.
+     * Transforms `fn(a, b)` into `fn(b, a)`.
+     *
+     * @param fn - The binary function to flip.
      */
     flip: <A, B, R>(fn: (a: A, b: B) => R) => (b: B, a: A) => R;
     /**
-     * Executes a side-effect function and returns the original value.
-     * Essential for logging or debugging inside a `pipe` chain without breaking it.
+     * (K-Combinator) Executes a side-effect function with a value, then returns the value.
+     * Essential for debugging (`console.log`) or executing void-returning functions
+     * inside a `pipe` chain without breaking it.
      *
-     * @example pipe(modify({...}), tap(console.log), addClass('active'))(el);
+     * @param fn - The side-effect function.
+     *
+     * @example
+     * ```typescript
+     * import { Fn, modify, find } from '@doeixd/dom';
+     *
+     * const processEl = Fn.pipe(
+     *   modify({ text: 'Processed' }),
+     *   Fn.tap(el => console.log('Element after modify:', el)),
+     *   el => el.dataset.id
+     * );
+     *
+     * const id = processEl(find('#my-el'));
+     * ```
      */
     tap: <T>(fn: (x: T) => void) => (x: T) => T;
     /**
-     * Executes a function only if the value is not null/undefined.
-     * Useful wrapper for standard API functions that might crash on null.
+     * Creates a function that executes only if its input is not `null` or `undefined`.
+     * Safely wraps functions that would otherwise throw errors on nullish inputs.
      *
-     * @example const safeParse = maybe(JSON.parse);
+     * @param fn - The function to protect.
+     *
+     * @example
+     * ```typescript
+     * import { Fn, find } from '@doeixd/dom';
+     *
+     * const el = find('.maybe-missing');
+     * const safeFocus = Fn.maybe(focus());
+     *
+     * safeFocus(el); // No crash if el is null
+     * ```
      */
     maybe: <T, R>(fn: (x: T) => R) => (x: T | null | undefined) => R | null;
     /**
-     * Creates a function that accepts data as the *first* argument,
-     * but applies it to a curried function expecting data *last*.
+     * (W-Combinator / Converge) Applies multiple functions to the same input,
+     * then passes their results to a final combining function.
+     * `converge(h, f, g)(x)` is equivalent to `h(f(x), g(x))`.
      *
-     * Adapts `fn(config)(data)` to `fn(data, config)`.
+     * @param h - The final function that accepts the results.
+     * @param fns - The functions to apply to the input.
+     *
+     * @example
+     * ```typescript
+     * import { Fn, attr, prop } from '@doeixd/dom';
+     *
+     * const logData = (id, value) => console.log({ id, value });
+     *
+     * const logInputState = Fn.converge(
+     *   logData,
+     *   attr('data-id'),
+     *   prop('value')
+     * );
+     *
+     * logInputState(myInputElement); // Logs { id: '...', value: '...' }
+     * ```
      */
-    unbind: <D, C, R>(fn: (config: C) => (data: D) => R) => (data: D, config: C) => R;
+    converge: <T, O>(h: (...args: any[]) => O, ...fns: Array<(x: T) => any>) => (x: T) => O;
     /**
-     * "Thunks" a function. Returns a function that accepts no arguments
-     * and returns the result of the original call.
+     * Creates a function that executes one of two functions based on a predicate.
+     *
+     * @param predicate - A function that returns a boolean.
+     * @param ifTrue - The function to call if the predicate is true.
+     * @param ifFalse - The function to call if the predicate is false.
+     *
+     * @example
+     * ```typescript
+     * import { Fn, cls } from '@doeixd/dom';
+     *
+     * const hasValue = (el: HTMLInputElement) => el.value.length > 0;
+     *
+     * const toggleValidClass = Fn.ifElse(
+     *   hasValue,
+     *   cls.add('is-valid'),
+     *   cls.remove('is-valid')
+     * );
+     *
+     * toggleValidClass(myInputElement);
+     * ```
+     */
+    ifElse: <T, R1, R2>(predicate: (x: T) => boolean, ifTrue: (x: T) => R1, ifFalse: (x: T) => R2) => (x: T) => R1 | R2;
+    /**
+     * "Thunks" a function, creating a nullary (zero-argument) function that
+     * calls the original with pre-filled arguments.
+     *
      * Useful for event handlers that don't need the event object.
      *
-     * @example on(btn)('click', thunk(count, increment));
+     * @param fn - The function to thunk.
+     * @param args - The arguments to pre-fill.
+     *
+     * @example
+     * ```typescript
+     * import { Fn, on } from '@doeixd/dom';
+     *
+     * const increment = (amount: number) => console.log(amount + 1);
+     *
+     * on(button)('click', Fn.thunk(increment, 5)); // Logs 6 on click
+     * ```
      */
-    thunk: <T>(fn: (...args: any[]) => T, ...args: any[]) => () => T;
+    thunk: <A extends any[], R>(fn: (...args: A) => R, ...args: A) => () => R;
     /**
-     * Returns the value unchanged.
-     * Useful as a default no-op callback.
+     * (I-Combinator) Returns the value it was given.
+     * Useful as a default or placeholder in functional compositions.
      */
     identity: <T>(x: T) => T;
     /**
-     * A function that does nothing.
+     * A function that does nothing and returns nothing.
+     * Useful for providing a default no-op callback.
      */
     noop: () => void;
+    /**
+     * Converts an element-first function into an element-last (chainable) function.
+     * Perfect for use with `chain()` and functional pipelines.
+     *
+     * Takes a function `(element, ...args) => result` and converts it to
+     * `(...args) => (element) => element`, allowing it to be used in chains.
+     *
+     * @template T - The element type
+     * @template A - The argument types tuple
+     * @param fn - The element-first function to convert
+     * @returns A curried, chainable version that returns the element
+     *
+     * @example
+     * ```typescript
+     * import { Fn, chain, find } from '@doeixd/dom';
+     *
+     * // Original element-first function
+     * function setTextColor(el: HTMLElement, color: string) {
+     *   el.style.color = color;
+     * }
+     *
+     * // Convert to chainable
+     * const withTextColor = Fn.chainable(setTextColor);
+     *
+     * // Now use in chain!
+     * chain(
+     *   find('#app'),
+     *   withTextColor('red'),        // Returns (el) => el
+     *   withTextColor('blue'),       // Can chain multiple
+     *   cls.add('styled')            // Mix with other chainables
+     * );
+     *
+     * // Works with multiple arguments
+     * function setAttrs(el: HTMLElement, name: string, value: string) {
+     *   el.setAttribute(name, value);
+     * }
+     * const withAttr = Fn.chainable(setAttrs);
+     *
+     * chain(
+     *   element,
+     *   withAttr('data-id', '123'),
+     *   withAttr('aria-label', 'Button')
+     * );
+     *
+     * // Reusable transformers
+     * const makeButton = [
+     *   withTextColor('white'),
+     *   Fn.chainable((el: HTMLElement, size: string) => {
+     *     el.style.padding = size === 'large' ? '20px' : '10px';
+     *   })('large'),
+     *   cls.add('btn')
+     * ];
+     *
+     * findAll('button').forEach(btn => chain(btn, ...makeButton));
+     * ```
+     */
+    chainable: <T extends HTMLElement, A extends any[]>(fn: (element: T, ...args: A) => any) => (...args: A) => (element: T) => T;
+    /**
+     * Like `chainable`, but preserves the function's return value instead of
+     * returning the element. Useful when you need the result of the operation.
+     *
+     * @template T - The element type
+     * @template A - The argument types tuple
+     * @template R - The return type
+     * @param fn - The element-first function to convert
+     * @returns A curried version that returns the function's result
+     *
+     * @example
+     * ```typescript
+     * import { Fn } from '@doeixd/dom';
+     *
+     * // Function that returns a value
+     * function getComputedWidth(el: HTMLElement, includeMargin: boolean): number {
+     *   const styles = window.getComputedStyle(el);
+     *   const width = parseFloat(styles.width);
+     *   if (!includeMargin) return width;
+     *   const marginLeft = parseFloat(styles.marginLeft);
+     *   const marginRight = parseFloat(styles.marginRight);
+     *   return width + marginLeft + marginRight;
+     * }
+     *
+     * const getWidth = Fn.chainableWith(getComputedWidth);
+     *
+     * const element = find('#box');
+     * const totalWidth = getWidth(true)(element);  // Returns number
+     * console.log('Total width:', totalWidth);
+     *
+     * // Use in Fn.pipe when you need the value
+     * const processElement = Fn.pipe(
+     *   find('#container'),
+     *   getWidth(false),
+     *   width => console.log('Width:', width)
+     * );
+     * ```
+     */
+    chainableWith: <T extends HTMLElement, A extends any[], R>(fn: (element: T, ...args: A) => R) => (...args: A) => (element: T) => R;
+    /**
+     * Transforms an element-accepting function to also accept string selectors
+     * or functions that return elements. Preserves dual-mode API like def().
+     *
+     * Supports ParseSelector type inference for string literal selectors,
+     * enabling type-safe selector resolution with automatic element type inference.
+     *
+     * @template T - Element type
+     * @template A - Arguments tuple
+     * @template R - Return type
+     * @param fn - Original element-accepting function
+     * @param root - Root element for scoped searches (default: document)
+     * @returns Function that accepts ElementInput with dual-mode support
+     *
+     * @example
+     * ```typescript
+     * import { Fn, cls, css, modify, find } from '@doeixd/dom';
+     *
+     * // Transform existing functions
+     * const clsAdd = Fn.withSelector((el: HTMLElement | null, ...classes: string[]) => {
+     *   if (!el) return null;
+     *   cls.add(el)(...classes);
+     *   return el;
+     * });
+     *
+     * // Use with selectors (dual-mode)
+     * clsAdd('button', 'active', 'btn');           // Immediate: HTMLButtonElement | null
+     * clsAdd('button')('active', 'btn');           // Curried: HTMLButtonElement | null
+     * clsAdd('#app', 'container');                 // ID selector: HTMLElement | null
+     * clsAdd('svg')('icon');                       // SVG: SVGSVGElement | null
+     *
+     * // Use with function getters (lazy evaluation)
+     * clsAdd(() => find('.dynamic'))('highlight'); // Function: HTMLElement | null
+     *
+     * // Use with direct elements
+     * const button = find('button');
+     * clsAdd(button)('active');
+     *
+     * // Null-safe by design
+     * clsAdd(null)('active');         // Returns null, no error
+     * clsAdd('.missing')('active');   // Returns null if not found
+     *
+     * // Type inference preserved
+     * const btn = clsAdd('button')('active'); // Type: HTMLButtonElement | null
+     * const div = clsAdd('div')('card');      // Type: HTMLDivElement | null
+     *
+     * // Scoped to component
+     * const container = find('#container');
+     * const scopedAdd = Fn.withSelector(
+     *   (el: HTMLElement | null, ...classes: string[]) => {
+     *     if (!el) return null;
+     *     cls.add(el)(...classes);
+     *     return el;
+     *   },
+     *   container // Scoped root
+     * );
+     * scopedAdd('button')('btn'); // Searches within container only
+     *
+     * // Create reusable selector-enabled utilities
+     * const cssSelector = Fn.withSelector((el: HTMLElement | null, styles: Partial<CSSStyleDeclaration>) => {
+     *   if (!el) return null;
+     *   css(el)(styles);
+     *   return el;
+     * });
+     *
+     * cssSelector('.card', { padding: '20px' });
+     * cssSelector('.card')({ padding: '20px' });
+     * ```
+     */
+    withSelector: <T extends HTMLElement, A extends any[], R>(fn: (element: T | null, ...args: A) => R, root?: ParentNode) => SelectorFunction<T, A, R>;
+};
+/**
+ * Selector-enabled versions of common DOM utilities.
+ *
+ * These wrap the original functions with `Fn.withSelector` for convenience,
+ * allowing you to pass string selectors, function getters, or direct elements.
+ *
+ * All functions support dual-mode API (immediate and curried) and preserve
+ * type inference via ParseSelector.
+ *
+ * @example
+ * ```typescript
+ * import { $sel, find } from '@doeixd/dom';
+ *
+ * // Add classes using selector
+ * $sel.addClass('button', 'active', 'btn');
+ * $sel.addClass('button')('active', 'btn'); // Curried
+ *
+ * // Apply CSS
+ * $sel.css('.card', { padding: '20px' });
+ * $sel.css('.card')({ padding: '20px' });
+ *
+ * // Modify elements
+ * $sel.modify('#app', { text: 'Hello', disabled: false });
+ *
+ * // Attach events
+ * $sel.on('button', 'click', (e) => console.log('Clicked!'));
+ *
+ * // Function getters for dynamic elements
+ * $sel.focus(() => find('.modal input'))();
+ *
+ * // Type inference preserved
+ * const btn = $sel.addClass('button')('active'); // HTMLButtonElement | null
+ * const svg = $sel.css('svg')({ fill: 'red' });  // SVGSVGElement | null
+ * ```
+ */
+export declare const $sel: {
+    /**
+     * Add classes using selector or element.
+     * Supports dual-mode: immediate and curried.
+     */
+    addClass: SelectorFunction<HTMLElement, string[], Element | null>;
+    /**
+     * Remove classes using selector or element.
+     * Supports dual-mode: immediate and curried.
+     */
+    removeClass: SelectorFunction<HTMLElement, string[], Element | null>;
+    /**
+     * Toggle class using selector or element.
+     * Supports dual-mode: immediate and curried.
+     */
+    toggleClass: SelectorFunction<HTMLElement, [className: string, force?: boolean | undefined], Element | null>;
+    /**
+     * Apply CSS styles using selector or element.
+     * Supports dual-mode: immediate and curried.
+     */
+    css: SelectorFunction<HTMLElement, [styles: Partial<CSSStyleDeclaration>], HTMLElement | null>;
+    /**
+     * Modify element properties using selector or element.
+     * Supports dual-mode: immediate and curried.
+     */
+    modify: SelectorFunction<HTMLElement, [props: ElementProps], HTMLElement | null>;
+    /**
+     * Attach event listener using selector or element.
+     * Supports dual-mode: immediate and curried.
+     * Returns unsubscribe function for cleanup.
+     */
+    on: SelectorFunction<HTMLElement, [event: any, handler: (e: any) => void, options?: boolean | AddEventListenerOptions | undefined], Unsubscribe>;
+    /**
+     * Focus element using selector or element.
+     * Supports dual-mode: immediate and curried.
+     */
+    focus: SelectorFunction<HTMLElement, [options?: FocusOptions | undefined], HTMLElement | null>;
+    /**
+     * Blur element using selector or element.
+     * Returns the element for chaining.
+     */
+    blur: SelectorFunction<HTMLElement, [], HTMLElement | null>;
+    /**
+     * Scroll element into view using selector or element.
+     * Supports dual-mode: immediate and curried.
+     */
+    scrollInto: SelectorFunction<HTMLElement, [options?: ScrollIntoViewOptions | undefined], Element | null>;
+    /**
+     * Get element's bounding rect using selector or element.
+     */
+    rect: SelectorFunction<HTMLElement, [], DOMRect | null>;
+    /**
+     * Remove element from DOM using selector or element.
+     */
+    remove: SelectorFunction<HTMLElement, [], null>;
+    /**
+     * Empty element (remove all children) using selector or element.
+     */
+    empty: SelectorFunction<HTMLElement, [], Element | null>;
 };
 /**
  * Represents a successful computation.
@@ -6029,14 +7670,14 @@ export declare const bind: {
      * const setId = bind.attr('id', div);
      * setId(123);
      */
-    attr: (name: string, el?: HTMLElement | null) => ((target: HTMLElement | null) => Setter<string | number | boolean | null>) | Setter<string | number | boolean | null>;
+    attr: (name: string, el?: HTMLElement | null) => Setter<string | number | boolean | null> | ((target: HTMLElement | null) => Setter<string | number | boolean | null>);
     /**
      * Binds a class toggle.
      * Supports optional currying.
      *
      * @example const toggleActive = bind.toggle('active', div);
      */
-    toggle: (className: string, el?: HTMLElement | null) => ((target: HTMLElement | null) => Setter<boolean>) | Setter<boolean>;
+    toggle: (className: string, el?: HTMLElement | null) => Setter<boolean> | ((target: HTMLElement | null) => Setter<boolean>);
     /**
      * Binds a list to a container.
      * Replaces children only if array reference changes.
@@ -6056,7 +7697,100 @@ export declare const bind: {
      * @example bind.cssVar(el, '--progress')
      */
     cssVar: (el: HTMLElement | null, varName: string) => (value: string | number) => void;
+    /**
+     * Binds to an element property.
+     * @example bind.prop('disabled')(button)
+     */
+    prop: <K extends keyof HTMLElement>(propName: K, el?: HTMLElement | null) => ((target: HTMLElement | null) => Setter<HTMLElement[K]>) | Setter<HTMLElement[K]>;
+    /**
+     * Binds to multiple CSS classes with boolean toggles.
+     * @example bind.classes(el)({ active: true, disabled: false })
+     */
+    classes: (el: HTMLElement | null) => Setter<Record<string, boolean>>;
+    /**
+     * Binds to form input value.
+     * @example const setValue = bind.value(input); setValue('hello');
+     */
+    value: (el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null) => Setter<string | number>;
+    /**
+     * Binds to element visibility (display none/block).
+     * Preserves original display value when showing.
+     * @example const toggleVis = bind.show(el); toggleVis(false);
+     */
+    show: (el: HTMLElement | null) => Setter<boolean>;
 };
+/**
+ * Creates an enhanced binder with type-safe setters and batch updates.
+ *
+ * Integrates with the existing `bind` primitives to provide a declarative way
+ * to bind data to DOM elements extracted via refs. Define a schema mapping
+ * refs to setter functions, then update multiple refs with a single data object.
+ *
+ * **Features**:
+ * - **Type-safe**: TypeScript infers data shape from schema
+ * - **Batch updates**: Group multiple changes into single operation
+ * - **Partial updates**: Only provide changed values
+ * - **Null-safe**: Handles missing refs gracefully
+ *
+ * **Integration**: Uses existing `bind` primitives (text, value, prop, toggle, etc.)
+ *
+ * @template R - The refs shape
+ * @param refsObj - Object containing refs to bind
+ * @param schema - Optional schema defining how refs map to setters (defaults to text binding)
+ * @returns Enhanced binder instance
+ *
+ * @example
+ * ```typescript
+ * import { createBinder, bind, viewRefs, h } from '@doeixd/dom';
+ *
+ * interface FormRefs {
+ *   nameInput: HTMLInputElement;
+ *   emailInput: HTMLInputElement;
+ *   submitBtn: HTMLButtonElement;
+ *   errorMsg: HTMLElement;
+ * }
+ *
+ * const Form = viewRefs<FormRefs>(({ refs }) =>
+ *   h.form({}, [
+ *     h.input({ dataRef: 'nameInput', attr: { type: 'text' } }),
+ *     h.input({ dataRef: 'emailInput', attr: { type: 'email' } }),
+ *     h.button({ dataRef: 'submitBtn' }, ['Submit']),
+ *     h.div({ dataRef: 'errorMsg', class: { error: true } })
+ *   ])
+ * );
+ *
+ * const { element, refs } = Form();
+ *
+ * // Create binder with schema using existing bind primitives
+ * const ui = createBinder(refs, {
+ *   nameInput: bind.value,
+ *   emailInput: bind.value,
+ *   submitBtn: bind.prop('disabled'),
+ *   errorMsg: bind.text
+ * });
+ *
+ * // Update multiple refs at once (type-safe!)
+ * ui({
+ *   nameInput: 'John Doe',
+ *   emailInput: 'john@example.com',
+ *   submitBtn: false
+ * });
+ *
+ * // Batch updates for performance
+ * ui.batch(() => {
+ *   ui({ nameInput: '' });
+ *   ui({ emailInput: '' });
+ *   ui({ errorMsg: 'Please fill all fields' });
+ * });
+ *
+ * // Access individual setters
+ * ui.set.errorMsg('Invalid email format');
+ *
+ * // Partial updates
+ * ui({ submitBtn: true }); // Only updates submit button
+ * ```
+ */
+export declare function createBinder<R extends Record<string, HTMLElement>>(refsObj: R, schema?: Partial<BinderSchema<R>>): EnhancedBinder<R>;
 /**
  * Creates a lightweight, pure JavaScript observable store.
  * Unlike `store()`, this does NOT write to the DOM.
@@ -6256,6 +7990,111 @@ type InferData<S extends SetterMap> = Partial<{
 export declare function apply<S extends SetterMap>(setters: S): (data: InferData<S>) => void;
 export declare function apply<S extends SetterMap>(setters: S, data: InferData<S>): void;
 /**
+ * Applies multiple pre-configured element transformers to an element.
+ *
+ * This utility takes an element and applies a sequence of curried functions to it.
+ * Each function should be a pre-configured transformer that expects an element
+ * (like `cls.add('active')`, `css({...})`, `modify({...})`).
+ *
+ * Returns the element for further chaining.
+ *
+ * @template T - The element type
+ * @param element - The target element (null-safe)
+ * @param transforms - Pre-configured element transformers
+ * @returns The element (or null if input was null)
+ *
+ * @example
+ * ```typescript
+ * import { chain, find, cls, css, modify, attr } from '@doeixd/dom';
+ *
+ * // Configure a button with multiple operations
+ * const button = chain(
+ *   find('#submit'),
+ *   cls.add('btn', 'btn-primary'),
+ *   css({ padding: '10px 20px', borderRadius: '4px' }),
+ *   modify({ text: 'Submit', disabled: false }),
+ *   attr.set('data-action', 'submit')
+ * );
+ *
+ * // Reusable configuration
+ * const cardStyle = [
+ *   cls.add('card', 'shadow'),
+ *   css({ margin: '10px', padding: '15px' })
+ * ];
+ *
+ * const cards = findAll('.card-container > div');
+ * cards.forEach(card => chain(card, ...cardStyle));
+ *
+ * // With Fn.pipe for element creation
+ * const createButton = Fn.pipe(
+ *   el('button'),
+ *   btn => chain(btn,
+ *     cls.add('btn'),
+ *     css({ padding: '10px' }),
+ *     modify({ text: 'Click me' })
+ *   )
+ * );
+ * ```
+ */
+export declare function chain<T extends HTMLElement>(element: T | null, ...transforms: Array<(el: T) => any>): T | null;
+/**
+ * Executes multiple callback functions on an element.
+ *
+ * Similar to `chain`, but accepts direct callback functions instead of
+ * pre-configured transformers. Each callback receives the element as its
+ * first argument.
+ *
+ * This is more flexible for operations that need runtime values or complex logic.
+ * Returns the element for further chaining.
+ *
+ * @template T - The element type
+ * @param element - The target element (null-safe)
+ * @param operations - Callback functions that receive the element
+ * @returns The element (or null if input was null)
+ *
+ * @example
+ * ```typescript
+ * import { exec, find, cls, css, on } from '@doeixd/dom';
+ *
+ * // Execute multiple operations with runtime values
+ * const isActive = true;
+ * const theme = 'dark';
+ *
+ * exec(
+ *   find('#app'),
+ *   el => cls.add(el)('app-container'),
+ *   el => cls.toggle(el)('is-active', isActive),
+ *   el => cls.add(el)(`theme-${theme}`),
+ *   el => css(el)({
+ *     backgroundColor: theme === 'dark' ? '#333' : '#fff'
+ *   }),
+ *   el => on(el)('click', () => console.log('Clicked!', el)),
+ *   el => console.log('Element configured:', el)
+ * );
+ *
+ * // Conditional operations
+ * const config = getUserConfig();
+ * exec(
+ *   element,
+ *   el => config.showBorder && cls.add(el)('bordered'),
+ *   el => config.animated && attr.set(el)('data-animated', 'true'),
+ *   el => config.onInit?.(el)
+ * );
+ *
+ * // Mix with other operations
+ * const buttons = findAll('button');
+ * buttons.forEach((btn, index) =>
+ *   exec(
+ *     btn,
+ *     el => modify(el)({ text: `Button ${index + 1}` }),
+ *     el => on(el)('click', () => handleClick(index)),
+ *     el => el.dataset.index = String(index)
+ *   )
+ * );
+ * ```
+ */
+export declare function exec<T extends HTMLElement>(element: T | null, ...operations: Array<(el: T) => any>): T | null;
+/**
  * HTTP request method type.
  */
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS';
@@ -6284,6 +8123,8 @@ export interface HttpRequestInit extends Omit<RequestInit, 'body'> {
     retryDelay?: number;
     /** Transform response before returning */
     transform?: (data: any) => any;
+    /** Enable abortable requests (returns promise + abort). */
+    abortable?: boolean;
 }
 /**
  * HTTP response wrapper with metadata.
@@ -6312,6 +8153,17 @@ export interface HttpResponse<T = any> {
     response: globalThis.Response;
 }
 /**
+ * Optional interceptor hooks for HTTP clients.
+ */
+export interface HttpInterceptors {
+    /** Runs before request execution. */
+    request?: (init: HttpRequestInit) => HttpRequestInit | Promise<HttpRequestInit>;
+    /** Runs after response creation (for both ok and error responses). */
+    response?: <T = any>(res: HttpResponse<T>) => HttpResponse<T> | Promise<HttpResponse<T>>;
+    /** Runs when response is not ok or network failure occurs. */
+    error?: <T = any>(res: HttpResponse<T>) => HttpResponse<T> | Promise<HttpResponse<T>>;
+}
+/**
  * HTTP client configuration.
  * Defines defaults for all requests made by this client.
  *
@@ -6328,11 +8180,18 @@ export interface HttpConfig<H extends string = string> {
     retries?: number;
     /** Delay between retries */
     retryDelay?: number;
-    /** Request interceptor (runs before fetch) */
+    /** Request interceptor (runs before fetch). */
     interceptRequest?: (init: HttpRequestInit) => HttpRequestInit | Promise<HttpRequestInit>;
-    /** Response interceptor (runs after fetch) */
+    /** Response interceptor (runs after fetch). */
     interceptResponse?: <T = any>(res: HttpResponse<T>) => HttpResponse<T> | Promise<HttpResponse<T>>;
+    /** Interceptors grouped by lifecycle stage. */
+    interceptors?: HttpInterceptors;
 }
+export type HttpAbortController<T = any> = {
+    promise: Promise<HttpResponse<T>>;
+    abort: () => void;
+};
+export type HttpRequestResult<T = any> = Promise<HttpResponse<T>> | HttpAbortController<T>;
 /**
  * Creates a type-safe HTTP client with flexible configuration.
  *
@@ -6441,6 +8300,9 @@ export declare const Http: {
      *
      * Use this for applications that need centralized configuration, interceptors,
      * or per-client defaults (baseURL, timeout, retries, custom headers).
+     * Supports grouped interceptors (`interceptors.request/response/error`) and
+     * per-request abort controls via `abortable: true`.
+  
      *
      * For simple one-off requests, use the static methods: Http.get, Http.post, etc.
      *
@@ -6478,9 +8340,12 @@ export declare const Http: {
          * @example
          * ```typescript
          * const res = await http.get<User>('/users/123')({});
+         *
+         * const { promise, abort } = http.get<User>('/users/123')({ abortable: true });
+         * abort();
          * ```
          */
-        get: <T = any>(path: string) => (init?: HttpRequestInit) => Promise<HttpResponse<T>>;
+        get: <T = any>(path: string) => (init?: HttpRequestInit) => HttpRequestResult<T>;
         /**
          * Performs a POST request.
          *
@@ -6495,7 +8360,7 @@ export declare const Http: {
          * });
          * ```
          */
-        post: <T = any>(path: string) => (init?: HttpRequestInit) => Promise<HttpResponse<T>>;
+        post: <T = any>(path: string) => (init?: HttpRequestInit) => HttpRequestResult<T>;
         /**
          * Performs a PUT request.
          *
@@ -6503,7 +8368,7 @@ export declare const Http: {
          * @param path - Endpoint path
          * @returns A curried function that accepts request config with body
          */
-        put: <T = any>(path: string) => (init?: HttpRequestInit) => Promise<HttpResponse<T>>;
+        put: <T = any>(path: string) => (init?: HttpRequestInit) => HttpRequestResult<T>;
         /**
          * Performs a DELETE request.
          *
@@ -6511,7 +8376,7 @@ export declare const Http: {
          * @param path - Endpoint path
          * @returns A curried function that accepts request config
          */
-        delete: <T = any>(path: string) => (init?: HttpRequestInit) => Promise<HttpResponse<T>>;
+        delete: <T = any>(path: string) => (init?: HttpRequestInit) => HttpRequestResult<T>;
         /**
          * Performs a PATCH request.
          *
@@ -6519,7 +8384,7 @@ export declare const Http: {
          * @param path - Endpoint path
          * @returns A curried function that accepts request config with body
          */
-        patch: <T = any>(path: string) => (init?: HttpRequestInit) => Promise<HttpResponse<T>>;
+        patch: <T = any>(path: string) => (init?: HttpRequestInit) => HttpRequestResult<T>;
         /**
          * Checks if an HTTP response is successful (2xx).
          *
@@ -6893,6 +8758,25 @@ export interface ComponentContext<Refs extends Record<string, HTMLElement> = any
      */
     state: State;
     /**
+     * Creates a lightweight, reactive store for component-local state.
+     * Unlike `state`, this does NOT sync with DOM attributes - it's pure JS.
+     *
+     * @example
+     * ```typescript
+     * const userStore = ctx.store({ name: '', email: '' });
+     *
+     * // Subscribe to changes
+     * userStore.subscribe((state) => console.log('User:', state));
+     *
+     * // Update state
+     * userStore.set({ name: 'Alice' });
+     *
+     * // Get current state
+     * console.log(userStore.get());
+     * ```
+     */
+    store: typeof createStore;
+    /**
      * Scoped element finder (querySelector within root).
      */
     find: (selector: string) => HTMLElement | null;
@@ -6925,7 +8809,178 @@ export interface ComponentContext<Refs extends Record<string, HTMLElement> = any
      * (Equivalent to React's useEffect return function).
      */
     effect: (fn: Unsubscribe) => void;
+    /**
+     * Attaches an event listener to an element with automatic cleanup.
+     * Returns an unsubscribe function for manual cleanup if needed.
+     *
+     * @param event - The event name (e.g., 'click', 'input').
+     * @param element - The target element or selector (resolved via ctx.find).
+     * @param handler - The event handler function.
+     * @param options - Optional event listener options.
+     *
+     * @example
+     * ```typescript
+     * ctx.on('click', ctx.refs.btn, () => console.log('Clicked'));
+     * ctx.on('input', 'input[name="search"]', (e) => handleSearch(e));
+     * ```
+     */
+    on: <K extends keyof HTMLElementEventMap>(event: K, element: HTMLElement | string, handler: (e: HTMLElementEventMap[K]) => void, options?: boolean | AddEventListenerOptions) => Unsubscribe;
+    /**
+     * Prebound bind utilities for easy DOM updates with selector resolution.
+     * All methods accept either an HTMLElement or a selector string.
+     */
+    bind: {
+        /**
+         * Two-way binding between an input element and a state key.
+         * Automatically syncs input value ↔ state.
+         *
+         * @example
+         * ```typescript
+         * ctx.bind.input('input[name="username"]', 'username');
+         * // Now ctx.state.username updates the input, and input changes update state
+         * ```
+         */
+        input: (inputOrSelector: HTMLInputElement | string, stateKey: keyof State & string) => void;
+        /** Binds textContent to an element. */
+        text: (elOrSelector: HTMLElement | string | null) => Setter<string>;
+        /** Binds innerHTML to an element. */
+        html: (elOrSelector: HTMLElement | string | null) => Setter<string>;
+        /** Binds an attribute to an element. */
+        attr: (name: string, elOrSelector?: HTMLElement | string | null) => Setter<string | number | boolean | null> | ((el?: HTMLElement | string | null) => Setter<string | number | boolean | null>);
+        /** Binds a class toggle to an element. */
+        toggle: (className: string, elOrSelector?: HTMLElement | string | null) => Setter<boolean> | ((el?: HTMLElement | string | null) => Setter<boolean>);
+        /** Generic value binder with diffing. */
+        val: <T>(initial: T, effect: (val: T) => void) => Setter<T>;
+        /** Binds inline styles to an element. */
+        style: (elOrSelector: HTMLElement | string | null, property: string) => Setter<string | number>;
+        /** Binds CSS variables to an element. */
+        cssVar: (elOrSelector: HTMLElement | string | null, varName: string) => Setter<string | number>;
+        /** Binds a list to a container element. */
+        list: <T>(containerOrSelector: HTMLElement | string | null, renderItem: (item: T, index: number) => Node) => Setter<T[]>;
+    };
+    /**
+     * Observer utilities with automatic cleanup on component destroy.
+     */
+    observe: {
+        /**
+         * Creates an IntersectionObserver for an element.
+         * Auto-disconnects on component destroy.
+         *
+         * @example
+         * ```typescript
+         * ctx.observe.intersection('.lazy-image', (entry) => {
+         *   if (entry.isIntersecting) loadImage(entry.target);
+         * });
+         * ```
+         */
+        intersection: (elementOrSelector: HTMLElement | string, callback: (entry: IntersectionObserverEntry) => void, options?: IntersectionObserverInit) => void;
+        /**
+         * Creates a ResizeObserver for an element.
+         * Auto-disconnects on component destroy.
+         *
+         * @example
+         * ```typescript
+         * ctx.observe.resize('.resizable', (entry) => {
+         *   console.log('New size:', entry.contentRect);
+         * });
+         * ```
+         */
+        resize: (elementOrSelector: HTMLElement | string, callback: (entry: ResizeObserverEntry) => void) => void;
+    };
+    /**
+     * Creates a computed property that derives its value from state keys.
+     * Re-computes whenever any dependency changes.
+     *
+     * @param deps - Array of state keys to watch.
+     * @param compute - Function to compute the derived value.
+     * @returns Object with current value and onChange subscription.
+     *
+     * @example
+     * ```typescript
+     * const fullName = ctx.computed(['firstName', 'lastName'], () =>
+     *   `${ctx.state.firstName} ${ctx.state.lastName}`
+     * );
+     *
+     * fullName.onChange((name) => console.log('Full name:', name));
+     * ```
+     */
+    computed: <T>(deps: Array<keyof State & string>, compute: () => T) => {
+        value: T;
+        onChange: (callback: (val: T) => void) => void;
+    };
+    /**
+     * Executes a function immediately after the component setup completes.
+     * Useful for initialization that needs the full context to be ready.
+     *
+     * @example
+     * ```typescript
+     * ctx.onMount(() => {
+     *   console.log('Component mounted');
+     *   fetchInitialData();
+     * });
+     * ```
+     */
+    onMount: (fn: () => void) => void;
+    /**
+     * Registers a cleanup function to run when the component is destroyed.
+     * Alias for `effect()` with a clearer name for lifecycle clarity.
+     *
+     * @example
+     * ```typescript
+     * ctx.onUnmount(() => {
+     *   console.log('Component unmounting');
+     *   saveState();
+     * });
+     * ```
+     */
+    onUnmount: (fn: () => void) => void;
+    /**
+     * Applies multiple pre-configured element transformers to an element.
+     * Accepts string selectors (resolved within component root) or HTMLElements.
+     *
+     * @example
+     * ```typescript
+     * ctx.chain(
+     *   '.submit-btn',
+     *   cls.add('btn', 'btn-primary'),
+     *   css({ padding: '10px' }),
+     *   modify({ text: 'Submit' })
+     * );
+     *
+     * // Or with refs
+     * ctx.chain(
+     *   ctx.refs.button,
+     *   cls.add('active'),
+     *   attr.set('disabled', false)
+     * );
+     * ```
+     */
+    chain: <T extends HTMLElement>(elementOrSelector: T | string, ...transforms: Array<(el: T) => any>) => T | null;
+    /**
+     * Executes multiple callback functions on an element.
+     * Accepts string selectors (resolved within component root) or HTMLElements.
+     *
+     * @example
+     * ```typescript
+     * const theme = ctx.state.theme;
+     * ctx.exec(
+     *   '.app-container',
+     *   el => cls.add(el)(`theme-${theme}`),
+     *   el => on(el)('click', handleClick),
+     *   el => console.log('Configured:', el)
+     * );
+     * ```
+     */
+    exec: <T extends HTMLElement>(elementOrSelector: T | string, ...operations: Array<(el: T) => any>) => T | null;
 }
+/**
+ * Context returned by `domCtx`.
+ * Provides the same scoped toolkit as `defineComponent` plus a destroy method.
+ */
+export type DomContext<Refs extends Record<string, HTMLElement> = any, Groups extends Record<string, HTMLElement[]> = any, State extends Record<string, any> = Record<string, any>> = ComponentContext<Refs, Groups, State> & {
+    /** Destroys the context, removing listeners and observers. */
+    destroy: () => void;
+};
 /**
  * The public interface returned by a component instance.
  */
@@ -6936,7 +8991,33 @@ export type ComponentInstance<API> = API & {
     destroy: () => void;
 };
 /**
+ * Creates a component-like context for a root element.
+ *
+ * Returns a scoped toolkit matching `defineComponent` without creating a full
+ * component instance. Includes automatic cleanup via `destroy()`.
+ *
+ * @template R - The shape of `refs` (elements marked with `data-ref="name"`).
+ * @template G - The shape of `groups` (lists marked with `data-ref="name"`).
+ * @template S - The shape of `state` (reactive `data-*` attributes).
+ * @param target - DOM element or selector to scope the context to.
+ * @returns A domCtx context or null if target not found.
+ *
+ * @example
+ * ```typescript
+ * const ctx = domCtx('#card');
+ * if (ctx) {
+ *   ctx.on('click', ctx.refs.button, () => alert('Clicked'));
+ * }
+ *
+ * const root = document.querySelector('#panel');
+ * const ctx2 = domCtx(root);
+ * ctx2?.on('click', ctx2.refs.button, () => alert('Clicked'));
+ * ```
+ */
+export declare const domCtx: <R extends Record<string, HTMLElement> = any, G extends Record<string, HTMLElement[]> = any, S extends Record<string, any> = any>(target: string | HTMLElement | null) => DomContext<R, G, S> | null;
+/**
  * Creates a reactive, self-cleaning component instance on a DOM element.
+
  *
  * Applies the **Setup Pattern** (similar to Vue 3 Composition API) to Vanilla DOM.
  * It binds a logic closure to a root element and provides a scoped `Context` toolkit.
@@ -6954,10 +9035,12 @@ export type ComponentInstance<API> = API & {
  * @template S - The shape of `state` (reactive `data-*` attributes).
  *
  * @param target - The DOM element or CSS selector to mount the component on.
- * @param setup - The initialization function. Receives a `ComponentContext` and returns the public API.
+ * @param setup - Initialization function. Receives `ComponentContext` and `auto` cleanup helper.
+
  * @returns The initialized component instance, or `null` if the target was not found.
  *
  * @example
+
  * ```typescript
  * // 1. Define Types
  * interface CounterRefs { display: HTMLElement; btn: HTMLButtonElement; }
@@ -6998,7 +9081,7 @@ export type ComponentInstance<API> = API & {
  * Counter.destroy();
  * ```
  */
-export declare const defineComponent: <API extends Record<string, any> = {}, R extends Record<string, HTMLElement> = any, G extends Record<string, HTMLElement[]> = any, S extends Record<string, any> = any>(target: string | HTMLElement | null, setup: (ctx: ComponentContext<R, G, S>) => API | void) => ComponentInstance<API> | null;
+export declare const defineComponent: <API extends Record<string, any> = {}, R extends Record<string, HTMLElement> = any, G extends Record<string, HTMLElement[]> = any, S extends Record<string, any> = any>(target: string | HTMLElement | null, setup: (ctx: ComponentContext<R, G, S>, auto: AutoCleanup) => API | void) => ComponentInstance<API> | null;
 /**
  * Spawns a component dynamically.
  * Useful for Modals, Toasts, or dynamic lists.
@@ -7007,6 +9090,47 @@ export declare const defineComponent: <API extends Record<string, any> = {}, R e
  * @param componentFn - The logic factory (from `defineComponent`)
  * @param target - Where to append the result
  * @param props - Initial props
+ *
+ * @example
+ * ```typescript
+ * // 1. Define the template
+ * const ModalTemplate = view(({ title, message }) => html`
+ *   <div class="modal" data-ref="modal">
+ *     <div class="modal-content">
+ *       <h2 data-ref="title">${title}</h2>
+ *       <p data-ref="message">${message}</p>
+ *       <button data-ref="closeBtn">Close</button>
+ *     </div>
+ *   </div>
+ * `);
+ *
+ * // 2. Define the component logic
+ * const ModalComponent = (root: HTMLElement) => defineComponent(root, (ctx) => {
+ *   ctx.bindEvents({
+ *     closeBtn: {
+ *       click: () => instance.destroy()
+ *     }
+ *   });
+ *
+ *   return {
+ *     setTitle: (title: string) => modify(ctx.refs.title)({ text: title }),
+ *     setMessage: (msg: string) => modify(ctx.refs.message)({ text: msg })
+ *   };
+ * });
+ *
+ * // 3. Spawn the modal
+ * const instance = mountComponent(
+ *   () => ModalTemplate({ title: 'Alert', message: 'Hello World!' }),
+ *   ModalComponent,
+ *   document.body
+ * );
+ *
+ * // 4. Use the API
+ * instance.setTitle('New Title');
+ *
+ * // 5. Cleanup when done
+ * instance.destroy(); // Removes DOM and cleans up listeners
+ * ```
  */
 export declare const mountComponent: <API>(templateFn: () => {
     root: HTMLElement | DocumentFragment;
@@ -7015,5 +9139,411 @@ export declare const mountComponent: <API>(templateFn: () => {
     /** The root element */
     root: HTMLElement;
 };
+/**
+ * Control object passed to wrapped functions for fine-grained update control.
+ *
+ * @template R - The return/result type used for updates
+ *
+ * @example
+ * ```typescript
+ * const loadItems = sync((control) => {
+ *   control(0); // Immediate update: "Loading 0%"
+ *
+ *   for (let i = 0; i < items.length; i++) {
+ *     processItem(items[i]);
+ *     control((i + 1) / items.length * 100); // Progress updates
+ *   }
+ *
+ *   control.skip(); // Skip final auto-update (we already updated)
+ *   return items.length;
+ * });
+ * ```
+ */
+interface UpdateControl<R> {
+    /**
+     * Trigger an immediate update with the given value.
+     * Useful for progress indicators, intermediate states, or streaming updates.
+     *
+     * @param value - The value to pass to the updater function
+     *
+     * @example
+     * ```typescript
+     * const processFiles = sync((control) => {
+     *   files.forEach((file, i) => {
+     *     process(file);
+     *     control({ current: i + 1, total: files.length });
+     *   });
+     *   return files.length;
+     * });
+     * ```
+     */
+    (value: R): void;
+    /**
+     * Skip the automatic update that normally runs after function completion.
+     * Call this when you've handled updates manually and don't need a final one.
+     *
+     * @example
+     * ```typescript
+     * const manualUpdate = sync((control) => {
+     *   const result = compute();
+     *   control(result); // Manual update
+     *   control.skip();  // Don't update again with return value
+     *   return result;
+     * });
+     * ```
+     */
+    skip(): void;
+    /**
+     * Queue an update to run asynchronously (next microtask).
+     * Multiple queued updates within the same task are batched into one.
+     *
+     * @param value - The value to pass to the updater function
+     *
+     * @example
+     * ```typescript
+     * const batchedOps = sync((control) => {
+     *   control.queue(1); // Queued
+     *   control.queue(2); // Replaces previous (batched)
+     *   control.queue(3); // Replaces previous (batched)
+     *   // Only one update runs with value 3
+     *   return 3;
+     * });
+     * ```
+     */
+    queue(value: R): void;
+    /**
+     * Force all queued updates to run immediately.
+     * Useful when you need to ensure DOM is updated before continuing.
+     *
+     * @example
+     * ```typescript
+     * const withFlush = sync((control) => {
+     *   control.queue(intermediateValue);
+     *   control.flush(); // Force update now
+     *   measureDOM();    // Safe to measure after flush
+     *   return finalValue;
+     * });
+     * ```
+     */
+    flush(): void;
+}
+/**
+ * Updater function called when updates are triggered.
+ *
+ * @template T - The element type
+ * @template R - The result type from wrapped functions
+ *
+ * @param el - The target element
+ * @param result - The return value from the wrapped function (undefined on initial call)
+ *
+ * @example
+ * ```typescript
+ * // Simple text updater
+ * const textUpdater: Updater<HTMLElement, number> = (el, result) => {
+ *   el.textContent = result !== undefined ? String(result) : '0';
+ * };
+ *
+ * // Progress bar updater
+ * const progressUpdater: Updater<HTMLElement, number> = (el, percent) => {
+ *   el.style.width = `${percent ?? 0}%`;
+ *   el.setAttribute('aria-valuenow', String(percent ?? 0));
+ * };
+ * ```
+ */
+type Updater<T extends Element, R = unknown> = (el: T, result: R | undefined) => void;
+/**
+ * Function signature for wrapped functions that receive update control.
+ *
+ * @template Args - Argument types for the function
+ * @template R - Return type of the function
+ */
+type ControlledFn<Args extends any[], R> = (control: UpdateControl<R>, ...args: Args) => R;
+/**
+ * Function signature for simple wrapped functions without control.
+ *
+ * @template Args - Argument types for the function
+ * @template R - Return type of the function
+ */
+type SimpleFn<Args extends any[], R> = (...args: Args) => R;
+/**
+ * The resulting wrapped function type.
+ *
+ * @template Args - Argument types for the function
+ * @template R - Return type of the function
+ */
+type WrappedFn<Args extends any[], R> = (...args: Args) => R;
+/**
+ * Helper type to extract wrapped function types from a record.
+ */
+type WrapAll<T extends Record<string, ControlledFn<any[], any>>> = {
+    [K in keyof T]: T[K] extends ControlledFn<infer Args, infer R> ? WrappedFn<Args, R> : never;
+};
+/**
+ * Helper type for simple function wrapping.
+ */
+type WrapAllSimple<T extends Record<string, SimpleFn<any[], any>>> = {
+    [K in keyof T]: T[K] extends SimpleFn<infer Args, infer R> ? WrappedFn<Args, R> : never;
+};
+/**
+ * The update wrapper interface with all utilities.
+ *
+ * @template T - The target element type
+ *
+ * @example
+ * ```typescript
+ * let count = 0;
+ * const sync: UpdateWrapper<HTMLElement> = createUpdateAfter(
+ *   countEl,
+ *   (el, result) => { el.textContent = String(result ?? count); }
+ * );
+ *
+ * // Use various wrapper methods
+ * const increment = sync((ctrl) => ++count);
+ * const add = sync((ctrl, n: number) => count += n);
+ * const reset = sync.simple(() => count = 0);
+ * ```
+ */
+interface UpdateWrapper<T extends Element> {
+    /**
+     * Wrap a function that receives update control.
+     * The updater automatically runs after function completion with its return value.
+     *
+     * @template Args - The function's argument types
+     * @template R - The function's return type
+     * @param fn - Function receiving UpdateControl as first argument, followed by any args
+     * @returns A wrapped function with the same signature (minus control)
+     *
+     * @example
+     * ```typescript
+     * const sync = createUpdateAfter(el, (el, count) => {
+     *   el.textContent = `Count: ${count}`;
+     * });
+     *
+     * // With control for intermediate updates
+     * const incrementBy = sync((control, amount: number) => {
+     *   for (let i = 0; i < amount; i++) {
+     *     count++;
+     *     control(count); // Update after each increment
+     *   }
+     *   return count;
+     * });
+     *
+     * incrementBy(5); // Updates 5 times during, once after
+     * ```
+     */
+    <Args extends any[], R>(fn: ControlledFn<Args, R>): WrappedFn<Args, R>;
+    /**
+     * Wrap a simple function without update control.
+     * Convenient when you don't need intermediate updates.
+     *
+     * @template Args - The function's argument types
+     * @template R - The function's return type
+     * @param fn - Simple function to wrap
+     * @returns A wrapped function with identical signature
+     *
+     * @example
+     * ```typescript
+     * const increment = sync.simple(() => ++count);
+     * const add = sync.simple((n: number) => count += n);
+     * const reset = sync.simple(() => count = 0);
+     *
+     * increment();  // Updates with new count
+     * add(5);       // Updates with new count
+     * reset();      // Updates with 0
+     * ```
+     */
+    simple<Args extends any[], R>(fn: SimpleFn<Args, R>): WrappedFn<Args, R>;
+    /**
+     * Wrap multiple controlled functions at once.
+     *
+     * @template A - Record of controlled functions
+     * @param actions - Object mapping names to controlled functions
+     * @returns Object with same keys but wrapped functions
+     *
+     * @example
+     * ```typescript
+     * const actions = sync.all({
+     *   increment: (ctrl) => ++count,
+     *   decrement: (ctrl) => --count,
+     *   add: (ctrl, n: number) => count += n,
+     *   reset: (ctrl) => count = 0
+     * });
+     *
+     * actions.increment();  // Updates
+     * actions.add(10);      // Updates
+     * actions.reset();      // Updates
+     * ```
+     */
+    all<A extends Record<string, ControlledFn<any[], any>>>(actions: A): WrapAll<A>;
+    /**
+     * Wrap multiple simple functions at once.
+     *
+     * @template A - Record of simple functions
+     * @param actions - Object mapping names to simple functions
+     * @returns Object with same keys but wrapped functions
+     *
+     * @example
+     * ```typescript
+     * const actions = sync.allSimple({
+     *   increment: () => ++count,
+     *   decrement: () => --count,
+     *   double: () => count *= 2
+     * });
+     *
+     * actions.increment();
+     * actions.double();
+     * ```
+     */
+    allSimple<A extends Record<string, SimpleFn<any[], any>>>(actions: A): WrapAllSimple<A>;
+    /**
+     * Batch multiple operations, running only ONE update at the end.
+     * All wrapped function calls inside the batch are executed,
+     * but their individual updates are suppressed until the batch completes.
+     *
+     * @template R - Return type of the batch function
+     * @param fn - Function containing multiple wrapped calls
+     * @returns The return value of fn
+     *
+     * @example
+     * ```typescript
+     * // Without batch: 3 DOM updates
+     * increment(); increment(); increment();
+     *
+     * // With batch: 1 DOM update
+     * sync.batch(() => {
+     *   increment();
+     *   increment();
+     *   increment();
+     * });
+     *
+     * // Batch with return value
+     * const finalCount = sync.batch(() => {
+     *   increment();
+     *   increment();
+     *   return count;
+     * });
+     * ```
+     */
+    batch<R>(fn: () => R): R;
+    /**
+     * Manually trigger an update with a specific value.
+     * Useful for forcing updates outside of wrapped functions.
+     *
+     * @template R - The value type
+     * @param value - Value to pass to the updater
+     *
+     * @example
+     * ```typescript
+     * // Force update with specific value
+     * sync.update(42);
+     *
+     * // Update after external change
+     * count = someExternalValue;
+     * sync.update(count);
+     * ```
+     */
+    update<R>(value: R): void;
+    /**
+     * Trigger an update with undefined (same as initial update).
+     * Useful when the updater reads from external state.
+     *
+     * @example
+     * ```typescript
+     * const sync = createUpdateAfter(el, (el) => {
+     *   el.textContent = String(count); // Reads from closure
+     * });
+     *
+     * count = 100;
+     * sync.refresh(); // Updates to show 100
+     * ```
+     */
+    refresh(): void;
+    /**
+     * Check if currently inside a batch operation.
+     */
+    readonly isBatching: boolean;
+    /**
+     * The target element (may be null if element wasn't found).
+     */
+    readonly el: T | null;
+}
+/**
+ * Stage 1: Only element provided, waiting for updater.
+ */
+type ElementStage<T extends Element> = {
+    <R>(updater: Updater<T, R>): UpdateWrapper<T>;
+    <R>(updater: Updater<T, R>, initialValue: R): UpdateWrapper<T>;
+};
+/**
+ * Creates an update wrapper that syncs DOM state after function execution.
+ *
+ * This utility bridges imperative state changes with DOM updates by:
+ * 1. Running an initial update immediately (optional)
+ * 2. Wrapping functions to trigger updates after they complete
+ * 3. Passing return values to the updater for reactive-style updates
+ * 4. Supporting intermediate updates, batching, and async operations
+ *
+ * @template T - The target element type (inferred from selector/element)
+ *
+ * @example
+ * ```typescript
+ * // Basic counter with automatic DOM sync
+ * let count = 0;
+ * const countEl = find('#count');
+ *
+ * const sync = createUpdateAfter(countEl, (el, result) => {
+ *   el.textContent = String(result ?? count);
+ * });
+ *
+ * const increment = sync.simple(() => ++count);
+ * const decrement = sync.simple(() => --count);
+ *
+ * increment(); // DOM shows 1
+ * increment(); // DOM shows 2
+ * decrement(); // DOM shows 1
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // Progress indicator with intermediate updates
+ * const progressBar = find('.progress-bar');
+ *
+ * const sync = createUpdateAfter(progressBar, (el, percent) => {
+ *   el.style.width = `${percent ?? 0}%`;
+ *   el.textContent = `${percent ?? 0}%`;
+ * });
+ *
+ * const processFiles = sync(async (control, files: File[]) => {
+ *   for (let i = 0; i < files.length; i++) {
+ *     await uploadFile(files[i]);
+ *     control(Math.round((i + 1) / files.length * 100));
+ *   }
+ *   return 100;
+ * });
+ *
+ * await processFiles(myFiles); // Progress updates during upload
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // Batching multiple updates
+ * const sync = createUpdateAfter(el, (el, value) => {
+ *   el.textContent = String(value);
+ * });
+ *
+ * const inc = sync.simple(() => ++count);
+ *
+ * // Without batch: 3 DOM updates
+ * inc(); inc(); inc();
+ *
+ * // With batch: 1 DOM update at the end
+ * sync.batch(() => {
+ *   inc(); inc(); inc();
+ * });
+ * ```
+ */
+export declare function createUpdateAfter<T extends Element>(el: T | null): ElementStage<T>;
+export declare function createUpdateAfter<T extends Element, R = unknown>(el: T | null, updater: Updater<T, R>): UpdateWrapper<T>;
+export declare function createUpdateAfter<T extends Element, R>(el: T | null, updater: Updater<T, R>, initialValue: R): UpdateWrapper<T>;
 export {};
 //# sourceMappingURL=index.d.ts.map

@@ -12,9 +12,11 @@ Keyboard utilities.
 
 ```typescript
 const Key = {
-  is: (e: KeyboardEvent, key: string) => boolean,
-  combo: (e: KeyboardEvent, keys: string[]) => boolean,
-  modifiers: (e: KeyboardEvent) => { ctrl: boolean, shift: boolean, alt: boolean, meta: boolean }
+  matches: (event: KeyboardEvent, key: string | string[] | ((key: string) => boolean)) => boolean,
+  matches: (key: string | string[] | ((key: string) => boolean)) => (event: KeyboardEvent) => boolean,
+  is: (target: EventTarget | null) => (key: string, handler: (e: KeyboardEvent) => void) => Unsubscribe,
+  onTab: (target: EventTarget | null) => (handler: (e: KeyboardEvent) => void) => Unsubscribe,
+  onArrow: (target: EventTarget | null) => (handler: (direction: 'Up' | 'Down' | 'Left' | 'Right', e: KeyboardEvent) => void) => Unsubscribe
 };
 ```
 
@@ -23,12 +25,14 @@ Focus management utilities.
 
 ```typescript
 const Focus = {
-  trap: (container: HTMLElement) => Unsubscribe,
-  restore: (el: HTMLElement) => () => void,
-  next: (from?: HTMLElement) => void,
-  prev: (from?: HTMLElement) => void
+  on: (target: HTMLElement | null) => (handler: (e: FocusEvent) => void) => Unsubscribe,
+  onBlur: (target: HTMLElement | null) => (handler: (e: FocusEvent) => void) => Unsubscribe,
+  onIn: (target: HTMLElement | null) => (handler: (e: FocusEvent) => void) => Unsubscribe,
+  onOut: (target: HTMLElement | null) => (handler: (e: FocusEvent) => void) => Unsubscribe,
+  trap: (container: HTMLElement | null) => Unsubscribe
 };
 ```
+
 
 ## Examples
 
@@ -37,11 +41,28 @@ const Focus = {
 import { Key, on } from '@doeixd/dom';
 
 on(document)('keydown', (e) => {
-  if (Key.combo(e, ['ctrl', 's'])) {
+  if (Key.matches(e, (key) => key.toLowerCase() === 's') && e.ctrlKey) {
     e.preventDefault();
     console.log('Save shortcut!');
   }
 });
+```
+
+### Tab and Arrow Handling
+```typescript
+import { Key } from '@doeixd/dom';
+
+const stopTab = Key.onTab(document)((e) => {
+  console.log('Tab pressed', e.shiftKey ? 'backwards' : 'forwards');
+});
+
+const stopArrow = Key.onArrow(document)((direction) => {
+  console.log('Arrow direction:', direction);
+});
+
+// Later
+stopTab();
+stopArrow();
 ```
 
 ### Focus Trap (for Modals)
@@ -54,3 +75,4 @@ const releaseTrap = Focus.trap(modal);
 // Later, when closing modal
 releaseTrap();
 ```
+

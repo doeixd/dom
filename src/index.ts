@@ -3078,6 +3078,7 @@ export function prop(a: any): any {
  * ```
  */
 export const onReady = (fn: () => void): void => {
+  if (typeof document === 'undefined') return;
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
     fn();
   } else {
@@ -3120,6 +3121,7 @@ export const ready = {
    * @returns Promise that resolves when DOM is ready
    */
   dom: () => new Promise<void>(resolve => {
+    if (typeof document === 'undefined') return resolve();
     if (document.readyState !== "loading") resolve();
     else document.addEventListener("DOMContentLoaded", () => resolve(), { once: true });
   }),
@@ -3222,6 +3224,8 @@ export const onMount = def((selector: string | null, handler: (el: Element) => v
   if (!selector) return () => { };
   const seen = new WeakSet();
   let foundAny = false;
+  let obs: MutationObserver | null = null;
+
   const check = (node: Element) => {
     if (seen.has(node)) return;
     if (node.matches(selector)) { seen.add(node); handler(node); foundAny = true; }
@@ -3230,16 +3234,30 @@ export const onMount = def((selector: string | null, handler: (el: Element) => v
     });
   };
 
+  const stopIfOnceSatisfied = () => {
+    if (once && foundAny && obs) {
+      obs.disconnect();
+      obs = null;
+    }
+  };
+
   // Initial check
   root.querySelectorAll(selector).forEach(check);
 
-  const obs = new MutationObserver(muts => muts.forEach(m => {
-    m.addedNodes.forEach(n => { if (n.nodeType === 1) check(n as Element); });
-  }));
+  if (once && foundAny) return () => { };
 
-  if (once && foundAny) return () => { }; // Already found
+  obs = new MutationObserver(muts => {
+    muts.forEach(m => {
+      m.addedNodes.forEach(n => { if (n.nodeType === 1) check(n as Element); });
+    });
+    stopIfOnceSatisfied();
+  });
+
   obs.observe(root, { childList: true, subtree: true });
-  return () => obs.disconnect();
+  return () => {
+    obs?.disconnect();
+    obs = null;
+  };
 });
 
 /**
@@ -3259,10 +3277,11 @@ export const onMount = def((selector: string | null, handler: (el: Element) => v
  * ```
  *
  * **Memory Leak Prevention**: The observer automatically disconnects when the
- * condition is met. If the element is null, the promise never resolves (consider
+ * condition is met. If the element is null, the promise rejects (consider
  * null-checking before calling).
  *
- * @param target - The element to observe (null-unsafe: promise won't resolve if null)
+ * @param target - The element to observe (null-unsafe: promise rejects if null)
+
  * @returns A curried function that accepts a predicate and returns a Promise
  *
  * @example
@@ -3315,8 +3334,11 @@ export const onMount = def((selector: string | null, handler: (el: Element) => v
  * ```
  */
 export const waitFor = def((target: Element | null, predicate: (el: Element) => boolean): Promise<Element> => {
-  return new Promise((resolve) => {
-    if (!target) return;
+  return new Promise((resolve, reject) => {
+    if (!target) {
+      reject(new Error('waitFor: target is null'));
+      return;
+    }
     if (predicate(target)) return resolve(target);
     const obs = new MutationObserver(() => {
       if (predicate(target)) { obs.disconnect(); resolve(target); }
@@ -3483,6 +3505,13 @@ export interface FormSerializeOptions {
   /** Include disabled fields (default: false). */
   includeDisabled?: boolean;
 }
+
+export interface Register {
+  <T extends Unsubscribe>(cleanup: T): T;
+}
+
+export type AutoCleanup = <T>(fn: (r: Register) => T | Promise<T>) => T | Promise<T>;
+
 
 export const Form = {
   /**
@@ -3731,16 +3760,14 @@ export const cssTemplate = (strings: TemplateStringsArray, ...values: any[]) =>
 /**
  * Flexible, type-aware DOM traversal utilities.
  *
- * Each method supports three invocation styles:
+ * Each method supports two invocation styles:
  *
  * 1. **Element-first** (immediate):
  *    Traverse.next(el)                     → Element | null
+ *    Traverse.next(el, "span.highlight")   → Element | null
  *
  * 2. **Selector-first**:
  *    Traverse.next(".item")                → Element | null
- *
- * 3. **Curried**:
- *    Traverse.next(el)("span.highlight")   → Element | null
  *
  * All operations are:
  *   - **Null-safe**: All functions gracefully return `null` or `[]`.
@@ -3761,18 +3788,18 @@ export const Traverse = {
    * // Curried
    * const specific = Traverse.parent(el)(".box");
    */
-  parent(elOrSelector?: Element | string | null) {
+  parent(elOrSelector?: Element | string | null, selector?: string) {
     if (typeof elOrSelector === "string") {
       const el = document.querySelector(elOrSelector);
-      return el?.parentElement || null;
+      const parent = el?.parentElement || null;
+      if (!parent) return null;
+      return !selector || parent.matches(selector) ? parent : null;
     }
 
     const el = elOrSelector ?? null;
-    return (selector?: string): Element | null => {
-      const parent = el?.parentElement ?? null;
-      if (!parent) return null;
-      return !selector || parent.matches(selector) ? parent : null;
-    };
+    const parent = el?.parentElement ?? null;
+    if (!parent) return null;
+    return !selector || parent.matches(selector) ? parent : null;
   },
 
   /**
@@ -3783,18 +3810,18 @@ export const Traverse = {
    * Traverse.next(".active");     // next of .active
    * Traverse.next(el)("button");  // next button sibling
    */
-  next(elOrSelector?: Element | string | null) {
+  next(elOrSelector?: Element | string | null, selector?: string) {
     if (typeof elOrSelector === "string") {
       const el = document.querySelector(elOrSelector);
-      return el?.nextElementSibling || null;
+      const next = el?.nextElementSibling || null;
+      if (!next) return null;
+      return !selector || next.matches(selector) ? next : null;
     }
 
     const el = elOrSelector ?? null;
-    return (selector?: string): Element | null => {
-      const next = el?.nextElementSibling ?? null;
-      if (!selector || !next) return next;
-      return next.matches(selector) ? next : null;
-    };
+    const next = el?.nextElementSibling ?? null;
+    if (!next) return null;
+    return !selector || next.matches(selector) ? next : null;
   },
 
   /**
@@ -3805,18 +3832,18 @@ export const Traverse = {
    * Traverse.prev(".selected");
    * Traverse.prev(el)(".item");
    */
-  prev(elOrSelector?: Element | string | null) {
+  prev(elOrSelector?: Element | string | null, selector?: string) {
     if (typeof elOrSelector === "string") {
       const el = document.querySelector(elOrSelector);
-      return el?.previousElementSibling || null;
+      const prev = el?.previousElementSibling || null;
+      if (!prev) return null;
+      return !selector || prev.matches(selector) ? prev : null;
     }
 
     const el = elOrSelector ?? null;
-    return (selector?: string): Element | null => {
-      const prev = el?.previousElementSibling ?? null;
-      if (!selector || !prev) return prev;
-      return prev.matches(selector) ? prev : null;
-    };
+    const prev = el?.previousElementSibling ?? null;
+    if (!prev) return null;
+    return !selector || prev.matches(selector) ? prev : null;
   },
 
   /**
@@ -3827,18 +3854,18 @@ export const Traverse = {
    * Traverse.children(".list");    // children of element matching .list
    * Traverse.children(el)("li");   // only <li> children
    */
-  children(elOrSelector?: Element | string | null) {
+  children(elOrSelector?: Element | string | null, selector?: string) {
     if (typeof elOrSelector === "string") {
       const el = document.querySelector(elOrSelector);
-      return el ? Array.from(el.children) : [];
-    }
-
-    const el = elOrSelector ?? null;
-    return (selector?: string): Element[] => {
       if (!el) return [];
       const kids = Array.from(el.children);
       return selector ? kids.filter(c => c.matches(selector)) : kids;
-    };
+    }
+
+    const el = elOrSelector ?? null;
+    if (!el) return [];
+    const kids = Array.from(el.children);
+    return selector ? kids.filter(c => c.matches(selector)) : kids;
   },
 
   /**
@@ -3849,19 +3876,18 @@ export const Traverse = {
     * Traverse.siblings("#active");
     * Traverse.siblings(el)(".item");
     */
-  siblings(elOrSelector?: Element | string | null) {
+  siblings(elOrSelector?: Element | string | null, selector?: string) {
     if (typeof elOrSelector === "string") {
       const el = document.querySelector(elOrSelector);
       if (!el?.parentElement) return [];
-      return Array.from(el.parentElement.children).filter(c => c !== el);
+      const sibs = Array.from(el.parentElement.children).filter(c => c !== el);
+      return selector ? sibs.filter(s => s.matches(selector)) : sibs;
     }
 
     const el = elOrSelector ?? null;
-    return (selector?: string): Element[] => {
-      if (!el?.parentElement) return [];
-      const sibs = Array.from(el.parentElement.children).filter(s => s !== el);
-      return selector ? sibs.filter(s => s.matches(selector)) : sibs;
-    };
+    if (!el?.parentElement) return [];
+    const sibs = Array.from(el.parentElement.children).filter(s => s !== el);
+    return selector ? sibs.filter(s => s.matches(selector)) : sibs;
   },
 
   /**
@@ -5077,7 +5103,7 @@ export function List<T>(
         reconcile([]);
       },
       items: () => currentItems,
-      elements: () => Array.from(elementMap.values()),
+      elements: () => Array.from(container.children) as HTMLElement[],
       destroy() {
         this.clear();
         elementMap.clear();
@@ -5630,6 +5656,8 @@ export const stripListeners = <T extends Element>(element: T | null): T | null =
   element.replaceWith(copy);
   return copy;
 };
+
+
 
 /**
  * Instantiates a <template> element by ID or reference.
@@ -6852,9 +6880,17 @@ export const SW = {
  */
 export const createListenerGroup = () => {
   const unsubs: Unsubscribe[] = [];
+  let clearCount = 0;
+
+  const add = (fn: Unsubscribe) => {
+    unsubs.push(fn);
+    return fn;
+  };
+
   return {
     /**
      * Registers a cleanup function or unsubscribe callback.
+     * Returns the cleanup for convenient chaining.
      * 
      * @param fn - The cleanup function to register
      * 
@@ -6875,9 +6911,55 @@ export const createListenerGroup = () => {
      * });
      * ```
      */
-    add: (fn: Unsubscribe) => {
-      unsubs.push(fn);
+    add,
+
+    /**
+     * Registers multiple cleanup functions at once.
+     * 
+     * @example
+     * ```typescript
+     * group.addMany(
+     *   on(btn)('click', handler),
+     *   on(window)('resize', resizeHandler)
+     * );
+     * ```
+     */
+    addMany: (...fns: Unsubscribe[]) => {
+      fns.forEach((fn) => add(fn));
+      return fns;
     },
+
+    /**
+     * Runs a generator and auto-registers any cleanups it returns.
+     * If the group is cleared before async work completes, late cleanups
+     * are executed immediately.
+     *
+     * @example
+     * ```typescript
+     * group.auto((register) => {
+     *   register(on(btn)('click', handler));
+     *   return 'ready';
+     * });
+     * ```
+     */
+    auto: <T>(gen: (r: Register) => T | Promise<T>) => {
+      const startClearCount = clearCount;
+      const register: Register = (cleanup) => {
+        if (clearCount !== startClearCount) {
+          cleanup();
+          return cleanup;
+        }
+        unsubs.push(cleanup);
+        return cleanup;
+      };
+
+      return gen(register);
+    },
+
+    /**
+     * Returns the number of registered cleanups.
+     */
+    size: () => unsubs.length,
 
     /**
      * Executes all registered cleanup functions and clears the list.
@@ -6897,8 +6979,21 @@ export const createListenerGroup = () => {
      * ```
      */
     clear: () => {
-      unsubs.forEach(fn => fn());
-      unsubs.length = 0;
+      let firstError: unknown = null;
+      const pending = unsubs.splice(0);
+      pending.forEach(fn => {
+        try {
+          fn();
+        } catch (err) {
+          if (!firstError) {
+            firstError = err;
+          }
+        }
+      });
+      clearCount += 1;
+      if (firstError) {
+        throw firstError;
+      }
     }
   };
 };
@@ -10229,6 +10324,8 @@ interface DualModeFn<D, A extends any[], R> {
  * from small, reusable functions.
  */
 export const Fn = {
+  def,
+
 
 /**
  * Creates a function that accepts data as either the first OR the last argument.
@@ -10288,6 +10385,16 @@ export const Fn = {
    * ```
    */
   pipe: <T>(...fns: Array<(arg: any) => any>) => (x: T): any => fns.reduce((v, f) => f(v), x),
+
+  /**
+   * Alias for `chain` utility.
+   */
+  chain,
+
+  /**
+   * Alias for `exec` utility.
+   */
+  exec,
 
   /**
    * Converts a function that takes two arguments `fn(a, b)` into a curried
@@ -12036,14 +12143,14 @@ export function apply<S extends SetterMap>(
  * );
  * ```
  */
-export const chain = <T extends HTMLElement>(
+export function chain<T extends HTMLElement>(
   element: T | null,
   ...transforms: Array<(el: T) => any>
-): T | null => {
+): T | null {
   if (!element) return null;
   transforms.forEach(transform => transform(element));
   return element;
-};
+}
 
 /**
  * Executes multiple callback functions on an element.
@@ -12101,14 +12208,14 @@ export const chain = <T extends HTMLElement>(
  * );
  * ```
  */
-export const exec = <T extends HTMLElement>(
+export function exec<T extends HTMLElement>(
   element: T | null,
   ...operations: Array<(el: T) => any>
-): T | null => {
+): T | null {
   if (!element) return null;
   operations.forEach(operation => operation(element));
   return element;
-};
+}
 
 
 // =============================================================================
@@ -13757,6 +13864,7 @@ const createComponentContext = <
 
   return {
     ctx,
+    auto: hooks.auto,
     destroy: () => hooks.clear(),
     runMountCallbacks
   };
@@ -13820,10 +13928,12 @@ export const domCtx = <
  * @template S - The shape of `state` (reactive `data-*` attributes).
  * 
  * @param target - The DOM element or CSS selector to mount the component on.
- * @param setup - The initialization function. Receives a `ComponentContext` and returns the public API.
+ * @param setup - Initialization function. Receives `ComponentContext` and `auto` cleanup helper.
+
  * @returns The initialized component instance, or `null` if the target was not found.
  * 
  * @example
+
  * ```typescript
  * // 1. Define Types
  * interface CounterRefs { display: HTMLElement; btn: HTMLButtonElement; }
@@ -13871,13 +13981,14 @@ export const defineComponent = <
   S extends Record<string, any> = any
 >(
   target: string | HTMLElement | null,
-  setup: (ctx: ComponentContext<R, G, S>) => API | void
+  setup: (ctx: ComponentContext<R, G, S>, auto: AutoCleanup) => API | void
 ): ComponentInstance<API> | null => {
   const root = (typeof target === 'string' ? find(document)(target) : target) as HTMLElement;
   if (!root) return null;
 
-  const { ctx, destroy, runMountCallbacks } = createComponentContext<R, G, S>(root);
-  const api = setup(ctx) || {} as API;
+  const { ctx, destroy, runMountCallbacks, auto } = createComponentContext<R, G, S>(root);
+
+  const api = setup(ctx, auto) || {} as API;
   runMountCallbacks();
 
   return {
@@ -13886,6 +13997,7 @@ export const defineComponent = <
     destroy
   };
 };
+
 
 
 /**

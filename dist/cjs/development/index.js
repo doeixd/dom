@@ -22,6 +22,8 @@ var src_exports = {};
 __export(src_exports, {
   $: () => $,
   $$: () => $$,
+  $sel: () => $sel,
+  A11y: () => A11y,
   Async: () => Async,
   Cookie: () => Cookie,
   CssVar: () => CssVar,
@@ -34,6 +36,7 @@ __export(src_exports, {
   Http: () => Http,
   Input: () => Input,
   Key: () => Key,
+  List: () => List,
   Local: () => Local,
   Obj: () => Obj,
   Option: () => Option,
@@ -50,6 +53,7 @@ __export(src_exports, {
   append: () => append,
   apply: () => apply,
   attr: () => attr,
+  autoResize: () => autoResize,
   batch: () => batch,
   before: () => before,
   bind: () => bind,
@@ -57,16 +61,23 @@ __export(src_exports, {
   binder: () => binder,
   blur: () => blur,
   cast: () => cast,
+  chain: () => chain,
   clone: () => clone,
   cloneMany: () => cloneMany,
   closest: () => closest,
   cls: () => cls,
   component: () => component,
   computed: () => computed,
+  createBinder: () => createBinder,
   createBus: () => createBus,
   createListenerGroup: () => createListenerGroup,
+  createMediaQuery: () => createMediaQuery,
   createQueue: () => createQueue,
+  createSortable: () => createSortable,
   createStore: () => createStore,
+  createUpdateAfter: () => createUpdateAfter,
+  createUpload: () => createUpload,
+  createWebComponent: () => createWebComponent,
   css: () => css,
   cssTemplate: () => cssTemplate,
   cycleClass: () => cycleClass,
@@ -74,8 +85,11 @@ __export(src_exports, {
   def: () => def,
   defineComponent: () => defineComponent,
   dispatch: () => dispatch,
+  domCtx: () => domCtx,
+  draggable: () => draggable,
   el: () => el,
   empty: () => empty,
+  exec: () => exec,
   exists: () => exists,
   find: () => find,
   findAll: () => findAll,
@@ -83,6 +97,7 @@ __export(src_exports, {
   form: () => form,
   groupBy: () => groupBy,
   groupRefs: () => groupRefs,
+  h: () => h,
   has: () => has,
   html: () => html,
   htmlMany: () => htmlMany,
@@ -99,6 +114,7 @@ __export(src_exports, {
   nextFrame: () => nextFrame,
   offset: () => offset,
   on: () => on,
+  onClickOutside: () => onClickOutside,
   onDelegated: () => onDelegated,
   onMount: () => onMount,
   onReady: () => onReady,
@@ -116,13 +132,16 @@ __export(src_exports, {
   siblings: () => siblings,
   store: () => store,
   stripListeners: () => stripListeners,
+  tags: () => tags,
   tempStyle: () => tempStyle,
   throttle: () => throttle,
   toColorSpace: () => toColorSpace,
   view: () => view,
+  viewRefs: () => viewRefs,
   wait: () => wait,
   waitFor: () => waitFor,
   waitTransition: () => waitTransition,
+  watch: () => watch,
   watchAttr: () => watchAttr,
   watchClass: () => watchClass,
   watchText: () => watchText,
@@ -218,32 +237,52 @@ function index(arg) {
   if (!node || !node.parentElement) return -1;
   return Array.from(node.parentElement.children).indexOf(node);
 }
-var on = (target) => {
-  return (eventType, handler, options = false) => {
+function on(target, eventType, handler, options) {
+  const createListener = (evt, fn, opts = false) => {
     if (!target) return () => {
     };
-    const listener = (e) => handler(e, target);
-    target.addEventListener(eventType, listener, options);
-    return () => target.removeEventListener(eventType, listener, options);
+    const listener = (e) => fn(e, target);
+    target.addEventListener(evt, listener, opts);
+    return () => target.removeEventListener(evt, listener, opts);
   };
-};
-var onDelegated = (root = document) => {
-  return (selector) => {
-    return (eventType, handler, options = false) => {
-      if (!root) return () => {
-      };
-      const listener = (e) => {
-        const target = e.target;
-        const match = target.closest ? target.closest(selector) : null;
-        if (match && root.contains(match)) {
-          handler(e, match);
-        }
-      };
-      root.addEventListener(eventType, listener, options);
-      return () => root.removeEventListener(eventType, listener, options);
+  const eventSetup = (evt, fn, opts) => createListener(evt, fn, opts);
+  if (eventType === void 0 || handler === void 0) {
+    return eventSetup;
+  }
+  return createListener(eventType, handler, options);
+}
+function onDelegated(root, selector, eventType, handler, options) {
+  const createListener = (sel, evt, fn, opts = false) => {
+    if (!root) return () => {
     };
+    const listener = (e) => {
+      var _a;
+      const target = e.target;
+      const match = (_a = target.closest) == null ? void 0 : _a.call(target, sel);
+      if (match && root.contains(match)) {
+        fn(e, match);
+      }
+    };
+    root.addEventListener(evt, listener, opts);
+    return () => root.removeEventListener(evt, listener, opts);
   };
-};
+  const eventSetup = (sel) => {
+    return (evt, fn, opts) => createListener(sel, evt, fn, opts);
+  };
+  const selectorSetup = (sel, evt, fn, opts) => {
+    if (evt !== void 0 && fn !== void 0) {
+      return createListener(sel, evt, fn, opts);
+    }
+    return eventSetup(sel);
+  };
+  if (selector === void 0) {
+    return selectorSetup;
+  }
+  if (eventType === void 0 || handler === void 0) {
+    return eventSetup(selector);
+  }
+  return createListener(selector, eventType, handler, options);
+}
 var dispatch = (target) => {
   return (eventName, detail, options = { bubbles: true }) => {
     if (target) {
@@ -252,7 +291,7 @@ var dispatch = (target) => {
     return target;
   };
 };
-var modify = def((element, props) => {
+var _applyProps = (element, props) => {
   if (!element) return null;
   if (props.text !== void 0) element.innerText = props.text;
   if (props.html !== void 0) element.innerHTML = props.html;
@@ -261,8 +300,11 @@ var modify = def((element, props) => {
   if (props.style) Object.assign(element.style, props.style);
   if (props.dataset) {
     Object.entries(props.dataset).forEach(([k, v]) => {
-      if (v === void 0) return;
-      element.dataset[k] = v === null ? void 0 : String(v);
+      if (v === null || v === void 0) {
+        delete element.dataset[k];
+      } else {
+        element.dataset[k] = String(v);
+      }
     });
   }
   if (props.class) {
@@ -275,12 +317,40 @@ var modify = def((element, props) => {
     });
   }
   return element;
-});
+};
+function modify(arg1, arg2) {
+  const isElementFirst = arg1 instanceof HTMLElement || arg1 === null;
+  if (!isElementFirst) {
+    const props = arg1;
+    return (element2) => _applyProps(element2, props);
+  }
+  if (arg2 !== void 0) {
+    const element2 = arg1;
+    const props = arg2;
+    return _applyProps(element2, props);
+  }
+  const element = arg1;
+  return (props) => _applyProps(element, props);
+}
 var set = modify;
-var css = def((element, styles) => {
-  if (element) Object.assign(element.style, styles);
-  return element;
-});
+function css(arg1, arg2) {
+  const isElementFirst = arg1 instanceof HTMLElement || arg1 === null;
+  const applyCss = (element2, styles) => {
+    if (element2) Object.assign(element2.style, styles);
+    return element2;
+  };
+  if (!isElementFirst) {
+    const styles = arg1;
+    return (element2) => applyCss(element2, styles);
+  }
+  if (arg2 !== void 0) {
+    const element2 = arg1;
+    const styles = arg2;
+    return applyCss(element2, styles);
+  }
+  const element = arg1;
+  return (styles) => applyCss(element, styles);
+}
 var tempStyle = (element) => {
   return (styles) => {
     if (!element) return () => {
@@ -337,6 +407,38 @@ var mount = def((parent, child) => {
     }
   };
 });
+function createWebComponent(arg1, arg2) {
+  const toKebab = (value) => value.replace(/([a-z0-9])([A-Z])/g, "$1-$2").replace(/([A-Z])([A-Z][a-z])/g, "$1-$2").replace(/[_\s]+/g, "-").toLowerCase();
+  const build = (ctor, options2 = {}) => {
+    var _a, _b;
+    const rawName = (_b = options2.name) != null ? _b : toKebab((_a = ctor.name) != null ? _a : "");
+    if (!rawName) {
+      throw new Error("createWebComponent: name is required for anonymous classes.");
+    }
+    const name = rawName.includes("-") ? rawName : `${rawName}-el`;
+    const shouldDefine = options2.define !== false;
+    const registry = typeof customElements === "undefined" ? void 0 : customElements;
+    const alreadyDefined = registry == null ? void 0 : registry.get(name);
+    if (shouldDefine) {
+      if (!registry) {
+        throw new Error("createWebComponent: customElements is not available in this environment.");
+      }
+      if (!alreadyDefined) {
+        registry.define(name, ctor, options2.defineOptions);
+      }
+    }
+    return {
+      name,
+      ctor,
+      defined: shouldDefine ? true : !!alreadyDefined
+    };
+  };
+  if (typeof arg1 === "function") {
+    return build(arg1, arg2);
+  }
+  const options = arg1 != null ? arg1 : {};
+  return (ctor) => build(ctor, options);
+}
 function el(tag, props, children) {
   if (props !== void 0 && children !== void 0) {
     const node = document.createElement(tag);
@@ -378,6 +480,85 @@ var clone = (node) => {
     return node ? node.cloneNode(deep) : null;
   };
 };
+var svgElementTags = /* @__PURE__ */ new Set([
+  "svg",
+  "g",
+  "path",
+  "circle",
+  "rect",
+  "line",
+  "polygon",
+  "polyline",
+  "ellipse",
+  "text",
+  "tspan",
+  "defs",
+  "clippath",
+  "lineargradient",
+  "radialgradient",
+  "stop",
+  "mask",
+  "pattern",
+  "marker",
+  "symbol",
+  "use",
+  "image",
+  "foreignobject"
+]);
+var h = new Proxy({}, {
+  get(_target, tag) {
+    if (typeof tag !== "string") return void 0;
+    if (!/^[a-z][a-z0-9]*$/i.test(tag)) {
+      throw new Error(`h: Invalid tag name "${tag}". Tag names must start with a letter and contain only letters and numbers.`);
+    }
+    return (props = {}, children = []) => {
+      const { dataRef, ...restProps } = props;
+      const isSVG = svgElementTags.has(tag.toLowerCase());
+      const element = isSVG ? document.createElementNS("http://www.w3.org/2000/svg", tag) : document.createElement(tag);
+      if (Object.keys(restProps).length > 0) {
+        if (isSVG) {
+          if (restProps.attr) {
+            Object.entries(restProps.attr).forEach(([key, value]) => {
+              if (value === false || value === null || value === void 0) {
+                element.removeAttribute(key);
+              } else {
+                element.setAttribute(key, String(value));
+              }
+            });
+          }
+          if (restProps.class) {
+            Object.entries(restProps.class).forEach(([className, isActive]) => {
+              if (isActive) {
+                element.classList.add(className);
+              } else {
+                element.classList.remove(className);
+              }
+            });
+          }
+          if (restProps.style) {
+            Object.assign(element.style, restProps.style);
+          }
+          if (restProps.text !== void 0) {
+            element.textContent = restProps.text;
+          }
+          if (restProps.html !== void 0) {
+            element.innerHTML = restProps.html;
+          }
+        } else {
+          modify(element, restProps);
+        }
+      }
+      if (dataRef) {
+        element.setAttribute("data-ref", dataRef);
+      }
+      if (children.length > 0) {
+        element.append(..._nodes(children));
+      }
+      return element;
+    };
+  }
+});
+var tags = h;
 var cls = {
   /**
    * Adds one or more CSS classes to the element.
@@ -736,11 +917,120 @@ var watchText = def((target, callback) => {
   if (!target) return () => {
   };
   const obs = new MutationObserver(() => {
-    callback(target.textContent || "");
+    callback(target.textContent || "", target);
   });
   obs.observe(target, { characterData: true, childList: true, subtree: true });
   return () => obs.disconnect();
 });
+var resolveWatchElement = (target) => {
+  if (typeof target === "string") return find(document)(target);
+  if (typeof target === "function") return target();
+  return target;
+};
+var watch = Object.assign(
+  (target) => {
+    return {
+      class: (className, callback) => watch.class(target, className, callback),
+      attr: (attrName, callback) => watch.attr(target, attrName, callback),
+      text: (callback) => watch.text(target, callback),
+      mutations: (optionsOrCallback, maybeCallback) => watch.mutations(target, optionsOrCallback, maybeCallback)
+    };
+  },
+  {
+    /**
+     * Observe class changes for a specific class name.
+     *
+     * @param target - Element, selector, or resolver
+     * @param className - Class to watch
+     * @param callback - Called when class toggles
+     * @returns Cleanup function
+     *
+     * @example
+     * ```typescript
+     * const stop = watch.class(btn, 'active', (isActive) => {
+     *   console.log(isActive);
+     * });
+     * ```
+     */
+    class: (target, className, callback) => {
+      const el2 = resolveWatchElement(target);
+      return watchClass(el2, className, (isPresent, element) => callback(isPresent, element));
+    },
+    /**
+     * Observe attribute changes for a specific attribute.
+     *
+     * @param target - Element, selector, or resolver
+     * @param attrName - Attribute to watch
+     * @param callback - Called when attribute changes
+     * @returns Cleanup function
+     *
+     * @example
+     * ```typescript
+     * watch.attr(input, 'aria-invalid', (value) => {
+     *   console.log(value);
+     * });
+     * ```
+     */
+    attr: (target, attrName, callback) => {
+      const el2 = resolveWatchElement(target);
+      return watchAttr(el2, attrName, (value, element) => callback(value, element));
+    },
+    /**
+     * Observe text content changes.
+     *
+     * @param target - Element, selector, or resolver
+     * @param callback - Called when text changes
+     * @returns Cleanup function
+     *
+     * @example
+     * ```typescript
+     * watch.text(status, (text) => console.log(text));
+     * ```
+     */
+    text: (target, callback) => {
+      const el2 = resolveWatchElement(target);
+      return watchText(el2, (text, element) => callback(text, element));
+    },
+    /**
+     * Observe DOM mutations for a target element.
+     *
+     * Defaults to `{ attributes: true, childList: true, subtree: false }`.
+     *
+     * @param target - Element, selector, or resolver
+     * @param options - Mutation observer options or callback
+     * @param callback - Mutation observer callback
+     * @returns Cleanup function
+     *
+     * @example
+     * ```typescript
+     * const stop = watch.mutations(el, (records) => {
+     *   console.log(records.length);
+     * });
+     *
+     * watch.mutations(el, { subtree: true }, (records) => {
+     *   console.log(records);
+     * });
+     * ```
+     */
+    mutations: (target, optionsOrCallback, maybeCallback) => {
+      const el2 = resolveWatchElement(target);
+      if (!el2) return () => {
+      };
+      const defaultOptions = {
+        attributes: true,
+        childList: true,
+        subtree: false
+      };
+      const callback = typeof optionsOrCallback === "function" ? optionsOrCallback : maybeCallback;
+      if (!callback) return () => {
+      };
+      const options = typeof optionsOrCallback === "function" ? defaultOptions : { ...defaultOptions, ...optionsOrCallback };
+      const observer = new MutationObserver((records) => callback(records, observer, el2));
+      observer.observe(el2, options);
+      return () => observer.disconnect();
+    }
+  }
+);
 function attr(a) {
   if (typeof a === "string") {
     const attribute = a;
@@ -769,6 +1059,7 @@ function prop(a) {
   };
 }
 var onReady = (fn) => {
+  if (typeof document === "undefined") return;
   if (document.readyState === "complete" || document.readyState === "interactive") {
     fn();
   } else {
@@ -783,6 +1074,7 @@ var ready = {
    * @returns Promise that resolves when DOM is ready
    */
   dom: () => new Promise((resolve) => {
+    if (typeof document === "undefined") return resolve();
     if (document.readyState !== "loading") resolve();
     else document.addEventListener("DOMContentLoaded", () => resolve(), { once: true });
   }),
@@ -806,6 +1098,7 @@ var onMount = def((selector, handler, root = document, once = false) => {
   };
   const seen = /* @__PURE__ */ new WeakSet();
   let foundAny = false;
+  let obs = null;
   const check = (node) => {
     if (seen.has(node)) return;
     if (node.matches(selector)) {
@@ -821,20 +1114,35 @@ var onMount = def((selector, handler, root = document, once = false) => {
       }
     });
   };
+  const stopIfOnceSatisfied = () => {
+    if (once && foundAny && obs) {
+      obs.disconnect();
+      obs = null;
+    }
+  };
   root.querySelectorAll(selector).forEach(check);
-  const obs = new MutationObserver((muts) => muts.forEach((m) => {
-    m.addedNodes.forEach((n) => {
-      if (n.nodeType === 1) check(n);
-    });
-  }));
   if (once && foundAny) return () => {
   };
+  obs = new MutationObserver((muts) => {
+    muts.forEach((m) => {
+      m.addedNodes.forEach((n) => {
+        if (n.nodeType === 1) check(n);
+      });
+    });
+    stopIfOnceSatisfied();
+  });
   obs.observe(root, { childList: true, subtree: true });
-  return () => obs.disconnect();
+  return () => {
+    obs == null ? void 0 : obs.disconnect();
+    obs = null;
+  };
 });
 var waitFor = def((target, predicate) => {
-  return new Promise((resolve) => {
-    if (!target) return;
+  return new Promise((resolve, reject) => {
+    if (!target) {
+      reject(new Error("waitFor: target is null"));
+      return;
+    }
     if (predicate(target)) return resolve(target);
     const obs = new MutationObserver(() => {
       if (predicate(target)) {
@@ -918,58 +1226,99 @@ var Params = {
 };
 var Form = {
   /**
-   * Serializes form inputs into a plain object.
-   * 
-   * Handles:
-   * - Text inputs → string
-   * - Number inputs → number
-   * - Checkboxes → boolean
-   * - Radio buttons → string (only checked value)
-   * - Select → string
-   * - Textarea → string
-   * 
-   * Only includes inputs with a `name` attribute.
-   * 
-   * @param root - The form or container element
-   * @returns Object with field names as keys and values
-   * 
-   * @example
-   * ```typescript
-   * const form = document.querySelector('form');
-   * const data = Form.serialize(form);
-   * 
-   * // Submit to API
-   * await Http.post('/api/submit')(data);
-   * 
-   * // Validate before submit
-   * on(form)('submit', (e) => {
-   *   e.preventDefault();
-   *   const data = Form.serialize(form);
-   *   if (validate(data)) {
-   *     submitForm(data);
-   *   }
-   * });
-   * 
-   * // Auto-save draft
-   * const inputs = form.querySelectorAll('input, textarea');
-   * inputs.forEach(input => {
-   *   on(input)('input', debounce(() => {
-   *     const data = Form.serialize(form);
-   *     Local.set('draft')(data);
-   *   }, 500));
-   * });
-   * ```
-   */
-  serialize: (root) => {
+     * Serializes form inputs into a plain object.
+     * 
+     * Handles:
+     * - Text inputs → string
+     * - Number inputs → number
+     * - Checkboxes → boolean
+     * - Radio buttons → string (only checked value)
+     * - Select → string
+     * - Textarea → string
+     * 
+     * Options:
+     * - `nested`: Supports dot-notation for nested objects
+     * - `includeFiles`: Includes FileList values
+     * - `includeDisabled`: Includes disabled inputs
+     * 
+     * Only includes inputs with a `name` attribute.
+     * 
+     * @param root - The form or container element
+     * @param options - Serialization options
+     * @returns Object with field names as keys and values
+  
+     * 
+     * @example
+     * ```typescript
+     * const form = document.querySelector('form');
+     * const data = Form.serialize(form);
+     * 
+     * // Submit to API
+     * await Http.post('/api/submit')(data);
+     * 
+     * // Validate before submit
+     * on(form)('submit', (e) => {
+     *   e.preventDefault();
+     *   const data = Form.serialize(form);
+     *   if (validate(data)) {
+     *     submitForm(data);
+     *   }
+     * });
+     * 
+     * // Auto-save draft
+     * const inputs = form.querySelectorAll('input, textarea');
+     * inputs.forEach(input => {
+     *   on(input)('input', debounce(() => {
+     *     const data = Form.serialize(form);
+     *     Local.set('draft')(data);
+     *   }, 500));
+     * });
+     * ```
+     */
+  serialize: (root, options = {}) => {
     const data = {};
     if (!root) return data;
+    const { nested = false, includeFiles = false, includeDisabled = false } = options;
+    const isNumeric = (value) => /^\d+$/.test(value);
+    const setNested = (target, path, value) => {
+      let current = target;
+      path.forEach((segment, index2) => {
+        const isLast = index2 === path.length - 1;
+        if (isLast) {
+          current[segment] = value;
+          return;
+        }
+        const nextSegment = path[index2 + 1];
+        const shouldBeArray = typeof nextSegment === "string" && isNumeric(nextSegment);
+        if (current[segment] === void 0 || typeof current[segment] !== "object") {
+          current[segment] = shouldBeArray ? [] : {};
+        }
+        current = current[segment];
+      });
+    };
+    const setValue = (name, value) => {
+      if (nested) {
+        setNested(data, name.split(".").filter(Boolean), value);
+      } else {
+        data[name] = value;
+      }
+    };
     root.querySelectorAll("input, select, textarea").forEach((el2) => {
       if (!el2.name) return;
-      if (el2.type === "checkbox") data[el2.name] = el2.checked;
-      else if (el2.type === "radio") {
-        if (el2.checked) data[el2.name] = el2.value;
-      } else if (el2.type === "number") data[el2.name] = Number(el2.value);
-      else data[el2.name] = el2.value;
+      if (!includeDisabled && el2.disabled) return;
+      if (el2 instanceof HTMLInputElement && el2.type === "file") {
+        if (includeFiles) setValue(el2.name, el2.files);
+        return;
+      }
+      if (el2 instanceof HTMLInputElement && el2.type === "checkbox") {
+        setValue(el2.name, el2.checked);
+      } else if (el2 instanceof HTMLInputElement && el2.type === "radio") {
+        if (el2.checked) setValue(el2.name, el2.value);
+      } else if (el2 instanceof HTMLInputElement && el2.type === "number") {
+        setValue(el2.name, Number(el2.value));
+      } else {
+        setValue(el2.name, el2.value);
+      }
     });
     return data;
   },
@@ -1043,18 +1392,18 @@ var Traverse = {
    * // Curried
    * const specific = Traverse.parent(el)(".box");
    */
-  parent(elOrSelector) {
+  parent(elOrSelector, selector) {
+    var _a;
     if (typeof elOrSelector === "string") {
       const el3 = document.querySelector(elOrSelector);
-      return (el3 == null ? void 0 : el3.parentElement) || null;
+      const parent2 = (el3 == null ? void 0 : el3.parentElement) || null;
+      if (!parent2) return null;
+      return !selector || parent2.matches(selector) ? parent2 : null;
     }
     const el2 = elOrSelector != null ? elOrSelector : null;
-    return (selector) => {
-      var _a;
-      const parent = (_a = el2 == null ? void 0 : el2.parentElement) != null ? _a : null;
-      if (!parent) return null;
-      return !selector || parent.matches(selector) ? parent : null;
-    };
+    const parent = (_a = el2 == null ? void 0 : el2.parentElement) != null ? _a : null;
+    if (!parent) return null;
+    return !selector || parent.matches(selector) ? parent : null;
   },
   /**
    * Get the next sibling element.
@@ -1064,18 +1413,18 @@ var Traverse = {
    * Traverse.next(".active");     // next of .active
    * Traverse.next(el)("button");  // next button sibling
    */
-  next(elOrSelector) {
+  next(elOrSelector, selector) {
+    var _a;
     if (typeof elOrSelector === "string") {
       const el3 = document.querySelector(elOrSelector);
-      return (el3 == null ? void 0 : el3.nextElementSibling) || null;
+      const next2 = (el3 == null ? void 0 : el3.nextElementSibling) || null;
+      if (!next2) return null;
+      return !selector || next2.matches(selector) ? next2 : null;
     }
     const el2 = elOrSelector != null ? elOrSelector : null;
-    return (selector) => {
-      var _a;
-      const next = (_a = el2 == null ? void 0 : el2.nextElementSibling) != null ? _a : null;
-      if (!selector || !next) return next;
-      return next.matches(selector) ? next : null;
-    };
+    const next = (_a = el2 == null ? void 0 : el2.nextElementSibling) != null ? _a : null;
+    if (!next) return null;
+    return !selector || next.matches(selector) ? next : null;
   },
   /**
    * Get the previous sibling element.
@@ -1085,18 +1434,18 @@ var Traverse = {
    * Traverse.prev(".selected");
    * Traverse.prev(el)(".item");
    */
-  prev(elOrSelector) {
+  prev(elOrSelector, selector) {
+    var _a;
     if (typeof elOrSelector === "string") {
       const el3 = document.querySelector(elOrSelector);
-      return (el3 == null ? void 0 : el3.previousElementSibling) || null;
+      const prev2 = (el3 == null ? void 0 : el3.previousElementSibling) || null;
+      if (!prev2) return null;
+      return !selector || prev2.matches(selector) ? prev2 : null;
     }
     const el2 = elOrSelector != null ? elOrSelector : null;
-    return (selector) => {
-      var _a;
-      const prev = (_a = el2 == null ? void 0 : el2.previousElementSibling) != null ? _a : null;
-      if (!selector || !prev) return prev;
-      return prev.matches(selector) ? prev : null;
-    };
+    const prev = (_a = el2 == null ? void 0 : el2.previousElementSibling) != null ? _a : null;
+    if (!prev) return null;
+    return !selector || prev.matches(selector) ? prev : null;
   },
   /**
    * Get child elements, with optional selector filtering.
@@ -1106,17 +1455,17 @@ var Traverse = {
    * Traverse.children(".list");    // children of element matching .list
    * Traverse.children(el)("li");   // only <li> children
    */
-  children(elOrSelector) {
+  children(elOrSelector, selector) {
     if (typeof elOrSelector === "string") {
       const el3 = document.querySelector(elOrSelector);
-      return el3 ? Array.from(el3.children) : [];
+      if (!el3) return [];
+      const kids2 = Array.from(el3.children);
+      return selector ? kids2.filter((c) => c.matches(selector)) : kids2;
     }
     const el2 = elOrSelector != null ? elOrSelector : null;
-    return (selector) => {
-      if (!el2) return [];
-      const kids = Array.from(el2.children);
-      return selector ? kids.filter((c) => c.matches(selector)) : kids;
-    };
+    if (!el2) return [];
+    const kids = Array.from(el2.children);
+    return selector ? kids.filter((c) => c.matches(selector)) : kids;
   },
   /**
     * Get sibling elements (excluding the original element).
@@ -1126,18 +1475,17 @@ var Traverse = {
     * Traverse.siblings("#active");
     * Traverse.siblings(el)(".item");
     */
-  siblings(elOrSelector) {
+  siblings(elOrSelector, selector) {
     if (typeof elOrSelector === "string") {
       const el3 = document.querySelector(elOrSelector);
       if (!(el3 == null ? void 0 : el3.parentElement)) return [];
-      return Array.from(el3.parentElement.children).filter((c) => c !== el3);
+      const sibs2 = Array.from(el3.parentElement.children).filter((c) => c !== el3);
+      return selector ? sibs2.filter((s) => s.matches(selector)) : sibs2;
     }
     const el2 = elOrSelector != null ? elOrSelector : null;
-    return (selector) => {
-      if (!(el2 == null ? void 0 : el2.parentElement)) return [];
-      const sibs = Array.from(el2.parentElement.children).filter((s) => s !== el2);
-      return selector ? sibs.filter((s) => s.matches(selector)) : sibs;
-    };
+    if (!(el2 == null ? void 0 : el2.parentElement)) return [];
+    const sibs = Array.from(el2.parentElement.children).filter((s) => s !== el2);
+    return selector ? sibs.filter((s) => s.matches(selector)) : sibs;
   },
   /**
    * Get all ancestor elements up to the document root.
@@ -1450,6 +1798,188 @@ var Obj = {
     return ret;
   },
   /**
+   * Maps an object's entries into a new object.
+   *
+   * Supports two styles:
+   * - Entry mapping: `(entry) => [newKey, newValue]`
+   * - Value mapping: `(value, key) => newValue` (keys preserved)
+   *
+   * @template T - The object type
+   * @template K - The original key type
+   * @template V - The original value type
+   * @returns A new mapped object
+   *
+   * @example
+   * ```typescript
+   * const user = { id: 1, name: 'Ada', role: 'admin' };
+   *
+   * // Value mapping (keys preserved)
+   * const upper = Obj.map(user, (value) => String(value).toUpperCase());
+   * // { id: '1', name: 'ADA', role: 'ADMIN' }
+   *
+   * // Entry mapping (change keys + values)
+   * const pairs = Obj.map(user, ([key, value]) => [`user_${key}`, value]);
+   * // { user_id: 1, user_name: 'Ada', user_role: 'admin' }
+   * ```
+   */
+  map: (obj, mapper) => {
+    const entries = Object.entries(obj);
+    const isEntryMapper = mapper.length <= 1;
+    const result = {};
+    if (isEntryMapper) {
+      entries.forEach(([key, value]) => {
+        const [newKey, newValue] = mapper([key, value]);
+        result[newKey] = newValue;
+      });
+      return result;
+    }
+    entries.forEach(([key, value]) => {
+      result[key] = mapper(value, key);
+    });
+    return result;
+  },
+  /**
+   * Renames a key on an object (immutable).
+   *
+   * Supports both call styles:
+   * - `Obj.renameKey(obj, from, to)`
+   * - `Obj.renameKey(from, to)(obj)`
+   *
+   * If the source key is missing, returns a shallow copy of the original.
+   *
+   * @template T - The object type
+   * @template F - Key to rename
+   * @template N - New key name
+   * @returns A new object with the renamed key
+   *
+   * @example
+   * ```typescript
+   * const user = { id: 1, name: 'Ada' };
+   *
+   * const renamed = Obj.renameKey(user, 'name', 'fullName');
+   * // { id: 1, fullName: 'Ada' }
+   *
+   * const rename = Obj.renameKey('id', 'userId');
+   * const renamed2 = rename(user);
+   * // { userId: 1, name: 'Ada' }
+   * ```
+   */
+  renameKey: (objOrFrom, fromOrTo, to) => {
+    const rename = (obj, from, newKey) => {
+      const result = { ...obj };
+      if (!(from in obj)) {
+        return result;
+      }
+      const value = obj[from];
+      delete result[from];
+      result[newKey] = value;
+      return result;
+    };
+    if (to === void 0) {
+      return (obj) => rename(obj, objOrFrom, fromOrTo);
+    }
+    return rename(objOrFrom, fromOrTo, to);
+  },
+  /**
+   * Safely reads a nested value by path.
+   *
+   * Supports string paths (`"a.b.0.c"`) and array paths (`['a', 'b', 0, 'c']`).
+   * Returns `fallback` when the path cannot be resolved.
+   *
+   * Supports both call styles:
+   * - `Obj.get(obj, path, fallback?)`
+   * - `Obj.get(path, fallback?)(obj)`
+   *
+   * @template T - The object type
+   * @template R - The fallback type
+   * @param obj - The source object
+   * @param path - Path to read
+   * @param fallback - Optional fallback when missing
+   * @returns The resolved value or fallback
+   *
+   * @example
+   * ```typescript
+   * const state = { user: { profile: { name: 'Ada' } }, items: [{ id: 1 }] };
+   *
+   * Obj.get(state, 'user.profile.name'); // 'Ada'
+   * Obj.get(state, ['items', 0, 'id']); // 1
+   * Obj.get(state, 'user.missing', 'Unknown'); // 'Unknown'
+   *
+   * const getUserName = Obj.get('user.profile.name');
+   * getUserName(state); // 'Ada'
+   * ```
+   */
+  get: (objOrPath, pathOrFallback, maybeFallback) => {
+    const resolvePath = (path2) => Array.isArray(path2) ? path2 : path2.split(".").filter(Boolean);
+    if (typeof objOrPath === "string" || Array.isArray(objOrPath)) {
+      const path2 = resolvePath(objOrPath);
+      const fallback2 = pathOrFallback;
+      return (obj2) => {
+        let current2 = obj2;
+        for (const segment of path2) {
+          if (current2 == null) return fallback2;
+          current2 = current2[segment];
+        }
+        return current2 === void 0 ? fallback2 : current2;
+      };
+    }
+    const obj = objOrPath;
+    const path = resolvePath(pathOrFallback);
+    const fallback = maybeFallback;
+    let current = obj;
+    for (const segment of path) {
+      if (current == null) return fallback;
+      current = current[segment];
+    }
+    return current === void 0 ? fallback : current;
+  },
+  /**
+   * Sets a nested value by path (immutable).
+   *
+   * Creates missing objects/arrays as needed. Numeric path segments create arrays.
+   * Supports both call styles:
+   * - `Obj.set(obj, path, value)`
+   * - `Obj.set(path, value)(obj)`
+   *
+   * @template T - The object type
+   * @param obj - The source object
+   * @param path - Path to set
+   * @param value - Value to assign
+   * @returns A new object with the updated value
+   *
+   * @example
+   * ```typescript
+   * const state = { user: { profile: { name: 'Ada' } }, items: [] };
+   *
+   * const updated = Obj.set(state, 'user.profile.name', 'Grace');
+   * const updated2 = Obj.set(state, ['items', 0, 'id'], 42);
+   *
+   * const setName = Obj.set('user.profile.name', 'Lin');
+   * setName(state);
+   * ```
+   */
+  set: (objOrPath, pathOrValue, maybeValue) => {
+    const resolvePath = (path2) => Array.isArray(path2) ? path2 : path2.split(".").filter(Boolean);
+    const setAtPath = (obj2, path2, value2) => {
+      if (path2.length === 0) return value2;
+      const [segment, ...rest] = path2;
+      const isIndex = typeof segment === "number";
+      const base = Array.isArray(obj2) ? obj2.slice() : { ...obj2 != null ? obj2 : isIndex ? [] : {} };
+      const nextValue = setAtPath((obj2 != null ? obj2 : isIndex ? [] : {})[segment], rest, value2);
+      base[segment] = nextValue;
+      return base;
+    };
+    if (typeof objOrPath === "string" || Array.isArray(objOrPath)) {
+      const path2 = resolvePath(objOrPath);
+      const value2 = pathOrValue;
+      return (obj2) => setAtPath(obj2, path2, value2);
+    }
+    const obj = objOrPath;
+    const path = resolvePath(pathOrValue);
+    const value = maybeValue;
+    return setAtPath(obj, path, value);
+  },
+  /**
    * Creates a new object excluding the specified keys.
    * 
    * @template T - The object type
@@ -1506,6 +2036,183 @@ var groupBy = (list) => {
     return groups;
   };
 };
+function List(container, options) {
+  if (!container) {
+    const noop = () => {
+    };
+    return {
+      set: noop,
+      append: noop,
+      prepend: noop,
+      insert: noop,
+      remove: noop,
+      update: noop,
+      clear: noop,
+      items: () => [],
+      elements: () => [],
+      destroy: noop
+    };
+  }
+  let currentItems = [];
+  if (options.reconcile) {
+    return {
+      set(items) {
+        options.reconcile(currentItems, items, container, options.render);
+        currentItems = [...items];
+      },
+      append(items) {
+        const newItems = [...currentItems, ...items];
+        options.reconcile(currentItems, newItems, container, options.render);
+        currentItems = newItems;
+      },
+      prepend(items) {
+        const newItems = [...items, ...currentItems];
+        options.reconcile(currentItems, newItems, container, options.render);
+        currentItems = newItems;
+      },
+      insert(index2, items) {
+        const newItems = [
+          ...currentItems.slice(0, index2),
+          ...items,
+          ...currentItems.slice(index2)
+        ];
+        options.reconcile(currentItems, newItems, container, options.render);
+        currentItems = newItems;
+      },
+      remove(predicate) {
+        const newItems = currentItems.filter((item) => !predicate(item));
+        options.reconcile(currentItems, newItems, container, options.render);
+        currentItems = newItems;
+      },
+      update(predicate, updater) {
+        const newItems = currentItems.map(
+          (item) => predicate(item) ? updater(item) : item
+        );
+        options.reconcile(currentItems, newItems, container, options.render);
+        currentItems = newItems;
+      },
+      clear() {
+        options.reconcile(currentItems, [], container, options.render);
+        currentItems = [];
+      },
+      items: () => currentItems,
+      elements: () => Array.from(container.children),
+      destroy() {
+        this.clear();
+      }
+    };
+  }
+  if (options.key) {
+    const elementMap = /* @__PURE__ */ new Map();
+    const reconcile = (newItems) => {
+      const newKeys = new Set(newItems.map(options.key));
+      currentItems.forEach((item) => {
+        var _a;
+        const key = options.key(item);
+        if (!newKeys.has(key)) {
+          const el2 = elementMap.get(key);
+          if (el2) {
+            (_a = options.onRemove) == null ? void 0 : _a.call(options, el2, item);
+            el2.remove();
+            elementMap.delete(key);
+          }
+        }
+      });
+      const newElements = [];
+      newItems.forEach((item, index2) => {
+        var _a;
+        const key = options.key(item);
+        let el2 = elementMap.get(key);
+        if (el2) {
+          if (options.update) {
+            options.update(el2, item, index2);
+          }
+        } else {
+          el2 = options.render(item, index2);
+          elementMap.set(key, el2);
+          (_a = options.onAdd) == null ? void 0 : _a.call(options, el2, item);
+        }
+        newElements.push(el2);
+      });
+      newElements.forEach((el2, index2) => {
+        const currentEl = container.children[index2];
+        if (currentEl !== el2) {
+          container.insertBefore(el2, currentEl || null);
+        }
+      });
+      currentItems = [...newItems];
+    };
+    return {
+      set(items) {
+        reconcile(items);
+      },
+      append(items) {
+        reconcile([...currentItems, ...items]);
+      },
+      prepend(items) {
+        reconcile([...items, ...currentItems]);
+      },
+      insert(index2, items) {
+        reconcile([
+          ...currentItems.slice(0, index2),
+          ...items,
+          ...currentItems.slice(index2)
+        ]);
+      },
+      remove(predicate) {
+        reconcile(currentItems.filter((item) => !predicate(item)));
+      },
+      update(predicate, updater) {
+        reconcile(currentItems.map((item) => predicate(item) ? updater(item) : item));
+      },
+      clear() {
+        reconcile([]);
+      },
+      items: () => currentItems,
+      elements: () => Array.from(container.children),
+      destroy() {
+        this.clear();
+        elementMap.clear();
+      }
+    };
+  }
+  const render = (items) => {
+    container.replaceChildren(...items.map((item, index2) => options.render(item, index2)));
+    currentItems = [...items];
+  };
+  return {
+    set(items) {
+      render(items);
+    },
+    append(items) {
+      render([...currentItems, ...items]);
+    },
+    prepend(items) {
+      render([...items, ...currentItems]);
+    },
+    insert(index2, items) {
+      render([
+        ...currentItems.slice(0, index2),
+        ...items,
+        ...currentItems.slice(index2)
+      ]);
+    },
+    remove(predicate) {
+      render(currentItems.filter((item) => !predicate(item)));
+    },
+    update(predicate, updater) {
+      render(currentItems.map((item) => predicate(item) ? updater(item) : item));
+    },
+    clear() {
+      render([]);
+    },
+    items: () => currentItems,
+    elements: () => Array.from(container.children),
+    destroy() {
+      this.clear();
+    }
+  };
+}
 var refs = (root) => {
   const r = {};
   if (root) {
@@ -1525,6 +2232,70 @@ var groupRefs = (root) => {
   }
   return r;
 };
+function viewRefs(templateFactory) {
+  return (options) => {
+    const ctx = {
+      refs: {}
+    };
+    const element = templateFactory(ctx);
+    const extractedRefs = refs(element);
+    Object.assign(ctx.refs, extractedRefs);
+    if (options) {
+      if (options.className) {
+        const classes = Array.isArray(options.className) ? options.className : [options.className];
+        element.classList.add(...classes);
+      }
+      if (options.id) {
+        element.id = options.id;
+      }
+      if (options.props) {
+        modify(element, options.props);
+      }
+    }
+    const applyValueToRef = (el2, value) => {
+      if (value === null || value === void 0) {
+        return;
+      }
+      if (typeof value === "string" || typeof value === "number") {
+        el2.textContent = String(value);
+      } else if (typeof value === "object" && !Array.isArray(value)) {
+        if ("text" in value || "html" in value || "class" in value || "style" in value || "attr" in value) {
+          modify(el2, value);
+        } else if ("value" in value && "value" in el2) {
+          el2.value = value.value;
+        } else {
+          modify(el2, value);
+        }
+      }
+    };
+    return {
+      element,
+      refs: ctx.refs,
+      update(props) {
+        modify(element, props);
+      },
+      updateRefs(updates) {
+        Object.entries(updates).forEach(([key, value]) => {
+          const el2 = ctx.refs[key];
+          if (el2) {
+            applyValueToRef(el2, value);
+          }
+        });
+      },
+      bind(key) {
+        return (value) => {
+          const el2 = ctx.refs[key];
+          if (el2) {
+            applyValueToRef(el2, value);
+          }
+        };
+      },
+      destroy() {
+        element.remove();
+      }
+    };
+  };
+}
 var toColorSpace = (color, space = "srgb") => {
   const div = document.createElement("div");
   div.style.color = `color-mix(in ${space}, ${color} 100%, transparent)`;
@@ -1545,6 +2316,10 @@ var cycleClass = (target) => {
     };
   };
 };
+Object.assign(cls, {
+  watch: watchClass,
+  cycle: cycleClass
+});
 var stripListeners = (element) => {
   if (!element || !element.parentNode) return element;
   const copy = element.cloneNode(true);
@@ -1925,9 +2700,15 @@ var SW = {
 };
 var createListenerGroup = () => {
   const unsubs = [];
+  let clearCount = 0;
+  const add = (fn) => {
+    unsubs.push(fn);
+    return fn;
+  };
   return {
     /**
      * Registers a cleanup function or unsubscribe callback.
+     * Returns the cleanup for convenient chaining.
      * 
      * @param fn - The cleanup function to register
      * 
@@ -1948,9 +2729,51 @@ var createListenerGroup = () => {
      * });
      * ```
      */
-    add: (fn) => {
-      unsubs.push(fn);
+    add,
+    /**
+     * Registers multiple cleanup functions at once.
+     * 
+     * @example
+     * ```typescript
+     * group.addMany(
+     *   on(btn)('click', handler),
+     *   on(window)('resize', resizeHandler)
+     * );
+     * ```
+     */
+    addMany: (...fns) => {
+      fns.forEach((fn) => add(fn));
+      return fns;
     },
+    /**
+     * Runs a generator and auto-registers any cleanups it returns.
+     * If the group is cleared before async work completes, late cleanups
+     * are executed immediately.
+     *
+     * @example
+     * ```typescript
+     * group.auto((register) => {
+     *   register(on(btn)('click', handler));
+     *   return 'ready';
+     * });
+     * ```
+     */
+    auto: (gen) => {
+      const startClearCount = clearCount;
+      const register = (cleanup) => {
+        if (clearCount !== startClearCount) {
+          cleanup();
+          return cleanup;
+        }
+        unsubs.push(cleanup);
+        return cleanup;
+      };
+      return gen(register);
+    },
+    /**
+     * Returns the number of registered cleanups.
+     */
+    size: () => unsubs.length,
     /**
      * Executes all registered cleanup functions and clears the list.
      * 
@@ -1969,8 +2792,21 @@ var createListenerGroup = () => {
      * ```
      */
     clear: () => {
-      unsubs.forEach((fn) => fn());
-      unsubs.length = 0;
+      let firstError = null;
+      const pending = unsubs.splice(0);
+      pending.forEach((fn) => {
+        try {
+          fn();
+        } catch (err) {
+          if (!firstError) {
+            firstError = err;
+          }
+        }
+      });
+      clearCount += 1;
+      if (firstError) {
+        throw firstError;
+      }
     }
   };
 };
@@ -2333,7 +3169,7 @@ var createBus = () => {
   };
 };
 var $ = (target) => {
-  const chain = (fn) => (...args) => {
+  const chain2 = (fn) => (...args) => {
     if (target) fn(target)(...args);
     return wrapper;
   };
@@ -2353,14 +3189,14 @@ var $ = (target) => {
      * @param options - Event options (capture, passive, etc.)
      * @returns {this} Fluent wrapper for chaining
      */
-    on: chain(on),
+    on: chain2(on),
     /**
      * Dispatches a custom event.
      * @param name - Name of the event
      * @param detail - Data to pass with the event
      * @returns {this} Fluent wrapper for chaining
      */
-    dispatch: chain(dispatch),
+    dispatch: chain2(dispatch),
     // =========================================
     // MANIPULATION
     // =========================================
@@ -2369,13 +3205,13 @@ var $ = (target) => {
      * @param props - Object of properties to set
      * @returns {this} Fluent wrapper for chaining
      */
-    modify: chain(modify),
+    modify: chain2(modify),
     /**
      * Applies inline CSS styles.
      * @param styles - Object of CSS properties (camelCase or kebab-case)
      * @returns {this} Fluent wrapper for chaining
      */
-    css: chain(css),
+    css: chain2(css),
     /**
      * Applies temporary styles that revert after a delay.
      * @param styles - Styles to apply
@@ -2397,25 +3233,25 @@ var $ = (target) => {
      * @param children - Elements or strings to append
      * @returns {this} Fluent wrapper for chaining
      */
-    append: chain(append),
+    append: chain2(append),
     /**
      * Prepends children to this element.
      * @param children - Elements or strings to prepend
      * @returns {this} Fluent wrapper for chaining
      */
-    prepend: chain(prepend),
+    prepend: chain2(prepend),
     /**
      * Inserts content after this element.
      * @param content - Elements or strings to insert
      * @returns {this} Fluent wrapper for chaining
      */
-    after: chain(after),
+    after: chain2(after),
     /**
      * Inserts content before this element.
      * @param content - Elements or strings to insert
      * @returns {this} Fluent wrapper for chaining
      */
-    before: chain(before),
+    before: chain2(before),
     /**
      * Removes this element from the DOM.
      * @returns {void}
@@ -2436,7 +3272,7 @@ var $ = (target) => {
      * @param wrapperEl - The wrapping element
      * @returns {this} Fluent wrapper for chaining
      */
-    wrap: chain(wrap),
+    wrap: chain2(wrap),
     /**
      * Clones this element.
      * @returns {HTMLElement} The cloned element (not wrapped)
@@ -2450,27 +3286,27 @@ var $ = (target) => {
      * @param classes - Class names to add
      * @returns {this} Fluent wrapper for chaining
      */
-    addClass: chain(cls.add),
+    addClass: chain2(cls.add),
     /**
      * Removes one or more classes.
      * @param classes - Class names to remove
      * @returns {this} Fluent wrapper for chaining
      */
-    removeClass: chain(cls.remove),
+    removeClass: chain2(cls.remove),
     /**
      * Toggles a class (conditionally or always).
      * @param className - Class to toggle
      * @param force - Optional boolean to force add/remove
      * @returns {this} Fluent wrapper for chaining
      */
-    toggleClass: chain(cls.toggle),
+    toggleClass: chain2(cls.toggle),
     /**
      * Replaces one class with another.
      * @param oldClass - Class to remove
      * @param newClass - Class to add
      * @returns {this} Fluent wrapper for chaining
      */
-    replaceClass: chain(cls.replace),
+    replaceClass: chain2(cls.replace),
     /**
      * Checks if the element has a class.
      * @param className - Class to check
@@ -2488,7 +3324,7 @@ var $ = (target) => {
      * @param classes - Array of classes to cycle
      * @returns {this} Fluent wrapper for chaining
      */
-    cycleClass: chain(cycleClass),
+    cycleClass: chain2(cycleClass),
     // =========================================
     // DATA & ATTRIBUTES
     // =========================================
@@ -2504,7 +3340,7 @@ var $ = (target) => {
      * @param val - Value to set (automatically stringified)
      * @returns {this} Fluent wrapper for chaining
      */
-    dataSet: chain(Data.set),
+    dataSet: chain2(Data.set),
     /**
      * Reads and parses a data attribute.
      * @param key - Attribute name
@@ -2673,13 +3509,7 @@ var $ = (target) => {
      * @returns {Unsubscribe} Function to stop listening
      */
     clickOutside: (handler) => {
-      if (!target) return () => {
-      };
-      const listener = (e) => {
-        if (target && !target.contains(e.target)) handler();
-      };
-      document.addEventListener("click", listener);
-      return () => document.removeEventListener("click", listener);
+      return onClickOutside(target, () => handler());
     },
     /**
      * Checks if element contains text.
@@ -2719,7 +3549,7 @@ var $ = (target) => {
      * @param name - Transition name
      * @returns {this} Fluent wrapper for chaining
      */
-    transitionName: chain(ViewTransitions.name),
+    transitionName: chain2(ViewTransitions.name),
     /**
      * Removes the view-transition-name.
      * @returns {this} Fluent wrapper for chaining
@@ -2960,11 +3790,46 @@ var Input = {
     };
   },
   /**
-   * Watches the 'input' event with a DEBOUNCE.
-   * Perfect for search bars.
-   * 
-   * @example Input.watchDebounced(search)(query => api.search(query), 500);
+   * Watches input while respecting IME composition events.
+   * Fires on compositionend or non-composing input.
+   *
+   * @example
+   * ```typescript
+   * Input.watchComposed(input)((value) => update(value));
+   * ```
    */
+  watchComposed: (el2) => {
+    return (callback) => {
+      if (!el2) return () => {
+      };
+      let composing = false;
+      const handleCompositionStart = () => {
+        composing = true;
+      };
+      const handleCompositionEnd = (e) => {
+        composing = false;
+        callback(Input.get(el2), e);
+      };
+      const handleInput = (e) => {
+        if (!composing) callback(Input.get(el2), e);
+      };
+      el2.addEventListener("compositionstart", handleCompositionStart);
+      el2.addEventListener("compositionend", handleCompositionEnd);
+      el2.addEventListener("input", handleInput);
+      return () => {
+        el2.removeEventListener("compositionstart", handleCompositionStart);
+        el2.removeEventListener("compositionend", handleCompositionEnd);
+        el2.removeEventListener("input", handleInput);
+      };
+    };
+  },
+  /**
+     * Watches the 'input' event with a DEBOUNCE.
+  
+     * Perfect for search bars.
+     * 
+     * @example Input.watchDebounced(search)(query => api.search(query), 500);
+     */
   watchDebounced: (el2) => {
     return (callback, ms) => {
       if (!el2) return () => {
@@ -3004,6 +3869,305 @@ var Input = {
     if (msg !== void 0) el2.setCustomValidity(msg);
     return el2.checkValidity();
   }
+};
+var autoResize = (textarea, options = {}) => {
+  if (!textarea) return () => {
+  };
+  const { maxHeight } = options;
+  const resize = () => {
+    textarea.style.height = "auto";
+    const height = textarea.scrollHeight;
+    const nextHeight = maxHeight ? Math.min(height, maxHeight) : height;
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY = maxHeight && height > maxHeight ? "auto" : "hidden";
+  };
+  resize();
+  textarea.addEventListener("input", resize);
+  return () => textarea.removeEventListener("input", resize);
+};
+var createUpload = (dropzone, options = {}) => {
+  var _a;
+  const target = typeof dropzone === "string" ? find(document)(dropzone) : dropzone;
+  if (!target) {
+    return {
+      open: () => {
+      },
+      destroy: () => {
+      },
+      input: null
+    };
+  }
+  const input = document.createElement("input");
+  input.type = "file";
+  input.multiple = !!options.multiple;
+  if ((_a = options.accept) == null ? void 0 : _a.length) {
+    input.accept = options.accept.join(",");
+  }
+  input.style.display = "none";
+  target.appendChild(input);
+  const acceptsFile = (file) => {
+    if (!options.accept || options.accept.length === 0) return true;
+    return options.accept.some((rule) => {
+      if (rule.endsWith("/*")) {
+        const prefix = rule.replace("/*", "");
+        return file.type.startsWith(prefix);
+      }
+      if (rule.startsWith(".")) {
+        return file.name.toLowerCase().endsWith(rule.toLowerCase());
+      }
+      return file.type === rule;
+    });
+  };
+  const handleFiles = async (files) => {
+    var _a2, _b, _c;
+    const validFiles = [];
+    files.forEach((file) => {
+      var _a3, _b2;
+      if (!acceptsFile(file)) {
+        (_a3 = options.onError) == null ? void 0 : _a3.call(options, file, new Error("File type not accepted."));
+        return;
+      }
+      if (options.maxSize && file.size > options.maxSize) {
+        (_b2 = options.onError) == null ? void 0 : _b2.call(options, file, new Error("File exceeds maximum size."));
+        return;
+      }
+      validFiles.push(file);
+    });
+    if (validFiles.length === 0) return;
+    (_a2 = options.onFiles) == null ? void 0 : _a2.call(options, validFiles);
+    if (options.upload) {
+      for (const file of validFiles) {
+        try {
+          const response = await options.upload(file, (percent) => {
+            var _a3;
+            (_a3 = options.onProgress) == null ? void 0 : _a3.call(options, file, percent);
+          });
+          (_b = options.onComplete) == null ? void 0 : _b.call(options, file, response);
+        } catch (error) {
+          (_c = options.onError) == null ? void 0 : _c.call(
+            options,
+            file,
+            error instanceof Error ? error : new Error(String(error))
+          );
+        }
+      }
+    }
+  };
+  const handleInputChange = () => {
+    const files = input.files ? Array.from(input.files) : [];
+    handleFiles(files);
+    input.value = "";
+  };
+  const handleDragOver = (e) => {
+    e.preventDefault();
+  };
+  const handleDrop = (e) => {
+    var _a2, _b;
+    e.preventDefault();
+    const files = Array.from((_b = (_a2 = e.dataTransfer) == null ? void 0 : _a2.files) != null ? _b : []);
+    handleFiles(files);
+  };
+  const handleClick = () => input.click();
+  input.addEventListener("change", handleInputChange);
+  target.addEventListener("click", handleClick);
+  target.addEventListener("dragover", handleDragOver);
+  target.addEventListener("drop", handleDrop);
+  return {
+    open: () => input.click(),
+    destroy: () => {
+      input.removeEventListener("change", handleInputChange);
+      target.removeEventListener("click", handleClick);
+      target.removeEventListener("dragover", handleDragOver);
+      target.removeEventListener("drop", handleDrop);
+      input.remove();
+    },
+    input
+  };
+};
+var draggable = (element, options = {}) => {
+  var _a;
+  if (!element) return () => {
+  };
+  const axis = (_a = options.axis) != null ? _a : "both";
+  let isDragging = false;
+  let startX = 0;
+  let startY = 0;
+  let currentX = 0;
+  let currentY = 0;
+  let originX = 0;
+  let originY = 0;
+  let boundsRect = null;
+  let startRect = null;
+  const resolveBounds = () => {
+    if (!options.bounds) return null;
+    if (typeof options.bounds === "string") {
+      const el2 = find(document)(options.bounds);
+      return el2 ? el2.getBoundingClientRect() : null;
+    }
+    if (options.bounds instanceof HTMLElement) {
+      return options.bounds.getBoundingClientRect();
+    }
+    if (options.bounds instanceof DOMRect) {
+      return options.bounds;
+    }
+    return options.bounds;
+  };
+  const applyTransform = (x, y) => {
+    element.style.transform = `translate(${x}px, ${y}px)`;
+  };
+  const handlePointerMove = (e) => {
+    var _a2;
+    if (!isDragging) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    let nextX = axis === "y" ? originX : originX + dx;
+    let nextY = axis === "x" ? originY : originY + dy;
+    if (boundsRect && startRect) {
+      const minX = boundsRect.left - startRect.left;
+      const maxX = boundsRect.right - startRect.right;
+      const minY = boundsRect.top - startRect.top;
+      const maxY = boundsRect.bottom - startRect.bottom;
+      if (axis !== "y") nextX = Math.min(Math.max(nextX, minX), maxX);
+      if (axis !== "x") nextY = Math.min(Math.max(nextY, minY), maxY);
+    }
+    currentX = nextX;
+    currentY = nextY;
+    applyTransform(currentX, currentY);
+    (_a2 = options.onDrag) == null ? void 0 : _a2.call(options, { x: currentX, y: currentY });
+  };
+  const handlePointerUp = () => {
+    var _a2;
+    if (!isDragging) return;
+    isDragging = false;
+    document.removeEventListener("pointermove", handlePointerMove);
+    document.removeEventListener("pointerup", handlePointerUp);
+    (_a2 = options.onDrop) == null ? void 0 : _a2.call(options, { x: currentX, y: currentY });
+  };
+  const handlePointerDown = (e) => {
+    var _a2;
+    if (e.button !== 0) return;
+    isDragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    originX = currentX;
+    originY = currentY;
+    boundsRect = resolveBounds();
+    startRect = element.getBoundingClientRect();
+    (_a2 = element.setPointerCapture) == null ? void 0 : _a2.call(element, e.pointerId);
+    document.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointerup", handlePointerUp);
+  };
+  element.addEventListener("pointerdown", handlePointerDown);
+  return () => {
+    element.removeEventListener("pointerdown", handlePointerDown);
+    document.removeEventListener("pointermove", handlePointerMove);
+    document.removeEventListener("pointerup", handlePointerUp);
+  };
+};
+var createSortable = (container, options) => {
+  if (!container) {
+    return {
+      refresh: () => {
+      },
+      destroy: () => {
+      }
+    };
+  }
+  const { items, handle, onReorder } = options;
+  let dragging = null;
+  let fromIndex = -1;
+  const getItems = () => Array.from(container.querySelectorAll(items));
+  const onDragStart = (e) => {
+    var _a, _b;
+    const target = e.currentTarget;
+    if (handle && !((_a = e.target) == null ? void 0 : _a.closest(handle))) {
+      e.preventDefault();
+      return;
+    }
+    dragging = target;
+    fromIndex = getItems().indexOf(target);
+    (_b = e.dataTransfer) == null ? void 0 : _b.setData("text/plain", "");
+  };
+  const onDragEnd = () => {
+    if (!dragging) return;
+    const toIndex = getItems().indexOf(dragging);
+    if (fromIndex !== -1 && toIndex !== -1 && fromIndex !== toIndex) {
+      onReorder == null ? void 0 : onReorder(fromIndex, toIndex);
+    }
+    dragging = null;
+    fromIndex = -1;
+  };
+  const onDragOver = (e) => {
+    var _a;
+    e.preventDefault();
+    if (!dragging) return;
+    const target = (_a = e.target) == null ? void 0 : _a.closest(items);
+    if (!target || target === dragging) return;
+    const currentItems = getItems();
+    const draggingIndex = currentItems.indexOf(dragging);
+    const targetIndex = currentItems.indexOf(target);
+    if (draggingIndex < targetIndex) {
+      container.insertBefore(dragging, target.nextSibling);
+    } else {
+      container.insertBefore(dragging, target);
+    }
+  };
+  const onDrop = (e) => {
+    e.preventDefault();
+  };
+  const bindItems = () => {
+    getItems().forEach((item) => {
+      item.draggable = true;
+      item.addEventListener("dragstart", onDragStart);
+      item.addEventListener("dragend", onDragEnd);
+    });
+  };
+  const unbindItems = () => {
+    getItems().forEach((item) => {
+      item.removeEventListener("dragstart", onDragStart);
+      item.removeEventListener("dragend", onDragEnd);
+    });
+  };
+  bindItems();
+  container.addEventListener("dragover", onDragOver);
+  container.addEventListener("drop", onDrop);
+  return {
+    refresh: () => {
+      unbindItems();
+      bindItems();
+    },
+    destroy: () => {
+      unbindItems();
+      container.removeEventListener("dragover", onDragOver);
+      container.removeEventListener("drop", onDrop);
+    }
+  };
+};
+var onClickOutside = (target, handler, options = {}) => {
+  var _a, _b;
+  const resolve = (input) => {
+    if (typeof input === "function") return input();
+    if (typeof input === "string") return find(document)(input);
+    return input;
+  };
+  const root = resolve(target);
+  if (!root) return () => {
+  };
+  const ignore = ((_a = options.ignore) != null ? _a : []).map(resolve).filter((el2) => !!el2);
+  const capture = (_b = options.capture) != null ? _b : true;
+  const listener = (event) => {
+    var _a2;
+    const path = (_a2 = event.composedPath) == null ? void 0 : _a2.call(event);
+    const eventTarget = event.target;
+    const isInside = path ? path.includes(root) : !!eventTarget && root.contains(eventTarget);
+    if (isInside) return;
+    const isIgnored = ignore.some(
+      (el2) => path ? path.includes(el2) : !!eventTarget && el2.contains(eventTarget)
+    );
+    if (!isIgnored) handler(event);
+  };
+  document.addEventListener("pointerdown", listener, { capture });
+  return () => document.removeEventListener("pointerdown", listener, { capture });
 };
 var Evt = {
   /**
@@ -3058,7 +4222,79 @@ var Evt = {
     return { x: e.clientX, y: e.clientY };
   }
 };
+var createMediaQuery = (queries) => {
+  if (typeof window === "undefined" || typeof window.matchMedia === "undefined") {
+    return {
+      matches: {},
+      on: () => () => {
+      },
+      destroy: () => {
+      }
+    };
+  }
+  const matches = {};
+  const listeners = [];
+  const mqlMap = /* @__PURE__ */ new Map();
+  Object.keys(queries).forEach((key) => {
+    const query = queries[key];
+    const mql = window.matchMedia(query);
+    matches[key] = mql.matches;
+    mqlMap.set(key, mql);
+  });
+  const on2 = (key, handler) => {
+    const mql = mqlMap.get(key);
+    if (!mql) return () => {
+    };
+    const listener = (e) => {
+      matches[key] = e.matches;
+      handler(e.matches);
+    };
+    matches[key] = mql.matches;
+    handler(mql.matches);
+    if ("addEventListener" in mql) {
+      mql.addEventListener("change", listener);
+      listeners.push(() => mql.removeEventListener("change", listener));
+      return () => mql.removeEventListener("change", listener);
+    }
+    const legacyListener = (e) => listener(e);
+    mql.addListener(legacyListener);
+    const cleanup = () => mql.removeListener(legacyListener);
+    listeners.push(cleanup);
+    return cleanup;
+  };
+  return {
+    matches,
+    on: on2,
+    destroy: () => {
+      listeners.forEach((cleanup) => cleanup());
+      listeners.length = 0;
+    }
+  };
+};
 var Key = {
+  /**
+   * Returns true if the keyboard event matches a key or predicate.
+   * Supports optional currying.
+   *
+   * @example
+   * ```typescript
+   * if (Key.matches(e, 'Enter')) onSubmit();
+   * if (Key.matches(['ArrowUp', 'ArrowDown'])(e)) moveFocus();
+   * ```
+   */
+  matches: (eventOrKey, keyOrPredicate) => {
+    const matchesKey = (event, matcher2) => {
+      if (typeof matcher2 === "function") return matcher2(event.key);
+      if (Array.isArray(matcher2)) return matcher2.includes(event.key);
+      return event.key === matcher2;
+    };
+    if (typeof eventOrKey === "object" && "key" in eventOrKey) {
+      if (!keyOrPredicate) return false;
+      return matchesKey(eventOrKey, keyOrPredicate);
+    }
+    const matcher = eventOrKey;
+    return (event) => matchesKey(event, matcher);
+  },
   /**
    * Listens for a specific key press.
    * @example Key.is(input)('Enter', onSubmit);
@@ -3154,6 +4390,191 @@ var Focus = {
     return () => target.removeEventListener("keydown", handler);
   }
 };
+var A11y = /* @__PURE__ */ (() => {
+  let liveRegion = null;
+  const ensureLiveRegion = () => {
+    if (typeof document === "undefined" || !document.body) return null;
+    if (!liveRegion || !document.body.contains(liveRegion)) {
+      liveRegion = document.createElement("div");
+      liveRegion.setAttribute("aria-live", "polite");
+      liveRegion.setAttribute("aria-atomic", "true");
+      liveRegion.setAttribute("role", "status");
+      liveRegion.style.position = "absolute";
+      liveRegion.style.width = "1px";
+      liveRegion.style.height = "1px";
+      liveRegion.style.margin = "-1px";
+      liveRegion.style.padding = "0";
+      liveRegion.style.border = "0";
+      liveRegion.style.overflow = "hidden";
+      liveRegion.style.clip = "rect(0 0 0 0)";
+      liveRegion.style.clipPath = "inset(50%)";
+      liveRegion.style.whiteSpace = "nowrap";
+      document.body.appendChild(liveRegion);
+    }
+    return liveRegion;
+  };
+  const resolve = (input) => {
+    if (typeof input === "function") return input();
+    if (typeof input === "string") return find(document)(input);
+    return input;
+  };
+  return {
+    /**
+     * Announces a message to screen readers.
+     *
+     * @param message - Message to announce
+     * @param politeness - 'polite' or 'assertive'
+     *
+     * @example
+     * ```typescript
+     * A11y.announce('Saved', 'polite');
+     * ```
+     */
+    announce: (message, politeness = "polite") => {
+      const region = ensureLiveRegion();
+      if (!region) return;
+      region.setAttribute("aria-live", politeness);
+      region.setAttribute("role", politeness === "assertive" ? "alert" : "status");
+      region.textContent = "";
+      const announceNow = () => {
+        region.textContent = message;
+      };
+      if (typeof requestAnimationFrame !== "undefined") {
+        requestAnimationFrame(announceNow);
+      } else {
+        setTimeout(announceNow, 0);
+      }
+    },
+    /**
+     * Sets aria-expanded and aria-controls on a trigger/panel pair.
+     *
+     * @param triggerInput - Trigger element or selector
+     * @param panelInput - Panel element or selector
+     * @param expanded - Optional expanded state (defaults to toggle)
+     * @returns Final expanded state
+     *
+     * @example
+     * ```typescript
+     * A11y.setExpanded(button, panel, true);
+     * ```
+     */
+    setExpanded: (triggerInput, panelInput, expanded) => {
+      const trigger = resolve(triggerInput);
+      const panel = resolve(panelInput);
+      if (!trigger || !panel) return null;
+      const current = trigger.getAttribute("aria-expanded") === "true";
+      const next = expanded != null ? expanded : !current;
+      const panelId = panel.id || `panel-${Math.random().toString(36).slice(2, 9)}`;
+      panel.id = panelId;
+      trigger.setAttribute("aria-controls", panelId);
+      trigger.setAttribute("aria-expanded", String(next));
+      return next;
+    },
+    /**
+     * Sets aria-selected for an option and clears siblings within a listbox.
+     *
+     * @param optionInput - Option element or selector
+     * @param listboxInput - Optional listbox container
+     * @param selected - Selected state (default: true)
+     *
+     * @example
+     * ```typescript
+     * A11y.setSelected(option, listbox, true);
+     * ```
+     */
+    setSelected: (optionInput, listboxInput, selected = true) => {
+      const option = resolve(optionInput);
+      if (!option) return null;
+      const listbox = listboxInput ? resolve(listboxInput) : null;
+      if (listbox) {
+        listbox.querySelectorAll('[aria-selected="true"]').forEach((el2) => {
+          if (el2 !== option) {
+            el2.setAttribute("aria-selected", "false");
+          }
+        });
+      }
+      option.setAttribute("aria-selected", String(selected));
+      return selected;
+    },
+    /**
+     * Creates roving tabindex behavior for composite widgets.
+     *
+     * @param root - Widget root element
+     * @param selector - Selector for focusable items
+     * @param options - Roving options
+     * @returns Cleanup function
+     *
+     * @example
+     * ```typescript
+     * const stop = A11y.roving(toolbar, 'button', { axis: 'horizontal' });
+     * ```
+     */
+    roving: (root, selector, options = {}) => {
+      var _a, _b;
+      if (!root) return () => {
+      };
+      const items = Array.from(root.querySelectorAll(selector));
+      if (items.length === 0) return () => {
+      };
+      const axis = (_a = options.axis) != null ? _a : "both";
+      const loop = (_b = options.loop) != null ? _b : true;
+      const resolveInitial = () => {
+        if (typeof options.initial === "number") {
+          return Math.min(Math.max(options.initial, 0), items.length - 1);
+        }
+        if (options.initial instanceof HTMLElement) {
+          const idx = items.indexOf(options.initial);
+          if (idx >= 0) return idx;
+        }
+        const existing = items.findIndex((item) => item.tabIndex === 0);
+        return existing >= 0 ? existing : 0;
+      };
+      let currentIndex = resolveInitial();
+      const setActive = (index2, focusItem) => {
+        var _a2;
+        currentIndex = index2;
+        items.forEach((item, i) => {
+          item.tabIndex = i === index2 ? 0 : -1;
+        });
+        if (focusItem) {
+          (_a2 = items[index2]) == null ? void 0 : _a2.focus();
+        }
+      };
+      setActive(currentIndex, false);
+      const handleKey = (e) => {
+        const key = e.key;
+        const isHorizontal = axis === "horizontal" || axis === "both";
+        const isVertical = axis === "vertical" || axis === "both";
+        let nextIndex = currentIndex;
+        if (key === "Home") {
+          nextIndex = 0;
+        } else if (key === "End") {
+          nextIndex = items.length - 1;
+        } else if (isHorizontal && key === "ArrowRight") {
+          nextIndex = currentIndex + 1;
+        } else if (isHorizontal && key === "ArrowLeft") {
+          nextIndex = currentIndex - 1;
+        } else if (isVertical && key === "ArrowDown") {
+          nextIndex = currentIndex + 1;
+        } else if (isVertical && key === "ArrowUp") {
+          nextIndex = currentIndex - 1;
+        } else {
+          return;
+        }
+        e.preventDefault();
+        if (loop) {
+          if (nextIndex < 0) nextIndex = items.length - 1;
+          if (nextIndex >= items.length) nextIndex = 0;
+        } else {
+          nextIndex = Math.min(Math.max(nextIndex, 0), items.length - 1);
+        }
+        setActive(nextIndex, true);
+      };
+      root.addEventListener("keydown", handleKey);
+      return () => root.removeEventListener("keydown", handleKey);
+    }
+  };
+})();
 var Text = {
   /**
    * Finds all elements containing the specified text or matching a Regex.
@@ -3625,80 +5046,789 @@ var History = {
   }
 };
 var Fn = {
+  def,
   /**
-   * Standard Left-to-Right composition.
-   * Passes the output of one function as the input to the next.
-   * @example pipe(getName, toUpper, log)(user);
+   * Creates a function that accepts data as either the first OR the last argument.
+   * 
+   * @param fn - The original function (must be written as Data-First: (data, ...args) => result)
+   * @param isData - A Type Guard to identify the Data argument at runtime.
+   */
+  makeDataFirstOrLast(fn, isData) {
+    return (...args) => {
+      if (args.length > 0 && isData(args[0])) {
+        const data = args[0];
+        const rest = args.slice(1);
+        return fn(data, ...rest);
+      }
+      const lastIndex = args.length - 1;
+      if (lastIndex >= 0 && isData(args[lastIndex])) {
+        const data = args[lastIndex];
+        const rest = args.slice(0, lastIndex);
+        return fn(data, ...rest);
+      }
+      throw new Error(
+        "Could not determine call signature: Data argument not found at start or end."
+      );
+    };
+  },
+  /**
+   * (B-Combinator) Chains functions in left-to-right order.
+   * `pipe(f, g, h)(x)` is equivalent to `h(g(f(x)))`.
+   * 
+   * @param fns - The sequence of functions to apply.
+   * @returns A new function that applies the sequence to its input.
+   * 
+   * @example
+   * ```typescript
+   * import { Fn, modify, cls } from '@doeixd/dom';
+   * 
+   * const makeActive = Fn.pipe(
+   *   modify({ text: 'Active' }),
+   *   cls.add('is-active')
+   * );
+   * 
+   * makeActive(myButton);
+   * ```
    */
   pipe: (...fns) => (x) => fns.reduce((v, f) => f(v), x),
   /**
-   * Curries a binary function.
-   * Turns `fn(a, b)` into `fn(a)(b)`.
-   * @example const add = curry((a, b) => a + b); add(1)(2);
+   * Alias for `chain` utility.
+   */
+  chain,
+  /**
+   * Alias for `exec` utility.
+   */
+  exec,
+  /**
+   * Converts a function that takes two arguments `fn(a, b)` into a curried
+   * function that takes them one at a time `fn(a)(b)`.
+   * 
+   * @param fn - The binary function to curry.
+   * 
+   * @example
+   * ```typescript
+   * const add = (a: number, b: number) => a + b;
+   * const curriedAdd = Fn.curry(add);
+   * const add5 = curriedAdd(5);
+   * add5(3); // 8
+   * ```
    */
   curry: (fn) => (a) => (b) => fn(a, b),
   /**
-   * Swaps the arguments of a curried function.
-   * Turns `fn(a)(b)` into `fn(b)(a)`.
-   * Useful for converting "Config-First" to "Target-First" or vice versa.
+   * Prefills the first argument for multiple functions.
+   *
+   * Supports both call styles:
+   * - `Fn.withArg(arg, fn1, fn2)`
+   * - `Fn.withArg(arg)(fn1, fn2)`
+   *
+   * Returns a tuple of functions with `arg` applied as the first parameter.
+   *
+   * @template E - The first argument type
+   * @template F - Tuple of functions that accept `E` first
+   * @param arg - The argument to prefill
+   * @param fns - Functions to prefill with `arg`
+   * @returns Tuple of functions with `arg` applied
+   *
+   * @example
+   * ```typescript
+   * import { Fn, on, modify } from '@doeixd/dom';
+   *
+   * const [onButton, modifyButton] = Fn.withArg(button, on, modify);
+   * onButton('click', handler);
+   * modifyButton({ text: 'Save' });
+   *
+   * const [onCard, modifyCard] = Fn.withArg(card)(on, modify);
+   * onCard('mouseenter', handler);
+   * modifyCard({ class: { active: true } });
+   * ```
+   */
+  withArg: /* @__PURE__ */ (() => {
+    const apply2 = (arg, fns) => fns.map((fn) => (...args) => fn(arg, ...args));
+    const wrapper = (arg, ...fns) => {
+      if (fns.length > 0) {
+        return apply2(arg, fns);
+      }
+      return (...rest) => apply2(arg, rest);
+    };
+    return wrapper;
+  })(),
+  /**
+   * Converts a data-first function into a data-last, dual-mode function.
+   *
+   * Turns `(data, ...args) => result` into:
+   * - Immediate: `(...args, data) => result`
+   * - Curried: `(...args) => (data) => result`
+   *
+   * Detection defaults to arity (`fn.length`) and can be customized with:
+   * - `arity`: expected argument count (including data)
+   * - `isData`: predicate for the last argument
+   *
+   * @template D - The data type
+   * @template A - Argument tuple (excluding data)
+   * @template R - Return type
+   * @param fn - Data-first function
+   * @param config - Optional arity or predicate config
+   * @returns Dual-mode data-last function
+   *
+   * @example
+   * ```typescript
+   * import { Fn, on } from '@doeixd/dom';
+   *
+   * const onLast = Fn.dataLast(on, { arity: 3 });
+   * onLast('click', handler, button); // Immediate
+   * onLast('click', handler)(button); // Curried
+   * ```
+   *
+   * @example
+   * ```typescript
+   * import { Fn, modify } from '@doeixd/dom';
+   *
+   * const modifyLast = Fn.dataLast(modify, (value): value is HTMLElement => value instanceof HTMLElement);
+   * modifyLast({ text: 'Save' }, button);
+   * modifyLast({ text: 'Save' })(button);
+   * ```
+   */
+  dataLast: (fn, config) => {
+    var _a;
+    const arity = typeof config === "number" ? config : typeof config === "function" ? fn.length : (_a = config == null ? void 0 : config.arity) != null ? _a : fn.length;
+    const isData = typeof config === "function" ? config : typeof config === "number" ? void 0 : config == null ? void 0 : config.isData;
+    return (...args) => {
+      if (isData) {
+        if (args.length > 0 && isData(args[args.length - 1])) {
+          const data = args[args.length - 1];
+          const rest = args.slice(0, -1);
+          return fn(data, ...rest);
+        }
+        return (data) => fn(data, ...args);
+      }
+      if (args.length >= arity) {
+        const data = args[args.length - 1];
+        const rest = args.slice(0, -1);
+        return fn(data, ...rest);
+      }
+      return (data) => fn(data, ...args);
+    };
+  },
+  /**
+   * Builds a data-last transformer from a predicate.
+   *
+   * Useful when arity detection is ambiguous or when the data argument can be
+   * inferred by shape (like elements, selectors, or custom objects).
+   *
+   * Supports both call styles:
+   * - `Fn.dataLastPred(isData, fn1, fn2)`
+   * - `Fn.dataLastPred(isData)(fn1, fn2)`
+   *
+   * @param isData - Predicate that identifies the data argument
+   * @returns Data-last versions of the provided functions
+   *
+   * @example
+   * ```typescript
+   * import { Fn, on } from '@doeixd/dom';
+   *
+   * const isElement = (value: unknown): value is HTMLElement => value instanceof HTMLElement;
+   * const [onLast] = Fn.dataLastPred(isElement)(on);
+   *
+   * onLast('click', handler, button);
+   * onLast('click', handler)(button);
+   * ```
+   *
+   * @example
+   * ```typescript
+   * import { Fn, modify, cls } from '@doeixd/dom';
+   *
+   * const isTarget = (value: unknown): value is HTMLElement | null =>
+   *   value === null || value instanceof HTMLElement;
+   *
+   * const [modifyLast, addClassLast] = Fn.dataLastPred(isTarget)(modify, cls.add);
+   * modifyLast({ text: 'Save' }, button);
+   * addClassLast('active', button);
+   * ```
+   */
+  dataLastPred: /* @__PURE__ */ (() => {
+    const wrapper = (isData, ...fns) => {
+      if (fns.length > 0) {
+        return fns.map((fn) => Fn.dataLast(fn, { isData }));
+      }
+      return (...rest) => rest.map((fn) => Fn.dataLast(fn, { isData }));
+    };
+    return wrapper;
+  })(),
+  /**
+   * Element/selector-aware data-last helper.
+   *
+   * Uses a built-in predicate that treats `ElementInput` as the data argument,
+   * enabling immediate vs curried behavior for element/selector inputs.
+   *
+   * @returns Data-last versions of the provided functions
+   *
+   * @example
+   * ```typescript
+   * import { Fn, on, modify } from '@doeixd/dom';
+   *
+   * const [onLast, modifyLast] = Fn.dataLastEl(on, modify);
+   *
+   * onLast('click', handler, button);
+   * onLast('click', handler)(button);
+   * onLast('click', handler, '#save');
+   * onLast('click', handler)('#save');
+   *
+   * modifyLast({ text: 'Save' }, button);
+   * modifyLast({ text: 'Save' })('#save');
+   * ```
+   */
+  dataLastEl: /* @__PURE__ */ (() => {
+    const isElementInput = (value) => {
+      if (value === null || value === void 0) return true;
+      if (typeof value === "string") return true;
+      if (typeof value === "function") return true;
+      return value instanceof Element;
+    };
+    const wrapper = (...fns) => Fn.dataLastPred(isElementInput)(...fns);
+    return wrapper;
+  })(),
+  /**
+   * Makes a function flexible about the position of its first argument.
+   *
+   * Supports all of the following call styles:
+   * - `fnFlex(firstArg, ...rest)`
+   * - `fnFlex(firstArg)(...rest)`
+   * - `fnFlex(...rest, firstArg)`
+   * - `fnFlex(...rest)(firstArg)`
+   *
+   * For ambiguous signatures, pass a predicate to identify the first argument
+   * (the "subject") so immediate vs curried behavior is deterministic.
+   *
+   * @template D - The first argument type
+   * @template A - Remaining arguments tuple
+   * @template R - Return type
+   * @param fn - Function to wrap
+   * @param isFirstArg - Optional predicate for the first argument
+   * @returns A flexible function with both data-first and data-last usage
+   *
+   * @example
+   * ```typescript
+   * import { Fn, on } from '@doeixd/dom';
+   *
+   * const isElement = (value: unknown): value is HTMLElement => value instanceof HTMLElement;
+   * const onFlex = Fn.flex(on, isElement);
+   *
+   * onFlex(button, 'click', handler);
+   * onFlex(button)('click', handler);
+   * onFlex('click', handler, button);
+   * onFlex('click', handler)(button);
+   * ```
+   *
+   * @example
+   * ```typescript
+   * import { Fn, modify } from '@doeixd/dom';
+   *
+   * const isTarget = (value: unknown): value is HTMLElement | null =>
+   *   value === null || value instanceof HTMLElement;
+   *
+   * const modifyFlex = Fn.flex(modify, isTarget);
+   * modifyFlex(button, { text: 'Save' });
+   * modifyFlex({ text: 'Save' }, button);
+   * ```
+   */
+  flex: (fn, isFirstArg) => {
+    const arity = fn.length;
+    return (...args) => {
+      if (args.length === 0) {
+        return (data) => fn(data, ...[]);
+      }
+      if (isFirstArg) {
+        const first = args[0];
+        if (isFirstArg(first)) {
+          if (args.length === 1) {
+            return (...rest) => fn(first, ...rest);
+          }
+          return fn(first, ...args.slice(1));
+        }
+        const last = args[args.length - 1];
+        if (isFirstArg(last)) {
+          if (args.length === 1) {
+            return (...rest) => fn(last, ...rest);
+          }
+          return fn(last, ...args.slice(0, -1));
+        }
+      }
+      if (args.length >= arity) {
+        return fn(args[0], ...args.slice(1));
+      }
+      return (data) => fn(data, ...args);
+    };
+  },
+  /**
+   * Element/selector-aware flex helper.
+   *
+   * Uses the same ElementInput predicate as `dataLastEl`, enabling flexible
+   * first/last positioning for element/selector inputs.
+   *
+   * @returns Flexible versions of the provided functions
+   *
+   * @example
+   * ```typescript
+   * import { Fn, on, modify } from '@doeixd/dom';
+   *
+   * const [onFlex, modifyFlex] = Fn.flexEl(on, modify);
+   *
+   * onFlex(button, 'click', handler);
+   * onFlex('click', handler, button);
+   * onFlex('click', handler)(button);
+   *
+   * modifyFlex(button, { text: 'Save' });
+   * modifyFlex({ text: 'Save' }, '#save');
+   * ```
+   */
+  flexEl: /* @__PURE__ */ (() => {
+    const isElementInput = (value) => {
+      if (value === null || value === void 0) return true;
+      if (typeof value === "string") return true;
+      if (typeof value === "function") return true;
+      return value instanceof Element;
+    };
+    const wrapper = (...fns) => fns.map((fn) => Fn.flex(fn, isElementInput));
+    return wrapper;
+  })(),
+  /**
+   * (C-Combinator) Swaps the arguments of a curried function.
+   * Transforms `fn(config)(target)` into `fn(target)(config)`.
    * 
-   * @example 
-   * // Suppose style(prop)(el)
-   * const styleEl = swap(style)(el);
-   * styleEl('color');
+   * Essential for using config-first functions (like `cls.add`) in contexts 
+   * like `Array.map` that provide the target first.
+   * 
+   * @param fn - The curried function to swap.
+   * 
+   * @example
+   * ```typescript
+   * import { Fn, findAll, cls } from '@doeixd/dom';
+   * 
+   * const buttons = findAll('button');
+   * const addActiveClass = Fn.swap(cls.add)('is-active');
+   * 
+   * buttons.forEach(addActiveClass); // point-free style
+   * ```
    */
   swap: (fn) => (b) => (a) => fn(a)(b),
   /**
-   * Flips the arguments of a standard binary function.
-   * Turns `fn(a, b)` into `fn(b, a)`.
+   * Flips the arguments of a non-curried binary function.
+   * Transforms `fn(a, b)` into `fn(b, a)`.
+   * 
+   * @param fn - The binary function to flip.
    */
   flip: (fn) => (b, a) => fn(a, b),
   /**
-   * Executes a side-effect function and returns the original value.
-   * Essential for logging or debugging inside a `pipe` chain without breaking it.
+   * (K-Combinator) Executes a side-effect function with a value, then returns the value.
+   * Essential for debugging (`console.log`) or executing void-returning functions
+   * inside a `pipe` chain without breaking it.
    * 
-   * @example pipe(modify({...}), tap(console.log), addClass('active'))(el);
+   * @param fn - The side-effect function.
+   * 
+   * @example
+   * ```typescript
+   * import { Fn, modify, find } from '@doeixd/dom';
+   * 
+   * const processEl = Fn.pipe(
+   *   modify({ text: 'Processed' }),
+   *   Fn.tap(el => console.log('Element after modify:', el)),
+   *   el => el.dataset.id
+   * );
+   * 
+   * const id = processEl(find('#my-el'));
+   * ```
    */
   tap: (fn) => (x) => {
     fn(x);
     return x;
   },
   /**
-   * Executes a function only if the value is not null/undefined.
-   * Useful wrapper for standard API functions that might crash on null.
+   * Creates a function that executes only if its input is not `null` or `undefined`.
+   * Safely wraps functions that would otherwise throw errors on nullish inputs.
    * 
-   * @example const safeParse = maybe(JSON.parse);
+   * @param fn - The function to protect.
+   * 
+   * @example
+   * ```typescript
+   * import { Fn, find } from '@doeixd/dom';
+   * 
+   * const el = find('.maybe-missing');
+   * const safeFocus = Fn.maybe(focus());
+   * 
+   * safeFocus(el); // No crash if el is null
+   * ```
    */
   maybe: (fn) => (x) => {
     return x === null || x === void 0 ? null : fn(x);
   },
   /**
-   * Creates a function that accepts data as the *first* argument, 
-   * but applies it to a curried function expecting data *last*.
+   * (W-Combinator / Converge) Applies multiple functions to the same input,
+   * then passes their results to a final combining function.
+   * `converge(h, f, g)(x)` is equivalent to `h(f(x), g(x))`.
    * 
-   * Adapts `fn(config)(data)` to `fn(data, config)`.
+   * @param h - The final function that accepts the results.
+   * @param fns - The functions to apply to the input.
+   * 
+   * @example
+   * ```typescript
+   * import { Fn, attr, prop } from '@doeixd/dom';
+   * 
+   * const logData = (id, value) => console.log({ id, value });
+   * 
+   * const logInputState = Fn.converge(
+   *   logData,
+   *   attr('data-id'),
+   *   prop('value')
+   * );
+   * 
+   * logInputState(myInputElement); // Logs { id: '...', value: '...' }
+   * ```
    */
-  unbind: (fn) => (data, config) => {
-    return fn(config)(data);
+  converge: (h2, ...fns) => (x) => {
+    return h2(...fns.map((f) => f(x)));
   },
   /**
-   * "Thunks" a function. Returns a function that accepts no arguments 
-   * and returns the result of the original call.
+   * Creates a function that executes one of two functions based on a predicate.
+   * 
+   * @param predicate - A function that returns a boolean.
+   * @param ifTrue - The function to call if the predicate is true.
+   * @param ifFalse - The function to call if the predicate is false.
+   * 
+   * @example
+   * ```typescript
+   * import { Fn, cls } from '@doeixd/dom';
+   * 
+   * const hasValue = (el: HTMLInputElement) => el.value.length > 0;
+   * 
+   * const toggleValidClass = Fn.ifElse(
+   *   hasValue,
+   *   cls.add('is-valid'),
+   *   cls.remove('is-valid')
+   * );
+   * 
+   * toggleValidClass(myInputElement);
+   * ```
+   */
+  ifElse: (predicate, ifTrue, ifFalse) => (x) => predicate(x) ? ifTrue(x) : ifFalse(x),
+  /**
+   * "Thunks" a function, creating a nullary (zero-argument) function that
+   * calls the original with pre-filled arguments.
+   * 
    * Useful for event handlers that don't need the event object.
    * 
-   * @example on(btn)('click', thunk(count, increment));
+   * @param fn - The function to thunk.
+   * @param args - The arguments to pre-fill.
+   * 
+   * @example
+   * ```typescript
+   * import { Fn, on } from '@doeixd/dom';
+   * 
+   * const increment = (amount: number) => console.log(amount + 1);
+   * 
+   * on(button)('click', Fn.thunk(increment, 5)); // Logs 6 on click
+   * ```
    */
   thunk: (fn, ...args) => () => fn(...args),
   /**
-   * Returns the value unchanged.
-   * Useful as a default no-op callback.
+   * (I-Combinator) Returns the value it was given.
+   * Useful as a default or placeholder in functional compositions.
    */
   identity: (x) => x,
   /**
-   * A function that does nothing.
+   * A function that does nothing and returns nothing.
+   * Useful for providing a default no-op callback.
    */
   noop: () => {
+  },
+  /**
+   * Converts an element-first function into an element-last (chainable) function.
+   * Perfect for use with `chain()` and functional pipelines.
+   *
+   * Takes a function `(element, ...args) => result` and converts it to
+   * `(...args) => (element) => element`, allowing it to be used in chains.
+   *
+   * @template T - The element type
+   * @template A - The argument types tuple
+   * @param fn - The element-first function to convert
+   * @returns A curried, chainable version that returns the element
+   *
+   * @example
+   * ```typescript
+   * import { Fn, chain, find } from '@doeixd/dom';
+   *
+   * // Original element-first function
+   * function setTextColor(el: HTMLElement, color: string) {
+   *   el.style.color = color;
+   * }
+   *
+   * // Convert to chainable
+   * const withTextColor = Fn.chainable(setTextColor);
+   *
+   * // Now use in chain!
+   * chain(
+   *   find('#app'),
+   *   withTextColor('red'),        // Returns (el) => el
+   *   withTextColor('blue'),       // Can chain multiple
+   *   cls.add('styled')            // Mix with other chainables
+   * );
+   *
+   * // Works with multiple arguments
+   * function setAttrs(el: HTMLElement, name: string, value: string) {
+   *   el.setAttribute(name, value);
+   * }
+   * const withAttr = Fn.chainable(setAttrs);
+   *
+   * chain(
+   *   element,
+   *   withAttr('data-id', '123'),
+   *   withAttr('aria-label', 'Button')
+   * );
+   *
+   * // Reusable transformers
+   * const makeButton = [
+   *   withTextColor('white'),
+   *   Fn.chainable((el: HTMLElement, size: string) => {
+   *     el.style.padding = size === 'large' ? '20px' : '10px';
+   *   })('large'),
+   *   cls.add('btn')
+   * ];
+   *
+   * findAll('button').forEach(btn => chain(btn, ...makeButton));
+   * ```
+   */
+  chainable: (fn) => (...args) => (element) => {
+    fn(element, ...args);
+    return element;
+  },
+  /**
+   * Like `chainable`, but preserves the function's return value instead of
+   * returning the element. Useful when you need the result of the operation.
+   *
+   * @template T - The element type
+   * @template A - The argument types tuple
+   * @template R - The return type
+   * @param fn - The element-first function to convert
+   * @returns A curried version that returns the function's result
+   *
+   * @example
+   * ```typescript
+   * import { Fn } from '@doeixd/dom';
+   *
+   * // Function that returns a value
+   * function getComputedWidth(el: HTMLElement, includeMargin: boolean): number {
+   *   const styles = window.getComputedStyle(el);
+   *   const width = parseFloat(styles.width);
+   *   if (!includeMargin) return width;
+   *   const marginLeft = parseFloat(styles.marginLeft);
+   *   const marginRight = parseFloat(styles.marginRight);
+   *   return width + marginLeft + marginRight;
+   * }
+   *
+   * const getWidth = Fn.chainableWith(getComputedWidth);
+   *
+   * const element = find('#box');
+   * const totalWidth = getWidth(true)(element);  // Returns number
+   * console.log('Total width:', totalWidth);
+   *
+   * // Use in Fn.pipe when you need the value
+   * const processElement = Fn.pipe(
+   *   find('#container'),
+   *   getWidth(false),
+   *   width => console.log('Width:', width)
+   * );
+   * ```
+   */
+  chainableWith: (fn) => (...args) => (element) => {
+    return fn(element, ...args);
+  },
+  /**
+   * Transforms an element-accepting function to also accept string selectors
+   * or functions that return elements. Preserves dual-mode API like def().
+   *
+   * Supports ParseSelector type inference for string literal selectors,
+   * enabling type-safe selector resolution with automatic element type inference.
+   *
+   * @template T - Element type
+   * @template A - Arguments tuple
+   * @template R - Return type
+   * @param fn - Original element-accepting function
+   * @param root - Root element for scoped searches (default: document)
+   * @returns Function that accepts ElementInput with dual-mode support
+   *
+   * @example
+   * ```typescript
+   * import { Fn, cls, css, modify, find } from '@doeixd/dom';
+   *
+   * // Transform existing functions
+   * const clsAdd = Fn.withSelector((el: HTMLElement | null, ...classes: string[]) => {
+   *   if (!el) return null;
+   *   cls.add(el)(...classes);
+   *   return el;
+   * });
+   *
+   * // Use with selectors (dual-mode)
+   * clsAdd('button', 'active', 'btn');           // Immediate: HTMLButtonElement | null
+   * clsAdd('button')('active', 'btn');           // Curried: HTMLButtonElement | null
+   * clsAdd('#app', 'container');                 // ID selector: HTMLElement | null
+   * clsAdd('svg')('icon');                       // SVG: SVGSVGElement | null
+   *
+   * // Use with function getters (lazy evaluation)
+   * clsAdd(() => find('.dynamic'))('highlight'); // Function: HTMLElement | null
+   *
+   * // Use with direct elements
+   * const button = find('button');
+   * clsAdd(button)('active');
+   *
+   * // Null-safe by design
+   * clsAdd(null)('active');         // Returns null, no error
+   * clsAdd('.missing')('active');   // Returns null if not found
+   *
+   * // Type inference preserved
+   * const btn = clsAdd('button')('active'); // Type: HTMLButtonElement | null
+   * const div = clsAdd('div')('card');      // Type: HTMLDivElement | null
+   *
+   * // Scoped to component
+   * const container = find('#container');
+   * const scopedAdd = Fn.withSelector(
+   *   (el: HTMLElement | null, ...classes: string[]) => {
+   *     if (!el) return null;
+   *     cls.add(el)(...classes);
+   *     return el;
+   *   },
+   *   container // Scoped root
+   * );
+   * scopedAdd('button')('btn'); // Searches within container only
+   *
+   * // Create reusable selector-enabled utilities
+   * const cssSelector = Fn.withSelector((el: HTMLElement | null, styles: Partial<CSSStyleDeclaration>) => {
+   *   if (!el) return null;
+   *   css(el)(styles);
+   *   return el;
+   * });
+   *
+   * cssSelector('.card', { padding: '20px' });
+   * cssSelector('.card')({ padding: '20px' });
+   * ```
+   */
+  withSelector: (fn, root = document) => {
+    function wrapper(input, ...args) {
+      let element = null;
+      if (input === null || input === void 0) {
+        element = null;
+      } else if (typeof input === "string") {
+        element = root.querySelector(input);
+      } else if (typeof input === "function") {
+        element = input();
+      } else {
+        element = input;
+      }
+      if (args.length > 0) {
+        return fn(element, ...args);
+      } else {
+        return (...lateArgs) => fn(element, ...lateArgs);
+      }
+    }
+    return wrapper;
   }
+};
+var $sel = {
+  /**
+   * Add classes using selector or element.
+   * Supports dual-mode: immediate and curried.
+   */
+  addClass: Fn.withSelector((el2, ...classes) => {
+    if (!el2) return null;
+    cls.add(el2, ...classes);
+    return el2;
+  }),
+  /**
+   * Remove classes using selector or element.
+   * Supports dual-mode: immediate and curried.
+   */
+  removeClass: Fn.withSelector((el2, ...classes) => {
+    if (!el2) return null;
+    cls.remove(el2, ...classes);
+    return el2;
+  }),
+  /**
+   * Toggle class using selector or element.
+   * Supports dual-mode: immediate and curried.
+   */
+  toggleClass: Fn.withSelector((el2, className, force) => {
+    if (!el2) return null;
+    return cls.toggle(el2)(className, force);
+  }),
+  /**
+   * Apply CSS styles using selector or element.
+   * Supports dual-mode: immediate and curried.
+   */
+  css: Fn.withSelector((el2, styles) => {
+    if (!el2) return null;
+    return css(el2)(styles);
+  }),
+  /**
+   * Modify element properties using selector or element.
+   * Supports dual-mode: immediate and curried.
+   */
+  modify: Fn.withSelector((el2, props) => {
+    if (!el2) return null;
+    return modify(el2)(props);
+  }),
+  /**
+   * Attach event listener using selector or element.
+   * Supports dual-mode: immediate and curried.
+   * Returns unsubscribe function for cleanup.
+   */
+  on: Fn.withSelector((el2, event, handler, options) => {
+    if (!el2) return () => {
+    };
+    return on(el2)(event, handler, options);
+  }),
+  /**
+   * Focus element using selector or element.
+   * Supports dual-mode: immediate and curried.
+   */
+  focus: Fn.withSelector((el2, options) => {
+    if (!el2) return null;
+    return focus(el2)(options);
+  }),
+  /**
+   * Blur element using selector or element.
+   * Returns the element for chaining.
+   */
+  blur: Fn.withSelector((el2) => {
+    if (!el2) return null;
+    return blur(el2);
+  }),
+  /**
+   * Scroll element into view using selector or element.
+   * Supports dual-mode: immediate and curried.
+   */
+  scrollInto: Fn.withSelector((el2, options) => {
+    if (!el2) return null;
+    return scrollInto(el2)(options);
+  }),
+  /**
+   * Get element's bounding rect using selector or element.
+   */
+  rect: Fn.withSelector((el2) => {
+    if (!el2) return null;
+    return rect(el2);
+  }),
+  /**
+   * Remove element from DOM using selector or element.
+   */
+  remove: Fn.withSelector((el2) => {
+    if (!el2) return null;
+    return remove(el2);
+  }),
+  /**
+   * Empty element (remove all children) using selector or element.
+   */
+  empty: Fn.withSelector((el2) => {
+    if (!el2) return null;
+    return empty(el2);
+  })
 };
 var Result = {
   /** Creates a success result. */
@@ -3899,8 +6029,8 @@ var bind = {
       el2.style[property] = current;
     };
   },
-  /** 
-   * Binds to CSS Variables. 
+  /**
+   * Binds to CSS Variables.
    * @example bind.cssVar(el, '--progress')
    */
   cssVar: (el2, varName) => {
@@ -3910,8 +6040,124 @@ var bind = {
       current = String(value);
       el2.style.setProperty(varName, current);
     };
+  },
+  /**
+   * Binds to an element property.
+   * @example bind.prop('disabled')(button)
+   */
+  prop: (propName, el2) => {
+    const createSetter = (target) => {
+      let current;
+      return (value) => {
+        if (!target || current === value) return;
+        current = value;
+        target[propName] = value;
+      };
+    };
+    return el2 !== void 0 ? createSetter(el2) : createSetter;
+  },
+  /**
+   * Binds to multiple CSS classes with boolean toggles.
+   * @example bind.classes(el)({ active: true, disabled: false })
+   */
+  classes: (el2) => {
+    return (classMap) => {
+      if (!el2) return;
+      Object.entries(classMap).forEach(([className, isActive]) => {
+        el2.classList.toggle(className, isActive);
+      });
+    };
+  },
+  /**
+   * Binds to form input value.
+   * @example const setValue = bind.value(input); setValue('hello');
+   */
+  value: (el2) => {
+    let current;
+    return (value) => {
+      if (!el2) return;
+      const stringValue = String(value);
+      if (current !== stringValue) {
+        current = stringValue;
+        el2.value = stringValue;
+      }
+    };
+  },
+  /**
+   * Binds to element visibility (display none/block).
+   * Preserves original display value when showing.
+   * @example const toggleVis = bind.show(el); toggleVis(false);
+   */
+  show: (el2) => {
+    if (!el2) return () => {
+    };
+    let originalDisplay = null;
+    return (visible) => {
+      if (visible) {
+        if (el2.style.display === "none") {
+          el2.style.display = originalDisplay || "";
+        }
+      } else {
+        if (el2.style.display !== "none") {
+          originalDisplay = el2.style.display || null;
+          el2.style.display = "none";
+        }
+      }
+    };
   }
 };
+function createBinder(refsObj, schema) {
+  const completeSchema = {};
+  for (const key in refsObj) {
+    if (schema && key in schema) {
+      completeSchema[key] = schema[key](refsObj[key]);
+    } else {
+      completeSchema[key] = bind.text(refsObj[key]);
+    }
+  }
+  let isBatching = false;
+  const pendingUpdates = /* @__PURE__ */ new Map();
+  const flush = () => {
+    if (!isBatching) {
+      pendingUpdates.forEach((value, key) => {
+        completeSchema[key](value);
+      });
+      pendingUpdates.clear();
+    }
+  };
+  const updateRef = (key, value) => {
+    if (isBatching) {
+      pendingUpdates.set(key, value);
+    } else {
+      completeSchema[key](value);
+    }
+  };
+  const binderFn = (data) => {
+    Object.entries(data).forEach(([key, value]) => {
+      if (key in completeSchema) {
+        updateRef(key, value);
+      }
+    });
+    if (!isBatching) {
+      flush();
+    }
+  };
+  binderFn.batch = (fn) => {
+    const wasBatching = isBatching;
+    isBatching = true;
+    try {
+      fn();
+    } finally {
+      isBatching = wasBatching;
+      if (!wasBatching) {
+        flush();
+      }
+    }
+  };
+  binderFn.set = completeSchema;
+  binderFn.refs = () => refsObj;
+  return binderFn;
+}
 var createStore = (initialState) => {
   let state = { ...initialState };
   const listeners = /* @__PURE__ */ new Set();
@@ -3933,7 +6179,7 @@ var createStore = (initialState) => {
   };
 };
 function bindEvents(refs2, map) {
-  const exec = (m) => {
+  const exec2 = (m) => {
     const unsubs = [];
     Object.entries(m).forEach(([refKey, events]) => {
       const el2 = refs2[refKey];
@@ -3947,9 +6193,9 @@ function bindEvents(refs2, map) {
     return () => unsubs.forEach((fn) => fn());
   };
   if (map !== void 0) {
-    return exec(map);
+    return exec2(map);
   }
-  return (lateMap) => exec(lateMap);
+  return (lateMap) => exec2(lateMap);
 }
 var view = (htmlString) => {
   const tpl = document.createElement("template");
@@ -3966,7 +6212,7 @@ var view = (htmlString) => {
   };
 };
 function binder(refs2, schema) {
-  const exec = (s) => {
+  const exec2 = (s) => {
     const binders = {};
     for (const key in s) {
       if (refs2[key]) {
@@ -3976,12 +6222,12 @@ function binder(refs2, schema) {
     return binders;
   };
   if (schema !== void 0) {
-    return exec(schema);
+    return exec2(schema);
   }
-  return (lateSchema) => exec(lateSchema);
+  return (lateSchema) => exec2(lateSchema);
 }
 function apply(setters, data) {
-  const exec = (d) => {
+  const exec2 = (d) => {
     for (const key in d) {
       const val = d[key];
       if (val !== void 0) {
@@ -3991,9 +6237,19 @@ function apply(setters, data) {
     }
   };
   if (data !== void 0) {
-    return exec(data);
+    return exec2(data);
   }
-  return (lateData) => exec(lateData);
+  return (lateData) => exec2(lateData);
+}
+function chain(element, ...transforms) {
+  if (!element) return null;
+  transforms.forEach((transform) => transform(element));
+  return element;
+}
+function exec(element, ...operations) {
+  if (!element) return null;
+  operations.forEach((operation) => operation(element));
+  return element;
 }
 var _mergeHeaders = (base, override) => {
   return { ...base, ...override };
@@ -4056,36 +6312,39 @@ var _fetchWithRetry = async (url, init, retries = 0, retryDelay = 1e3, timeout =
 };
 var Http = {
   /**
-   * Creates a configured HTTP client with defaults.
-   * 
-   * Use this for applications that need centralized configuration, interceptors,
-   * or per-client defaults (baseURL, timeout, retries, custom headers).
-   * 
-   * For simple one-off requests, use the static methods: Http.get, Http.post, etc.
-   * 
-   * @template H - Custom header keys type
-   * @param config - Client configuration
-   * @returns An Http client factory
-   * 
-   * @example
-   * ```typescript
-   * const api = Http.create({
-   *   baseURL: 'https://api.example.com',
-   *   headers: { 'X-API-Key': 'secret' },
-   *   timeout: 5000,
-   *   retries: 2,
-   *   interceptRequest: async (init) => {
-   *     const token = await getAuthToken();
-   *     return {
-   *       ...init,
-   *       headers: { ...init.headers, 'Authorization': `Bearer ${token}` }
-   *     };
-   *   }
-   * });
-   * 
-   * const user = await api.get<User>('/users/123')({});
-   * ```
-   */
+     * Creates a configured HTTP client with defaults.
+     * 
+     * Use this for applications that need centralized configuration, interceptors,
+     * or per-client defaults (baseURL, timeout, retries, custom headers).
+     * Supports grouped interceptors (`interceptors.request/response/error`) and
+     * per-request abort controls via `abortable: true`.
+  
+     * 
+     * For simple one-off requests, use the static methods: Http.get, Http.post, etc.
+     * 
+     * @template H - Custom header keys type
+     * @param config - Client configuration
+     * @returns An Http client factory
+     * 
+     * @example
+     * ```typescript
+     * const api = Http.create({
+     *   baseURL: 'https://api.example.com',
+     *   headers: { 'X-API-Key': 'secret' },
+     *   timeout: 5000,
+     *   retries: 2,
+     *   interceptRequest: async (init) => {
+     *     const token = await getAuthToken();
+     *     return {
+     *       ...init,
+     *       headers: { ...init.headers, 'Authorization': `Bearer ${token}` }
+     *     };
+     *   }
+     * });
+     * 
+     * const user = await api.get<User>('/users/123')({});
+     * ```
+     */
   create: (config = {}) => {
     const {
       baseURL: defaultBaseURL,
@@ -4094,9 +6353,31 @@ var Http = {
       retries: defaultRetries = 0,
       retryDelay: defaultRetryDelay = 1e3,
       interceptRequest,
-      interceptResponse
+      interceptResponse,
+      interceptors
     } = config;
+    const applyRequestInterceptors = async (init) => {
+      let nextInit = init;
+      if (interceptRequest) {
+        nextInit = await interceptRequest(nextInit);
+      }
+      if (interceptors == null ? void 0 : interceptors.request) {
+        nextInit = await interceptors.request(nextInit);
+      }
+      return nextInit;
+    };
+    const applyResponseInterceptors = async (res) => {
+      let nextRes = interceptResponse ? await interceptResponse(res) : res;
+      if (interceptors == null ? void 0 : interceptors.response) {
+        nextRes = await interceptors.response(nextRes);
+      }
+      if (!nextRes.ok && (interceptors == null ? void 0 : interceptors.error)) {
+        nextRes = await interceptors.error(nextRes);
+      }
+      return nextRes;
+    };
     const _request = async (method, path, init = {}) => {
+      const requestInit = await applyRequestInterceptors(init);
       const {
         body,
         baseURL = defaultBaseURL,
@@ -4105,8 +6386,9 @@ var Http = {
         retries = defaultRetries,
         retryDelay = defaultRetryDelay,
         transform,
+        abortable: _abortable,
         ...restInit
-      } = init;
+      } = requestInit;
       const headers = _mergeHeaders(
         defaultHeaders,
         restInit.headers
@@ -4114,17 +6396,13 @@ var Http = {
       if (body && typeof body === "object" && !Array.isArray(body) && !(body instanceof FormData)) {
         headers["Content-Type"] = "application/json";
       }
-      let fetchInit = {
+      const fetchInit = {
         ...restInit,
         method,
         headers
       };
       if (body !== void 0 && body !== null) {
         fetchInit.body = _encodeBody(body);
-      }
-      if (interceptRequest) {
-        const intercepted = await interceptRequest(init);
-        fetchInit = { ...fetchInit, ...intercepted };
       }
       const url = _buildUrl(path, baseURL, params);
       let response;
@@ -4139,7 +6417,7 @@ var Http = {
           error: error instanceof Error ? error : new Error(String(error)),
           response: null
         };
-        return interceptResponse ? await interceptResponse(httpRes2) : httpRes2;
+        return applyResponseInterceptors(httpRes2);
       }
       let data = null;
       try {
@@ -4155,7 +6433,21 @@ var Http = {
         error: null,
         response
       };
-      return interceptResponse ? await interceptResponse(httpRes) : httpRes;
+      return applyResponseInterceptors(httpRes);
+    };
+    const requestWithAbort = (method, path, init = {}) => {
+      var _a;
+      const { abortable, ...restInit } = init;
+      if (abortable) {
+        const controller = new AbortController();
+        const signal = (_a = restInit.signal) != null ? _a : controller.signal;
+        const promise = _request(method, path, { ...restInit, signal });
+        return {
+          promise,
+          abort: () => controller.abort()
+        };
+      }
+      return _request(method, path, restInit);
     };
     return {
       /**
@@ -4168,9 +6460,12 @@ var Http = {
        * @example
        * ```typescript
        * const res = await http.get<User>('/users/123')({});
+       *
+       * const { promise, abort } = http.get<User>('/users/123')({ abortable: true });
+       * abort();
        * ```
        */
-      get: (path) => (init = {}) => _request("GET", path, init),
+      get: (path) => (init = {}) => requestWithAbort("GET", path, init),
       /**
        * Performs a POST request.
        * 
@@ -4185,7 +6480,7 @@ var Http = {
        * });
        * ```
        */
-      post: (path) => (init = {}) => _request("POST", path, init),
+      post: (path) => (init = {}) => requestWithAbort("POST", path, init),
       /**
        * Performs a PUT request.
        * 
@@ -4193,7 +6488,7 @@ var Http = {
        * @param path - Endpoint path
        * @returns A curried function that accepts request config with body
        */
-      put: (path) => (init = {}) => _request("PUT", path, init),
+      put: (path) => (init = {}) => requestWithAbort("PUT", path, init),
       /**
        * Performs a DELETE request.
        * 
@@ -4201,7 +6496,7 @@ var Http = {
        * @param path - Endpoint path
        * @returns A curried function that accepts request config
        */
-      delete: (path) => (init = {}) => _request("DELETE", path, init),
+      delete: (path) => (init = {}) => requestWithAbort("DELETE", path, init),
       /**
        * Performs a PATCH request.
        * 
@@ -4209,7 +6504,7 @@ var Http = {
        * @param path - Endpoint path
        * @returns A curried function that accepts request config with body
        */
-      patch: (path) => (init = {}) => _request("PATCH", path, init),
+      patch: (path) => (init = {}) => requestWithAbort("PATCH", path, init),
       /**
        * Checks if an HTTP response is successful (2xx).
        * 
@@ -4511,37 +6806,180 @@ function sanitizeHTMLTextOnly(html2) {
   template.innerHTML = html2;
   return template.content.textContent || "";
 }
-var defineComponent = (target, setup) => {
-  const root = typeof target === "string" ? find(document)(target) : target;
-  if (!root) return null;
+var createComponentContext = (root) => {
   const hooks = createListenerGroup();
+  const mountCallbacks = [];
+  let hasMounted = false;
   const scopedRefs = refs(root);
   const scopedGroups = groupRefs(root);
+  const resolveElement = (elOrSelector) => {
+    if (typeof elOrSelector === "string") {
+      return find(root)(elOrSelector);
+    }
+    return elOrSelector;
+  };
   const ctx = {
     root,
     refs: scopedRefs,
     groups: scopedGroups,
     state: store(root),
+    store: createStore,
     find: find(root),
     findAll: findAll(root),
-    // Scoped Binder (Bound to Refs)
     binder: (schema) => binder(scopedRefs, schema),
-    // Scoped Event Binding (Bound to Refs) with Auto-Cleanup
     bindEvents: (map) => {
       hooks.add(bindEvents(scopedRefs, map));
     },
-    // Reactive State Watcher
     watch: (key, handler) => {
       hooks.add(Data.bind(root)(key, handler));
     },
-    // Generic Cleanup
-    effect: (fn) => hooks.add(fn)
+    effect: (fn) => hooks.add(fn),
+    on: (event, element, handler, options) => {
+      const target = resolveElement(element);
+      const unsubscribe = on(target)(event, handler, options);
+      hooks.add(unsubscribe);
+      return unsubscribe;
+    },
+    bind: {
+      input: (inputOrSelector, stateKey) => {
+        var _a;
+        const input = typeof inputOrSelector === "string" ? find(root)(inputOrSelector) : inputOrSelector;
+        if (!input) return;
+        const inputType = ((_a = input.type) == null ? void 0 : _a.toLowerCase()) || "text";
+        const isCheckbox = inputType === "checkbox";
+        const isRadio = inputType === "radio";
+        const updateInput = (val) => {
+          if (isCheckbox) {
+            input.checked = !!val;
+          } else if (isRadio) {
+            input.checked = input.value === String(val);
+          } else {
+            input.value = val != null ? val : "";
+          }
+        };
+        const updateState = () => {
+          if (isCheckbox) {
+            ctx.state[stateKey] = input.checked;
+          } else if (isRadio) {
+            if (input.checked) {
+              ctx.state[stateKey] = input.value;
+            }
+          } else {
+            ctx.state[stateKey] = input.value;
+          }
+        };
+        updateInput(ctx.state[stateKey]);
+        ctx.watch(stateKey, updateInput);
+        const eventName = isCheckbox || isRadio ? "change" : "input";
+        hooks.add(on(input)(eventName, updateState));
+      },
+      text: (elOrSelector) => bind.text(resolveElement(elOrSelector)),
+      html: (elOrSelector) => bind.html(resolveElement(elOrSelector)),
+      attr: (name, elOrSelector) => {
+        if (elOrSelector === void 0) {
+          return (el2) => bind.attr(name, resolveElement(el2 || null));
+        }
+        return bind.attr(name, resolveElement(elOrSelector));
+      },
+      toggle: (className, elOrSelector) => {
+        if (elOrSelector === void 0) {
+          return (el2) => bind.toggle(className, resolveElement(el2 || null));
+        }
+        return bind.toggle(className, resolveElement(elOrSelector));
+      },
+      val: bind.val,
+      style: (elOrSelector, property) => bind.style(resolveElement(elOrSelector), property),
+      cssVar: (elOrSelector, varName) => bind.cssVar(resolveElement(elOrSelector), varName),
+      list: (containerOrSelector, renderItem) => bind.list(resolveElement(containerOrSelector), renderItem)
+    },
+    observe: {
+      intersection: (elementOrSelector, callback, options) => {
+        const element = resolveElement(elementOrSelector);
+        if (!element) return;
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach(callback);
+        }, options);
+        observer.observe(element);
+        hooks.add(() => observer.disconnect());
+      },
+      resize: (elementOrSelector, callback) => {
+        const element = resolveElement(elementOrSelector);
+        if (!element) return;
+        const observer = new ResizeObserver((entries) => {
+          entries.forEach(callback);
+        });
+        observer.observe(element);
+        hooks.add(() => observer.disconnect());
+      }
+    },
+    computed: (deps, compute) => {
+      let currentValue = compute();
+      const listeners = /* @__PURE__ */ new Set();
+      deps.forEach((dep) => {
+        ctx.watch(dep, () => {
+          const newValue = compute();
+          if (!Object.is(currentValue, newValue)) {
+            currentValue = newValue;
+            listeners.forEach((fn) => fn(newValue));
+          }
+        });
+      });
+      return {
+        get value() {
+          return currentValue;
+        },
+        onChange: (callback) => {
+          listeners.add(callback);
+          callback(currentValue);
+        }
+      };
+    },
+    onMount: (fn) => {
+      if (hasMounted) {
+        fn();
+        return;
+      }
+      mountCallbacks.push(fn);
+    },
+    onUnmount: (fn) => hooks.add(fn),
+    chain: (elementOrSelector, ...transforms) => {
+      const element = typeof elementOrSelector === "string" ? find(root)(elementOrSelector) : elementOrSelector;
+      return chain(element, ...transforms);
+    },
+    exec: (elementOrSelector, ...operations) => {
+      const element = typeof elementOrSelector === "string" ? find(root)(elementOrSelector) : elementOrSelector;
+      return exec(element, ...operations);
+    }
   };
-  const api = setup(ctx) || {};
+  const runMountCallbacks = () => {
+    if (hasMounted) return;
+    hasMounted = true;
+    mountCallbacks.forEach((fn) => fn());
+  };
+  return {
+    ctx,
+    auto: hooks.auto,
+    destroy: () => hooks.clear(),
+    runMountCallbacks
+  };
+};
+var domCtx = (target) => {
+  const root = typeof target === "string" ? find(document)(target) : target;
+  if (!root) return null;
+  const { ctx, destroy, runMountCallbacks } = createComponentContext(root);
+  runMountCallbacks();
+  return Object.assign(ctx, { destroy });
+};
+var defineComponent = (target, setup) => {
+  const root = typeof target === "string" ? find(document)(target) : target;
+  if (!root) return null;
+  const { ctx, destroy, runMountCallbacks, auto } = createComponentContext(root);
+  const api = setup(ctx, auto) || {};
+  runMountCallbacks();
   return {
     ...api,
     root,
-    destroy: () => hooks.clear()
+    destroy
   };
 };
 var mountComponent = (templateFn, componentFn, target, _props) => {
@@ -4561,8 +6999,149 @@ var mountComponent = (templateFn, componentFn, target, _props) => {
     }
   };
 };
+function createUpdateAfter(el2, updater, initialValue) {
+  const createWrapper = (update, initial) => {
+    let isBatching = false;
+    let batchedValue;
+    let hasBatchedValue = false;
+    let queuedValue;
+    let hasQueuedUpdate = false;
+    let queuedMicrotask = null;
+    const runUpdate = (value) => {
+      if (!el2) return;
+      if (isBatching) {
+        batchedValue = value;
+        hasBatchedValue = true;
+        return;
+      }
+      update(el2, value);
+    };
+    const flushQueue = () => {
+      if (!hasQueuedUpdate) return;
+      const value = queuedValue;
+      queuedValue = void 0;
+      hasQueuedUpdate = false;
+      queuedMicrotask = null;
+      runUpdate(value);
+    };
+    const queueUpdate = (value) => {
+      queuedValue = value;
+      hasQueuedUpdate = true;
+      if (!queuedMicrotask) {
+        queuedMicrotask = Promise.resolve().then(flushQueue);
+      }
+    };
+    const createControl = () => {
+      let shouldSkip = false;
+      const control = (value) => {
+        runUpdate(value);
+      };
+      control.skip = () => {
+        shouldSkip = true;
+      };
+      control.queue = (value) => {
+        queueUpdate(value);
+      };
+      control.flush = () => {
+        flushQueue();
+      };
+      Object.defineProperty(control, "_skip", {
+        get: () => shouldSkip
+      });
+      return control;
+    };
+    const wrapControlled = (fn) => {
+      return (...args) => {
+        const control = createControl();
+        const result = fn(control, ...args);
+        if (result instanceof Promise) {
+          return result.then((resolved) => {
+            if (!control._skip) {
+              runUpdate(resolved);
+            }
+            return resolved;
+          });
+        }
+        if (!control._skip) {
+          runUpdate(result);
+        }
+        return result;
+      };
+    };
+    const wrapSimple = (fn) => {
+      return (...args) => {
+        const result = fn(...args);
+        if (result instanceof Promise) {
+          return result.then((resolved) => {
+            runUpdate(resolved);
+            return resolved;
+          });
+        }
+        runUpdate(result);
+        return result;
+      };
+    };
+    if (el2) {
+      update(el2, initial);
+    }
+    const wrapper = (fn) => {
+      return wrapControlled(fn);
+    };
+    wrapper.simple = wrapSimple;
+    wrapper.all = (actions) => {
+      return Object.fromEntries(
+        Object.entries(actions).map(([key, fn]) => [key, wrapControlled(fn)])
+      );
+    };
+    wrapper.allSimple = (actions) => {
+      return Object.fromEntries(
+        Object.entries(actions).map(([key, fn]) => [key, wrapSimple(fn)])
+      );
+    };
+    wrapper.batch = (fn) => {
+      const wasBatching = isBatching;
+      isBatching = true;
+      hasBatchedValue = false;
+      const result = fn();
+      if (result instanceof Promise) {
+        return result.then((resolved) => {
+          isBatching = wasBatching;
+          if (hasBatchedValue && !wasBatching) {
+            runUpdate(batchedValue);
+          }
+          return resolved;
+        });
+      }
+      isBatching = wasBatching;
+      if (hasBatchedValue && !wasBatching) {
+        runUpdate(batchedValue);
+      }
+      return result;
+    };
+    wrapper.update = (value) => {
+      runUpdate(value);
+    };
+    wrapper.refresh = () => {
+      runUpdate(void 0);
+    };
+    Object.defineProperty(wrapper, "isBatching", {
+      get: () => isBatching
+    });
+    Object.defineProperty(wrapper, "el", {
+      value: el2,
+      writable: false
+    });
+    return wrapper;
+  };
+  if (updater === void 0) {
+    return (upd, init) => {
+      return createWrapper(upd, init);
+    };
+  }
+  return createWrapper(updater, initialValue);
+}
 /**
- * fdom (Functional DOM) - v2.0.0
+ * @doeixd/dom 
  * ==========================================
  * A production-grade, target-first, type-safe DOM library.
  *

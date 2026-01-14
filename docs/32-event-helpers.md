@@ -12,13 +12,15 @@ Event helper functions.
 
 ```typescript
 const Evt = {
-  stop: (e: Event) => void,           // stopPropagation
-  prevent: (e: Event) => void,        // preventDefault
-  kill: (e: Event) => void,           // both stop and prevent
-  key: (key: string) => (e: KeyboardEvent) => boolean,
-  isSelf: (e: Event) => boolean       // target === currentTarget
+  stop: <E extends Event>(fn?: (e: E) => void) => (e: E) => void,
+  prevent: <E extends Event>(fn?: (e: E) => void) => (e: E) => void,
+  kill: <E extends Event>(fn?: (e: E) => void) => (e: E) => void,
+  key: (keyOrKeys: string | string[], fn: (e: KeyboardEvent) => void) => (e: KeyboardEvent) => void,
+  isSelf: (e: Event) => boolean,
+  pointer: (e: MouseEvent | TouchEvent | Event) => { x: number; y: number }
 };
 ```
+
 
 ## Examples
 
@@ -28,10 +30,20 @@ import { Evt, on, find } from '@doeixd/dom';
 
 const form = find('form');
 
-on(form)('submit', (e) => {
-  Evt.prevent(e);
+on(form)('submit', Evt.prevent((e) => {
   // Handle submission
-});
+}));
+```
+
+### Stop + Prevent
+```typescript
+import { Evt, on, find } from '@doeixd/dom';
+
+const form = find('form');
+
+on(form)('submit', Evt.kill((e) => {
+  // Handle submission without bubbling
+}));
 ```
 
 ### Key Filtering
@@ -40,9 +52,20 @@ import { Evt, on, find } from '@doeixd/dom';
 
 const input = find('input');
 
-on(input)('keydown', (e) => {
-  if (Evt.key('Enter')(e)) {
-    console.log('Enter pressed!');
-  }
+on(input)('keydown', Evt.key('Enter', () => {
+  console.log('Enter pressed!');
+}));
+```
+
+### Pointer Coordinates
+```typescript
+import { Evt, on, find } from '@doeixd/dom';
+
+const panel = find('.panel');
+
+on(panel)('pointermove', (e) => {
+  const { x, y } = Evt.pointer(e);
+  console.log(x, y);
 });
 ```
+

@@ -473,6 +473,7 @@ The library exports TypeScript types and interfaces for better type safety:
 | `SelectorFunction` | Dual-mode selector function signature. |
 | `SVGElementTags` | Supported SVG tag names. |
 | `Unsubscribe` | Cleanup function type returned by event listeners. |
+| `Register` | Cleanup register function type. |
 | `EventMap` | Event map for HTML elements, extensible for custom events. |
 | `ExtractEventDetail` | Extracts detail type from CustomEvent. |
 | `ElementProps` | Properties for creating/modifying elements. |
