@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.7](https://github.com/doeixd/dom/compare/v0.0.6...v0.0.7) (2026-01-14)
+
+
+### Features
+
+* add domCtx and reuse component context ([ae3bf1d](https://github.com/doeixd/dom/commit/ae3bf1dfc40e84eaee35575fdb38f7f01d21bcd2))
+* add functional helpers and object path utils ([78c9494](https://github.com/doeixd/dom/commit/78c9494ae37ea4f771a880067728696cf376d310))
+* add ui helpers and update docs ([7a7aeb4](https://github.com/doeixd/dom/commit/7a7aeb42bb5b09a06335d4fc235f4ff6894e776b))
+
 ### [0.0.6](https://github.com/doeixd/dom/compare/v0.0.5...v0.0.6) (2025-12-04)
 
 
