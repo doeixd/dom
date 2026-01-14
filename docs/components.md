@@ -139,21 +139,22 @@ const Component = defineComponent(target, setup);
 
 **Parameters:**
 - `target` - CSS selector string or HTMLElement to use as root
-- `setup` - Function receiving ComponentContext, returns public API
+- `setup` - Function receiving ComponentContext and the `auto` helper, returns public API
 
 **Returns:**
 - `ComponentInstance<API> | null` - Component instance with your API + `root` + `destroy()`, or null if element not found
 
 **The Setup Function:**
 ```typescript
-(ctx: ComponentContext) => API | void
+(ctx: ComponentContext, auto: AutoCleanup) => API | void
 ```
 
 The setup function:
-1. Receives a ComponentContext with utilities
+1. Receives a ComponentContext with utilities plus the `auto` cleanup helper
 2. Runs once when component is created
 3. Returns an object that becomes the public API
 4. All `ctx.onMount()` callbacks execute after setup completes
+
 
 ### Understanding ComponentContext
 
@@ -201,7 +202,28 @@ ComponentContext (`ctx`) provides everything you need:
 }
 ```
 
+### Auto Cleanup Helper
+
+`defineComponent` provides a second argument called `auto` for generator-style cleanup registration. It accepts a function that receives a `register` helper for cleanup functions, and supports async setup.
+
+```typescript
+const App = defineComponent('#app', (ctx, auto) => {
+  auto((register) => {
+    register(on(window)('resize', handleResize));
+    return 'ready';
+  });
+
+  auto(async (register) => {
+    await doAsyncWork();
+    register(on(document)('keydown', handleKey));
+  });
+
+  return {};
+});
+```
+
 ### The Component Lifecycle
+
 
 ```
 1. Target Resolution
@@ -1367,7 +1389,7 @@ const Modal = defineComponent<ModalAPI, ModalRefs, any, ModalState>(
 ```typescript
 function defineComponent<API, R, G, S>(
   target: string | HTMLElement | null,
-  setup: (ctx: ComponentContext<R, G, S>) => API | void
+  setup: (ctx: ComponentContext<R, G, S>, auto: AutoCleanup) => API | void
 ): ComponentInstance<API> | null
 ```
 
@@ -1375,7 +1397,8 @@ Creates a component instance.
 
 **Parameters:**
 - `target` - CSS selector or element reference
-- `setup` - Setup function receiving ComponentContext
+- `setup` - Setup function receiving ComponentContext and `auto`
+
 
 **Returns:**
 - Component instance with merged API or null if element not found

@@ -49,7 +49,23 @@ Use directly in the browser without npm or build tools:
 
 <br />
 
+## Documentation
+
+- [Components](./docs/components.md)
+- [Component Patterns](./docs/component-patterns.md)
+- [Network / Http](./docs/23-network.md)
+- [Event Helpers](./docs/32-event-helpers.md)
+- [Keyboard & Focus](./docs/33-keyboard-focus.md)
+- [Listener Groups](./docs/25-groups.md)
+- [Hyperscript](./docs/45-hyperscript.md)
+- [List](./docs/46-list.md)
+- [View Refs](./docs/47-viewrefs.md)
+- [Binder](./docs/48-binder.md)
+
+<br />
+
 ## Quick Start
+
 
 Here’s a taste of how the library feels. Let's find a button, update it, and handle a click.
 

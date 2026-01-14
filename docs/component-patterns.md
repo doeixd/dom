@@ -6,12 +6,14 @@ This guide covers advanced patterns and techniques for building higher-level abs
 
 1. [The Binder Pattern](#the-binder-pattern)
 2. [Chain and Exec Patterns](#chain-and-exec-patterns)
-3. [Component Composition](#component-composition)
-4. [Custom Hooks Pattern](#custom-hooks-pattern)
-5. [Plugin System](#plugin-system)
-6. [State Management Patterns](#state-management-patterns)
-7. [Dynamic Components](#dynamic-components)
-8. [Testing Components](#testing-components)
+3. [Auto Cleanup Helpers](#auto-cleanup-helpers)
+4. [Component Composition](#component-composition)
+5. [Custom Hooks Pattern](#custom-hooks-pattern)
+6. [Plugin System](#plugin-system)
+7. [State Management Patterns](#state-management-patterns)
+8. [Dynamic Components](#dynamic-components)
+9. [Testing Components](#testing-components)
+
 
 ## The Binder Pattern
 
@@ -288,7 +290,31 @@ const App = defineComponent('#app', (ctx) => {
 });
 ```
 
+## Auto Cleanup Helpers
+
+Use the `auto` helper (second argument to `defineComponent`) to collect cleanups from setup logic. It accepts a register function, supports async work, and integrates with component teardown.
+
+```typescript
+import { defineComponent, on } from '@doeixd/dom';
+
+const Tooltip = defineComponent('#tooltip', (ctx, auto) => {
+  auto((register) => {
+    register(on(ctx.refs.button)('mouseenter', () => ctx.refs.tip.showPopover()));
+    register(on(ctx.refs.button)('mouseleave', () => ctx.refs.tip.hidePopover()));
+    return 'ready';
+  });
+
+  auto(async (register) => {
+    await fetch('/feature-flags');
+    register(on(window)('resize', () => console.log('recalc')));
+  });
+
+  return {};
+});
+```
+
 ## Component Composition
+
 
 ### Parent-Child Communication
 
