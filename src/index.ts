@@ -9164,9 +9164,8 @@ export const Fn = {
       "Could not determine call signature: Data argument not found at start or end."
     );
   }) as DualModeFn<D, A, R>; // Cast implementation to the overloaded interface
-}
+ },
 
- 
   /**
    * (B-Combinator) Chains functions in left-to-right order.
    * `pipe(f, g, h)(x)` is equivalent to `h(g(f(x)))`.
@@ -12367,6 +12366,19 @@ export interface ComponentContext<
 }
 
 /**
+ * Context returned by `domCtx`.
+ * Provides the same scoped toolkit as `defineComponent` plus a destroy method.
+ */
+export type DomContext<
+  Refs extends Record<string, HTMLElement> = any,
+  Groups extends Record<string, HTMLElement[]> = any,
+  State extends Record<string, any> = Record<string, any>
+> = ComponentContext<Refs, Groups, State> & {
+  /** Destroys the context, removing listeners and observers. */
+  destroy: () => void;
+};
+
+/**
  * The public interface returned by a component instance.
  */
 export type ComponentInstance<API> = API & {
@@ -12376,8 +12388,247 @@ export type ComponentInstance<API> = API & {
   destroy: () => void;
 };
 
+const createComponentContext = <
+  R extends Record<string, HTMLElement> = any,
+  G extends Record<string, HTMLElement[]> = any,
+  S extends Record<string, any> = any
+>(root: HTMLElement) => {
+  const hooks = createListenerGroup();
+  const mountCallbacks: Array<() => void> = [];
+  let hasMounted = false;
+
+  const scopedRefs = refs(root) as R;
+  const scopedGroups = groupRefs(root) as G;
+
+  const resolveElement = (elOrSelector: HTMLElement | string | null): HTMLElement | null => {
+    if (typeof elOrSelector === 'string') {
+      return find(root)(elOrSelector);
+    }
+    return elOrSelector;
+  };
+
+  const ctx: ComponentContext<R, G, S> = {
+    root,
+    refs: scopedRefs,
+    groups: scopedGroups,
+    state: store<S>(root),
+    store: createStore,
+
+    find: find(root),
+    findAll: findAll(root),
+
+    binder: (schema) => binder(scopedRefs, schema),
+
+    bindEvents: (map) => {
+      hooks.add(bindEvents(scopedRefs, map));
+    },
+
+    watch: (key, handler) => {
+      hooks.add(Data.bind(root)(key, handler));
+    },
+
+    effect: (fn) => hooks.add(fn),
+
+    on: (event, element, handler, options) => {
+      const target = resolveElement(element);
+      const unsubscribe = on(target)(event, handler as any, options);
+      hooks.add(unsubscribe);
+      return unsubscribe;
+    },
+
+    bind: {
+      input: (inputOrSelector, stateKey) => {
+        const input = (typeof inputOrSelector === 'string'
+          ? find(root)(inputOrSelector)
+          : inputOrSelector) as HTMLInputElement;
+
+        if (!input) return;
+
+        const inputType = input.type?.toLowerCase() || 'text';
+        const isCheckbox = inputType === 'checkbox';
+        const isRadio = inputType === 'radio';
+
+        const updateInput = (val: any) => {
+          if (isCheckbox) {
+            input.checked = !!val;
+          } else if (isRadio) {
+            input.checked = input.value === String(val);
+          } else {
+            input.value = val ?? '';
+          }
+        };
+
+        const updateState = () => {
+          if (isCheckbox) {
+            ctx.state[stateKey] = input.checked as any;
+          } else if (isRadio) {
+            if (input.checked) {
+              ctx.state[stateKey] = input.value as any;
+            }
+          } else {
+            ctx.state[stateKey] = input.value as any;
+          }
+        };
+
+        updateInput(ctx.state[stateKey]);
+        ctx.watch(stateKey, updateInput);
+
+        const eventName = isCheckbox || isRadio ? 'change' : 'input';
+        hooks.add(on(input)(eventName as any, updateState));
+      },
+
+      text: (elOrSelector) => bind.text(resolveElement(elOrSelector)),
+      html: (elOrSelector) => bind.html(resolveElement(elOrSelector)),
+
+      attr: ((name: string, elOrSelector?: HTMLElement | string | null) => {
+        if (elOrSelector === undefined) {
+          return (el?: HTMLElement | string | null) => bind.attr(name, resolveElement(el || null));
+        }
+        return bind.attr(name, resolveElement(elOrSelector));
+      }) as any,
+
+      toggle: ((className: string, elOrSelector?: HTMLElement | string | null) => {
+        if (elOrSelector === undefined) {
+          return (el?: HTMLElement | string | null) => bind.toggle(className, resolveElement(el || null));
+        }
+        return bind.toggle(className, resolveElement(elOrSelector));
+      }) as any,
+
+      val: bind.val,
+
+      style: (elOrSelector, property) => bind.style(resolveElement(elOrSelector), property),
+      cssVar: (elOrSelector, varName) => bind.cssVar(resolveElement(elOrSelector), varName),
+      list: (containerOrSelector, renderItem) => bind.list(resolveElement(containerOrSelector), renderItem)
+    },
+
+    observe: {
+      intersection: (elementOrSelector, callback, options) => {
+        const element = resolveElement(elementOrSelector);
+        if (!element) return;
+
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach(callback);
+        }, options);
+
+        observer.observe(element);
+        hooks.add(() => observer.disconnect());
+      },
+
+      resize: (elementOrSelector, callback) => {
+        const element = resolveElement(elementOrSelector);
+        if (!element) return;
+
+        const observer = new ResizeObserver((entries) => {
+          entries.forEach(callback);
+        });
+
+        observer.observe(element);
+        hooks.add(() => observer.disconnect());
+      }
+    },
+
+    computed: (deps, compute) => {
+      let currentValue = compute();
+      const listeners = new Set<(val: any) => void>();
+
+      deps.forEach((dep) => {
+        ctx.watch(dep, () => {
+          const newValue = compute();
+          if (!Object.is(currentValue, newValue)) {
+            currentValue = newValue;
+            listeners.forEach((fn) => fn(newValue));
+          }
+        });
+      });
+
+      return {
+        get value() { return currentValue; },
+        onChange: (callback) => {
+          listeners.add(callback);
+          callback(currentValue);
+        }
+      };
+    },
+
+    onMount: (fn) => {
+      if (hasMounted) {
+        fn();
+        return;
+      }
+      mountCallbacks.push(fn);
+    },
+
+    onUnmount: (fn) => hooks.add(fn),
+
+    chain: (<T extends HTMLElement>(elementOrSelector: T | string, ...transforms: Array<(el: T) => any>): T | null => {
+      const element = (typeof elementOrSelector === 'string'
+        ? find(root)(elementOrSelector)
+        : elementOrSelector) as T | null;
+      return chain(element, ...transforms);
+    }) as any,
+
+    exec: (<T extends HTMLElement>(elementOrSelector: T | string, ...operations: Array<(el: T) => any>): T | null => {
+      const element = (typeof elementOrSelector === 'string'
+        ? find(root)(elementOrSelector)
+        : elementOrSelector) as T | null;
+      return exec(element, ...operations);
+    }) as any
+  };
+
+  const runMountCallbacks = () => {
+    if (hasMounted) return;
+    hasMounted = true;
+    mountCallbacks.forEach((fn) => fn());
+  };
+
+  return {
+    ctx,
+    destroy: () => hooks.clear(),
+    runMountCallbacks
+  };
+};
+
+/**
+ * Creates a component-like context for a root element.
+ *
+ * Returns a scoped toolkit matching `defineComponent` without creating a full
+ * component instance. Includes automatic cleanup via `destroy()`.
+ *
+ * @template R - The shape of `refs` (elements marked with `data-ref="name"`).
+ * @template G - The shape of `groups` (lists marked with `data-ref="name"`).
+ * @template S - The shape of `state` (reactive `data-*` attributes).
+ * @param target - DOM element or selector to scope the context to.
+ * @returns A domCtx context or null if target not found.
+ *
+ * @example
+ * ```typescript
+ * const ctx = domCtx('#card');
+ * if (ctx) {
+ *   ctx.on('click', ctx.refs.button, () => alert('Clicked'));
+ * }
+ *
+ * const root = document.querySelector('#panel');
+ * const ctx2 = domCtx(root);
+ * ctx2?.on('click', ctx2.refs.button, () => alert('Clicked'));
+ * ```
+ */
+export const domCtx = <
+  R extends Record<string, HTMLElement> = any,
+  G extends Record<string, HTMLElement[]> = any,
+  S extends Record<string, any> = any
+>(target: string | HTMLElement | null): DomContext<R, G, S> | null => {
+  const root = (typeof target === 'string' ? find(document)(target) : target) as HTMLElement;
+  if (!root) return null;
+
+  const { ctx, destroy, runMountCallbacks } = createComponentContext<R, G, S>(root);
+  runMountCallbacks();
+
+  return Object.assign(ctx, { destroy });
+};
+
 /**
  * Creates a reactive, self-cleaning component instance on a DOM element.
+
  * 
  * Applies the **Setup Pattern** (similar to Vue 3 Composition API) to Vanilla DOM.
  * It binds a logic closure to a root element and provides a scoped `Context` toolkit.
@@ -12448,223 +12699,20 @@ export const defineComponent = <
   target: string | HTMLElement | null,
   setup: (ctx: ComponentContext<R, G, S>) => API | void
 ): ComponentInstance<API> | null => {
-  // 1. Resolve Root
   const root = (typeof target === 'string' ? find(document)(target) : target) as HTMLElement;
   if (!root) return null;
 
-  // 2. Lifecycle & Cleanup Manager
-  const hooks = createListenerGroup();
-  const mountCallbacks: Array<() => void> = [];
-
-  // 3. Resolve Scoped Refs & Groups
-  const scopedRefs = refs(root) as R;
-  const scopedGroups = groupRefs(root) as G;
-
-  // Helper: Resolve element from string selector or HTMLElement
-  const resolveElement = (elOrSelector: HTMLElement | string | null): HTMLElement | null => {
-    if (typeof elOrSelector === 'string') {
-      return find(root)(elOrSelector);
-    }
-    return elOrSelector;
-  };
-
-  // 4. Construct Context
-  const ctx: ComponentContext<R, G, S> = {
-    root,
-    refs: scopedRefs,
-    groups: scopedGroups,
-    state: store<S>(root),
-    store: createStore,
-
-    find: find(root),
-    findAll: findAll(root),
-
-    // Scoped Binder (Bound to Refs)
-    binder: (schema) => binder(scopedRefs, schema),
-
-    // Scoped Event Binding (Bound to Refs) with Auto-Cleanup
-    bindEvents: (map) => {
-      hooks.add(bindEvents(scopedRefs, map));
-    },
-
-    // Reactive State Watcher
-    watch: (key, handler) => {
-      hooks.add(Data.bind(root)(key, handler));
-    },
-
-    // Generic Cleanup
-    effect: (fn) => hooks.add(fn),
-
-    // Prebound Event Listener with Auto-Cleanup
-    on: (event, element, handler, options) => {
-      const target = resolveElement(element);
-      const unsubscribe = on(target)(event, handler as any, options);
-      hooks.add(unsubscribe);
-      return unsubscribe;
-    },
-
-    // Prebound Bind Utilities with Selector Resolution
-    bind: {
-      input: (inputOrSelector, stateKey) => {
-        const input = (typeof inputOrSelector === 'string'
-          ? find(root)(inputOrSelector)
-          : inputOrSelector) as HTMLInputElement;
-
-        if (!input) return;
-
-        // Determine input type
-        const inputType = input.type?.toLowerCase() || 'text';
-        const isCheckbox = inputType === 'checkbox';
-        const isRadio = inputType === 'radio';
-
-        // State -> Input
-        const updateInput = (val: any) => {
-          if (isCheckbox) {
-            input.checked = !!val;
-          } else if (isRadio) {
-            input.checked = input.value === String(val);
-          } else {
-            input.value = val ?? '';
-          }
-        };
-
-        // Input -> State
-        const updateState = () => {
-          if (isCheckbox) {
-            ctx.state[stateKey] = input.checked as any;
-          } else if (isRadio) {
-            if (input.checked) {
-              ctx.state[stateKey] = input.value as any;
-            }
-          } else {
-            ctx.state[stateKey] = input.value as any;
-          }
-        };
-
-        // Initialize input from state
-        updateInput(ctx.state[stateKey]);
-
-        // Listen to state changes
-        ctx.watch(stateKey, updateInput);
-
-        // Listen to input changes
-        const eventName = isCheckbox || isRadio ? 'change' : 'input';
-        hooks.add(on(input)(eventName as any, updateState));
-      },
-
-      text: (elOrSelector) => bind.text(resolveElement(elOrSelector)),
-      html: (elOrSelector) => bind.html(resolveElement(elOrSelector)),
-
-      attr: ((name: string, elOrSelector?: HTMLElement | string | null) => {
-        if (elOrSelector === undefined) {
-          return (el?: HTMLElement | string | null) => bind.attr(name, resolveElement(el || null));
-        }
-        return bind.attr(name, resolveElement(elOrSelector));
-      }) as any,
-
-      toggle: ((className: string, elOrSelector?: HTMLElement | string | null) => {
-        if (elOrSelector === undefined) {
-          return (el?: HTMLElement | string | null) => bind.toggle(className, resolveElement(el || null));
-        }
-        return bind.toggle(className, resolveElement(elOrSelector));
-      }) as any,
-
-      val: bind.val,
-
-      style: (elOrSelector, property) => bind.style(resolveElement(elOrSelector), property),
-      cssVar: (elOrSelector, varName) => bind.cssVar(resolveElement(elOrSelector), varName),
-      list: (containerOrSelector, renderItem) => bind.list(resolveElement(containerOrSelector), renderItem)
-    },
-
-    // Observer Utilities with Auto-Cleanup
-    observe: {
-      intersection: (elementOrSelector, callback, options) => {
-        const element = resolveElement(elementOrSelector);
-        if (!element) return;
-
-        const observer = new IntersectionObserver((entries) => {
-          entries.forEach(callback);
-        }, options);
-
-        observer.observe(element);
-        hooks.add(() => observer.disconnect());
-      },
-
-      resize: (elementOrSelector, callback) => {
-        const element = resolveElement(elementOrSelector);
-        if (!element) return;
-
-        const observer = new ResizeObserver((entries) => {
-          entries.forEach(callback);
-        });
-
-        observer.observe(element);
-        hooks.add(() => observer.disconnect());
-      }
-    },
-
-    // Computed Properties
-    computed: (deps, compute) => {
-      let currentValue = compute();
-      const listeners = new Set<(val: any) => void>();
-
-      // Watch all dependencies
-      deps.forEach((dep) => {
-        ctx.watch(dep, () => {
-          const newValue = compute();
-          if (!Object.is(currentValue, newValue)) {
-            currentValue = newValue;
-            listeners.forEach((fn) => fn(newValue));
-          }
-        });
-      });
-
-      return {
-        get value() { return currentValue; },
-        onChange: (callback) => {
-          listeners.add(callback);
-          // Optionally fire immediately
-          callback(currentValue);
-        }
-      };
-    },
-
-    // Lifecycle Hooks
-    onMount: (fn) => {
-      mountCallbacks.push(fn);
-    },
-
-    onUnmount: (fn) => hooks.add(fn),
-
-    // Element Transformation Utilities
-    chain: (<T extends HTMLElement>(elementOrSelector: T | string, ...transforms: Array<(el: T) => any>): T | null => {
-      const element = (typeof elementOrSelector === 'string'
-        ? find(root)(elementOrSelector)
-        : elementOrSelector) as T | null;
-      return chain(element, ...transforms);
-    }) as any,
-
-    exec: (<T extends HTMLElement>(elementOrSelector: T | string, ...operations: Array<(el: T) => any>): T | null => {
-      const element = (typeof elementOrSelector === 'string'
-        ? find(root)(elementOrSelector)
-        : elementOrSelector) as T | null;
-      return exec(element, ...operations);
-    }) as any
-  };
-
-  // 5. Initialize Logic
+  const { ctx, destroy, runMountCallbacks } = createComponentContext<R, G, S>(root);
   const api = setup(ctx) || {} as API;
+  runMountCallbacks();
 
-  // Execute onMount callbacks after setup completes
-  mountCallbacks.forEach((fn) => fn());
-
-  // 6. Return Instance
   return {
     ...api,
     root,
-    destroy: () => hooks.clear(),
+    destroy
   };
 };
+
 
 /**
  * Spawns a component dynamically.

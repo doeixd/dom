@@ -401,6 +401,7 @@ For comprehensive guides on components:
 | `createBus` | Create typed event bus (pub/sub). | `const bus = createBus<Events>();` |
 | `createStore` | Create reactive store. | `const store = createStore({count: 0});` |
 | `defineComponent` | Define a component with lifecycle. | `defineComponent('#app', (ctx) => {...});` |
+| `domCtx` | Create a scoped component context. | `const ctx = domCtx('#root');` |
 | `mountComponent` | Mount a component instance. | `mountComponent(instance, '#root');` |
 | `Result.ok` | Create success result. | `return Result.ok(value);` |
 | `Result.err` | Create error result. | `return Result.err(error);` |
@@ -467,6 +468,7 @@ The library exports TypeScript types and interfaces for better type safety:
 | `HttpResponse<T>` | HTTP response type. |
 | `HttpConfig<H>` | HTTP client configuration. |
 | `ComponentContext` | Component context interface. |
+| `DomContext` | Context type returned by `domCtx`. |
 | `ComponentInstance<API>` | Component instance type. |
 
 <br />
