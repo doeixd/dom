@@ -1729,6 +1729,112 @@ export const mount = def((parent: Element | string | null, child: Element | null
 // 5. CREATION & TEMPLATES
 // =============================================================================
 
+export interface CreateWebComponentOptions {
+  /** Optional custom element name (overrides class name). */
+  name?: string;
+  /** Auto-define the component (default: true). */
+  define?: boolean;
+  /** Options passed to `customElements.define`. */
+  defineOptions?: ElementDefinitionOptions;
+}
+
+/**
+ * Registers a custom element with smart defaults and flexible call styles.
+ *
+ * Defaults to a kebab-case name derived from the class name. If the derived
+ * name lacks a hyphen, `-el` is appended to make it valid.
+ *
+ * Supports both call styles:
+ * - `createWebComponent(MyElement, options?)`
+ * - `createWebComponent(options?)(MyElement)`
+ *
+ * @template T - Custom element constructor
+ * @param ctor - Custom element class
+ * @param options - Optional registration configuration
+ * @returns Metadata about the registration
+ *
+ * @example
+ * ```typescript
+ * class MyButton extends HTMLElement {}
+ * const { name } = createWebComponent(MyButton);
+ * // name === 'my-button'
+ * ```
+ *
+ * @example
+ * ```typescript
+ * class FancyInput extends HTMLInputElement {}
+ * createWebComponent(FancyInput, {
+ *   name: 'fancy-input',
+ *   defineOptions: { extends: 'input' }
+ * });
+ * ```
+ *
+ * @example
+ * ```typescript
+ * class ModalDialog extends HTMLElement {}
+ * const register = createWebComponent({ define: false, name: 'modal-dialog' });
+ * const info = register(ModalDialog);
+ * // info.defined === false
+ * ```
+ */
+export function createWebComponent<T extends CustomElementConstructor>(
+  ctor: T,
+  options?: CreateWebComponentOptions
+): { name: string; ctor: T; defined: boolean };
+
+export function createWebComponent(
+  options?: CreateWebComponentOptions
+): <T extends CustomElementConstructor>(ctor: T) => { name: string; ctor: T; defined: boolean };
+
+export function createWebComponent(
+  arg1?: CreateWebComponentOptions | CustomElementConstructor,
+  arg2?: CreateWebComponentOptions
+) {
+  const toKebab = (value: string) =>
+    value
+      .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+      .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
+      .replace(/[_\s]+/g, '-')
+      .toLowerCase();
+
+  const build = <T extends CustomElementConstructor>(
+    ctor: T,
+    options: CreateWebComponentOptions = {}
+  ) => {
+    const rawName = options.name ?? toKebab(ctor.name ?? '');
+    if (!rawName) {
+      throw new Error('createWebComponent: name is required for anonymous classes.');
+    }
+
+    const name = rawName.includes('-') ? rawName : `${rawName}-el`;
+    const shouldDefine = options.define !== false;
+    const registry = typeof customElements === 'undefined' ? undefined : customElements;
+    const alreadyDefined = registry?.get(name);
+
+    if (shouldDefine) {
+      if (!registry) {
+        throw new Error('createWebComponent: customElements is not available in this environment.');
+      }
+      if (!alreadyDefined) {
+        registry.define(name, ctor, options.defineOptions);
+      }
+    }
+
+    return {
+      name,
+      ctor,
+      defined: shouldDefine ? true : !!alreadyDefined
+    };
+  };
+
+  if (typeof arg1 === 'function') {
+    return build(arg1, arg2);
+  }
+
+  const options = arg1 ?? {};
+  return (ctor: CustomElementConstructor) => build(ctor, options);
+}
+
 /**
  * Creates a DOM element with full type inference.
  * 
@@ -4110,6 +4216,250 @@ export const Obj = {
     const ret = {} as Pick<T, K>;
     keys.forEach(k => { if (k in obj) ret[k] = obj[k]; });
     return ret;
+  },
+
+  /**
+   * Maps an object's entries into a new object.
+   *
+   * Supports two styles:
+   * - Entry mapping: `(entry) => [newKey, newValue]`
+   * - Value mapping: `(value, key) => newValue` (keys preserved)
+   *
+   * @template T - The object type
+   * @template K - The original key type
+   * @template V - The original value type
+   * @returns A new mapped object
+   *
+   * @example
+   * ```typescript
+   * const user = { id: 1, name: 'Ada', role: 'admin' };
+   *
+   * // Value mapping (keys preserved)
+   * const upper = Obj.map(user, (value) => String(value).toUpperCase());
+   * // { id: '1', name: 'ADA', role: 'ADMIN' }
+   *
+   * // Entry mapping (change keys + values)
+   * const pairs = Obj.map(user, ([key, value]) => [`user_${key}`, value]);
+   * // { user_id: 1, user_name: 'Ada', user_role: 'admin' }
+   * ```
+   */
+  map: ((obj: Record<string, any>, mapper: any) => {
+    const entries = Object.entries(obj);
+    const isEntryMapper = mapper.length <= 1;
+    const result: Record<PropertyKey, any> = {};
+
+    if (isEntryMapper) {
+      entries.forEach(([key, value]) => {
+        const [newKey, newValue] = mapper([key, value]);
+        result[newKey] = newValue;
+      });
+      return result;
+    }
+
+    entries.forEach(([key, value]) => {
+      result[key] = mapper(value, key);
+    });
+
+    return result;
+  }) as {
+    <T extends Record<string, any>, R>(
+      obj: T,
+      mapper: (value: T[keyof T], key: keyof T) => R
+    ): { [K in keyof T]: R };
+    <T extends Record<string, any>, NK extends PropertyKey, NV>(
+      obj: T,
+      mapper: (entry: [keyof T, T[keyof T]]) => [NK, NV]
+    ): Record<NK, NV>;
+  },
+
+  /**
+   * Renames a key on an object (immutable).
+   *
+   * Supports both call styles:
+   * - `Obj.renameKey(obj, from, to)`
+   * - `Obj.renameKey(from, to)(obj)`
+   *
+   * If the source key is missing, returns a shallow copy of the original.
+   *
+   * @template T - The object type
+   * @template F - Key to rename
+   * @template N - New key name
+   * @returns A new object with the renamed key
+   *
+   * @example
+   * ```typescript
+   * const user = { id: 1, name: 'Ada' };
+   *
+   * const renamed = Obj.renameKey(user, 'name', 'fullName');
+   * // { id: 1, fullName: 'Ada' }
+   *
+   * const rename = Obj.renameKey('id', 'userId');
+   * const renamed2 = rename(user);
+   * // { userId: 1, name: 'Ada' }
+   * ```
+   */
+  renameKey: ((objOrFrom: any, fromOrTo: any, to?: any) => {
+    const rename = <T extends object, F extends keyof T, N extends PropertyKey>(
+      obj: T,
+      from: F,
+      newKey: N
+    ) => {
+      const result = { ...obj } as any;
+      if (!(from in obj)) {
+        return result as Omit<T, F> & Record<N, T[F]>;
+      }
+      const value = obj[from];
+      delete result[from];
+      result[newKey] = value;
+      return result as Omit<T, F> & Record<N, T[F]>;
+    };
+
+    if (to === undefined) {
+      return (obj: Record<PropertyKey, any>) => rename(obj, objOrFrom, fromOrTo);
+    }
+
+    return rename(objOrFrom, fromOrTo, to);
+  }) as {
+    <T extends object, F extends keyof T, N extends PropertyKey>(
+      obj: T,
+      from: F,
+      to: N
+    ): Omit<T, F> & Record<N, T[F]>;
+    <F extends PropertyKey, N extends PropertyKey>(
+      from: F,
+      to: N
+    ): <T extends Record<F, any>>(obj: T) => Omit<T, F> & Record<N, T[F]>;
+  },
+
+  /**
+   * Safely reads a nested value by path.
+   *
+   * Supports string paths (`"a.b.0.c"`) and array paths (`['a', 'b', 0, 'c']`).
+   * Returns `fallback` when the path cannot be resolved.
+   *
+   * Supports both call styles:
+   * - `Obj.get(obj, path, fallback?)`
+   * - `Obj.get(path, fallback?)(obj)`
+   *
+   * @template T - The object type
+   * @template R - The fallback type
+   * @param obj - The source object
+   * @param path - Path to read
+   * @param fallback - Optional fallback when missing
+   * @returns The resolved value or fallback
+   *
+   * @example
+   * ```typescript
+   * const state = { user: { profile: { name: 'Ada' } }, items: [{ id: 1 }] };
+   *
+   * Obj.get(state, 'user.profile.name'); // 'Ada'
+   * Obj.get(state, ['items', 0, 'id']); // 1
+   * Obj.get(state, 'user.missing', 'Unknown'); // 'Unknown'
+   *
+   * const getUserName = Obj.get('user.profile.name');
+   * getUserName(state); // 'Ada'
+   * ```
+   */
+  get: ((objOrPath: any, pathOrFallback?: any, maybeFallback?: any) => {
+    const resolvePath = (path: Path) =>
+      Array.isArray(path) ? path : path.split('.').filter(Boolean);
+
+    if (typeof objOrPath === 'string' || Array.isArray(objOrPath)) {
+      const path = resolvePath(objOrPath);
+      const fallback = pathOrFallback;
+      return (obj: any) => {
+        let current = obj;
+        for (const segment of path) {
+          if (current == null) return fallback;
+          current = current[segment as keyof typeof current];
+        }
+        return current === undefined ? fallback : current;
+      };
+    }
+
+    const obj = objOrPath;
+    const path = resolvePath(pathOrFallback);
+    const fallback = maybeFallback;
+
+    let current = obj;
+    for (const segment of path) {
+      if (current == null) return fallback;
+      current = current[segment as keyof typeof current];
+    }
+
+    return current === undefined ? fallback : current;
+  }) as {
+    <T extends object, R = undefined>(
+      obj: T,
+      path: Path,
+      fallback?: R
+    ): R | any;
+    <R = undefined>(
+      path: Path,
+      fallback?: R
+    ): <T extends object>(obj: T) => R | any;
+  },
+
+  /**
+   * Sets a nested value by path (immutable).
+   *
+   * Creates missing objects/arrays as needed. Numeric path segments create arrays.
+   * Supports both call styles:
+   * - `Obj.set(obj, path, value)`
+   * - `Obj.set(path, value)(obj)`
+   *
+   * @template T - The object type
+   * @param obj - The source object
+   * @param path - Path to set
+   * @param value - Value to assign
+   * @returns A new object with the updated value
+   *
+   * @example
+   * ```typescript
+   * const state = { user: { profile: { name: 'Ada' } }, items: [] };
+   *
+   * const updated = Obj.set(state, 'user.profile.name', 'Grace');
+   * const updated2 = Obj.set(state, ['items', 0, 'id'], 42);
+   *
+   * const setName = Obj.set('user.profile.name', 'Lin');
+   * setName(state);
+   * ```
+   */
+  set: ((objOrPath: any, pathOrValue: any, maybeValue?: any) => {
+    const resolvePath = (path: Path) =>
+      Array.isArray(path) ? path : path.split('.').filter(Boolean);
+
+    const setAtPath = (obj: any, path: Array<string | number>, value: any): any => {
+      if (path.length === 0) return value;
+      const [segment, ...rest] = path;
+      const isIndex = typeof segment === 'number';
+      const base = Array.isArray(obj) ? obj.slice() : { ...(obj ?? (isIndex ? [] : {})) };
+
+      const nextValue = setAtPath((obj ?? (isIndex ? [] : {}))[segment as any], rest, value);
+      (base as any)[segment] = nextValue;
+      return base;
+    };
+
+    if (typeof objOrPath === 'string' || Array.isArray(objOrPath)) {
+      const path = resolvePath(objOrPath);
+      const value = pathOrValue;
+      return (obj: any) => setAtPath(obj, path, value);
+    }
+
+    const obj = objOrPath;
+    const path = resolvePath(pathOrValue);
+    const value = maybeValue;
+    return setAtPath(obj, path, value);
+  }) as {
+    <T extends object>(
+      obj: T,
+      path: Path,
+      value: any
+    ): T;
+    <T extends object>(
+      path: Path,
+      value: any
+    ): (obj: T) => T;
   },
 
   /**
@@ -8700,6 +9050,64 @@ export const History = {
 // FUNCTIONAL COMBINATORS & UTILITIES
 // =============================================================================
 
+export type WithArgMapped<E, F extends Array<(arg: E, ...args: any[]) => any>> = {
+  [K in keyof F]: F[K] extends (arg: E, ...args: infer A) => infer R ? (...args: A) => R : never;
+};
+
+export type WithArgFn = {
+  <E>(arg: E): <F extends Array<(arg: E, ...args: any[]) => any>>(
+    ...fns: F
+  ) => WithArgMapped<E, F>;
+  <E, F extends Array<(arg: E, ...args: any[]) => any>>(
+    arg: E,
+    ...fns: F
+  ): WithArgMapped<E, F>;
+};
+
+export type DataLastFn<D, A extends any[], R> = {
+  (...args: [...A, D]): R;
+  (...args: A): (data: D) => R;
+};
+
+export type DataLastMapped<D, F extends Array<(data: D, ...args: any[]) => any>> = {
+  [K in keyof F]: F[K] extends (data: D, ...args: infer A) => infer R ? DataLastFn<D, A, R> : never;
+};
+
+export type DataLastPredFn = {
+  <D>(isData: (value: unknown) => value is D): <F extends Array<(data: D, ...args: any[]) => any>>(
+    ...fns: F
+  ) => DataLastMapped<D, F>;
+  <D, F extends Array<(data: D, ...args: any[]) => any>>(
+    isData: (value: unknown) => value is D,
+    ...fns: F
+  ): DataLastMapped<D, F>;
+};
+
+export type DataLastElFn = {
+  <D extends ElementInput, F extends Array<(data: D, ...args: any[]) => any>>(
+    ...fns: F
+  ): DataLastMapped<D, F>;
+};
+
+export type FlexFn<D, A extends any[], R> = {
+  (data: D, ...args: A): R;
+  (...args: [...A, D]): R;
+  (data: D): (...args: A) => R;
+  (...args: A): (data: D) => R;
+};
+
+export type FlexMapped<D, F extends Array<(data: D, ...args: any[]) => any>> = {
+  [K in keyof F]: F[K] extends (data: D, ...args: infer A) => infer R ? FlexFn<D, A, R> : never;
+};
+
+export type FlexElFn = {
+  <D extends ElementInput, F extends Array<(data: D, ...args: any[]) => any>>(
+    ...fns: F
+  ): FlexMapped<D, F>;
+};
+
+export type Path = string | Array<string | number>;
+
 /**
  * Represents a function that can be called either Data-First or Data-Last.
  */
@@ -8795,6 +9203,325 @@ export const Fn = {
    * ```
    */
   curry: <A, B, R>(fn: (a: A, b: B) => R) => (a: A) => (b: B): R => fn(a, b),
+
+  /**
+   * Prefills the first argument for multiple functions.
+   *
+   * Supports both call styles:
+   * - `Fn.withArg(arg, fn1, fn2)`
+   * - `Fn.withArg(arg)(fn1, fn2)`
+   *
+   * Returns a tuple of functions with `arg` applied as the first parameter.
+   *
+   * @template E - The first argument type
+   * @template F - Tuple of functions that accept `E` first
+   * @param arg - The argument to prefill
+   * @param fns - Functions to prefill with `arg`
+   * @returns Tuple of functions with `arg` applied
+   *
+   * @example
+   * ```typescript
+   * import { Fn, on, modify } from '@doeixd/dom';
+   *
+   * const [onButton, modifyButton] = Fn.withArg(button, on, modify);
+   * onButton('click', handler);
+   * modifyButton({ text: 'Save' });
+   *
+   * const [onCard, modifyCard] = Fn.withArg(card)(on, modify);
+   * onCard('mouseenter', handler);
+   * modifyCard({ class: { active: true } });
+   * ```
+   */
+  withArg: (() => {
+    const apply = <E, F extends Array<(arg: E, ...args: any[]) => any>>(
+      arg: E,
+      fns: F
+    ) => fns.map(fn => (...args: any[]) => fn(arg, ...args)) as any;
+
+    const wrapper = (arg: any, ...fns: any[]) => {
+      if (fns.length > 0) {
+        return apply(arg, fns);
+      }
+      return (...rest: any[]) => apply(arg, rest);
+    };
+
+    return wrapper as WithArgFn;
+  })(),
+
+  /**
+   * Converts a data-first function into a data-last, dual-mode function.
+   *
+   * Turns `(data, ...args) => result` into:
+   * - Immediate: `(...args, data) => result`
+   * - Curried: `(...args) => (data) => result`
+   *
+   * Detection defaults to arity (`fn.length`) and can be customized with:
+   * - `arity`: expected argument count (including data)
+   * - `isData`: predicate for the last argument
+   *
+   * @template D - The data type
+   * @template A - Argument tuple (excluding data)
+   * @template R - Return type
+   * @param fn - Data-first function
+   * @param config - Optional arity or predicate config
+   * @returns Dual-mode data-last function
+   *
+   * @example
+   * ```typescript
+   * import { Fn, on } from '@doeixd/dom';
+   *
+   * const onLast = Fn.dataLast(on, { arity: 3 });
+   * onLast('click', handler, button); // Immediate
+   * onLast('click', handler)(button); // Curried
+   * ```
+   *
+   * @example
+   * ```typescript
+   * import { Fn, modify } from '@doeixd/dom';
+   *
+   * const modifyLast = Fn.dataLast(modify, (value): value is HTMLElement => value instanceof HTMLElement);
+   * modifyLast({ text: 'Save' }, button);
+   * modifyLast({ text: 'Save' })(button);
+   * ```
+   */
+  dataLast: <D, A extends any[], R>(
+    fn: (data: D, ...args: A) => R,
+    config?:
+      | number
+      | ((value: unknown) => value is D)
+      | { arity?: number; isData?: (value: unknown) => value is D }
+  ): DataLastFn<D, A, R> => {
+    const arity =
+      typeof config === 'number'
+        ? config
+        : typeof config === 'function'
+          ? fn.length
+          : config?.arity ?? fn.length;
+    const isData =
+      typeof config === 'function'
+        ? config
+        : typeof config === 'number'
+          ? undefined
+          : config?.isData;
+
+    return ((...args: any[]) => {
+      if (isData) {
+        if (args.length > 0 && isData(args[args.length - 1])) {
+          const data = args[args.length - 1] as D;
+          const rest = args.slice(0, -1) as A;
+          return fn(data, ...rest);
+        }
+        return (data: D) => fn(data, ...(args as A));
+      }
+
+      if (args.length >= arity) {
+        const data = args[args.length - 1] as D;
+        const rest = args.slice(0, -1) as A;
+        return fn(data, ...rest);
+      }
+
+      return (data: D) => fn(data, ...(args as A));
+    }) as DataLastFn<D, A, R>;
+  },
+
+  /**
+   * Builds a data-last transformer from a predicate.
+   *
+   * Useful when arity detection is ambiguous or when the data argument can be
+   * inferred by shape (like elements, selectors, or custom objects).
+   *
+   * Supports both call styles:
+   * - `Fn.dataLastPred(isData, fn1, fn2)`
+   * - `Fn.dataLastPred(isData)(fn1, fn2)`
+   *
+   * @param isData - Predicate that identifies the data argument
+   * @returns Data-last versions of the provided functions
+   *
+   * @example
+   * ```typescript
+   * import { Fn, on } from '@doeixd/dom';
+   *
+   * const isElement = (value: unknown): value is HTMLElement => value instanceof HTMLElement;
+   * const [onLast] = Fn.dataLastPred(isElement)(on);
+   *
+   * onLast('click', handler, button);
+   * onLast('click', handler)(button);
+   * ```
+   *
+   * @example
+   * ```typescript
+   * import { Fn, modify, cls } from '@doeixd/dom';
+   *
+   * const isTarget = (value: unknown): value is HTMLElement | null =>
+   *   value === null || value instanceof HTMLElement;
+   *
+   * const [modifyLast, addClassLast] = Fn.dataLastPred(isTarget)(modify, cls.add);
+   * modifyLast({ text: 'Save' }, button);
+   * addClassLast('active', button);
+   * ```
+   */
+  dataLastPred: (() => {
+    const wrapper = (isData: any, ...fns: any[]) => {
+      if (fns.length > 0) {
+        return fns.map(fn => Fn.dataLast(fn, { isData })) as any;
+      }
+      return (...rest: any[]) => rest.map(fn => Fn.dataLast(fn, { isData })) as any;
+    };
+
+    return wrapper as DataLastPredFn;
+  })(),
+
+  /**
+   * Element/selector-aware data-last helper.
+   *
+   * Uses a built-in predicate that treats `ElementInput` as the data argument,
+   * enabling immediate vs curried behavior for element/selector inputs.
+   *
+   * @returns Data-last versions of the provided functions
+   *
+   * @example
+   * ```typescript
+   * import { Fn, on, modify } from '@doeixd/dom';
+   *
+   * const [onLast, modifyLast] = Fn.dataLastEl(on, modify);
+   *
+   * onLast('click', handler, button);
+   * onLast('click', handler)(button);
+   * onLast('click', handler, '#save');
+   * onLast('click', handler)('#save');
+   *
+   * modifyLast({ text: 'Save' }, button);
+   * modifyLast({ text: 'Save' })('#save');
+   * ```
+   */
+  dataLastEl: (() => {
+    const isElementInput = (value: unknown): value is ElementInput => {
+      if (value === null || value === undefined) return true;
+      if (typeof value === 'string') return true;
+      if (typeof value === 'function') return true;
+      return value instanceof Element;
+    };
+
+    const wrapper = (...fns: any[]) => Fn.dataLastPred(isElementInput)(...fns);
+
+    return wrapper as DataLastElFn;
+  })(),
+
+  /**
+   * Makes a function flexible about the position of its first argument.
+   *
+   * Supports all of the following call styles:
+   * - `fnFlex(firstArg, ...rest)`
+   * - `fnFlex(firstArg)(...rest)`
+   * - `fnFlex(...rest, firstArg)`
+   * - `fnFlex(...rest)(firstArg)`
+   *
+   * For ambiguous signatures, pass a predicate to identify the first argument
+   * (the "subject") so immediate vs curried behavior is deterministic.
+   *
+   * @template D - The first argument type
+   * @template A - Remaining arguments tuple
+   * @template R - Return type
+   * @param fn - Function to wrap
+   * @param isFirstArg - Optional predicate for the first argument
+   * @returns A flexible function with both data-first and data-last usage
+   *
+   * @example
+   * ```typescript
+   * import { Fn, on } from '@doeixd/dom';
+   *
+   * const isElement = (value: unknown): value is HTMLElement => value instanceof HTMLElement;
+   * const onFlex = Fn.flex(on, isElement);
+   *
+   * onFlex(button, 'click', handler);
+   * onFlex(button)('click', handler);
+   * onFlex('click', handler, button);
+   * onFlex('click', handler)(button);
+   * ```
+   *
+   * @example
+   * ```typescript
+   * import { Fn, modify } from '@doeixd/dom';
+   *
+   * const isTarget = (value: unknown): value is HTMLElement | null =>
+   *   value === null || value instanceof HTMLElement;
+   *
+   * const modifyFlex = Fn.flex(modify, isTarget);
+   * modifyFlex(button, { text: 'Save' });
+   * modifyFlex({ text: 'Save' }, button);
+   * ```
+   */
+  flex: <D, A extends any[], R>(
+    fn: (data: D, ...args: A) => R,
+    isFirstArg?: (value: unknown) => value is D
+  ): FlexFn<D, A, R> => {
+    const arity = fn.length;
+
+    return ((...args: any[]) => {
+      if (args.length === 0) {
+        return (data: D) => fn(data, ...([] as unknown as A));
+      }
+
+      if (isFirstArg) {
+        const first = args[0];
+        if (isFirstArg(first)) {
+          if (args.length === 1) {
+            return (...rest: A) => fn(first, ...rest);
+          }
+          return fn(first, ...(args.slice(1) as A));
+        }
+
+        const last = args[args.length - 1];
+        if (isFirstArg(last)) {
+          if (args.length === 1) {
+            return (...rest: A) => fn(last, ...rest);
+          }
+          return fn(last, ...(args.slice(0, -1) as A));
+        }
+      }
+
+      if (args.length >= arity) {
+        return fn(args[0], ...(args.slice(1) as A));
+      }
+
+      return (data: D) => fn(data, ...(args as A));
+    }) as FlexFn<D, A, R>;
+  },
+
+  /**
+   * Element/selector-aware flex helper.
+   *
+   * Uses the same ElementInput predicate as `dataLastEl`, enabling flexible
+   * first/last positioning for element/selector inputs.
+   *
+   * @returns Flexible versions of the provided functions
+   *
+   * @example
+   * ```typescript
+   * import { Fn, on, modify } from '@doeixd/dom';
+   *
+   * const [onFlex, modifyFlex] = Fn.flexEl(on, modify);
+   *
+   * onFlex(button, 'click', handler);
+   * onFlex('click', handler, button);
+   * onFlex('click', handler)(button);
+   *
+   * modifyFlex(button, { text: 'Save' });
+   * modifyFlex({ text: 'Save' }, '#save');
+   * ```
+   */
+  flexEl: (() => {
+    const isElementInput = (value: unknown): value is ElementInput => {
+      if (value === null || value === undefined) return true;
+      if (typeof value === 'string') return true;
+      if (typeof value === 'function') return true;
+      return value instanceof Element;
+    };
+
+    const wrapper = (...fns: any[]) => fns.map(fn => Fn.flex(fn, isElementInput)) as any;
+
+    return wrapper as FlexElFn;
+  })(),
 
   /**
    * (C-Combinator) Swaps the arguments of a curried function.

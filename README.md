@@ -223,6 +223,7 @@ For comprehensive guides on components:
 | `el` | Create a new element with props and children. | `el('div')({ class:{box:1} })([child])` |
 | `html` | Create an element from a template literal. | ```const div = html`<div>${name}</div>`;``` |
 | `htmlMany` | Create a DocumentFragment from HTML. | ```const frag = htmlMany`<li>A</li><li>B</li>`;``` |
+| `createWebComponent` | Register a custom element with defaults. | `createWebComponent(MyEl, { name: 'my-el' })` |
 | `append` | Append nodes or text to an element. | `append(parent)(child1, 'text')` |
 | `prepend` | Prepend nodes or text to an element. | `prepend(list)(newItem)` |
 | `after` | Insert content after an element as siblings. | `after(el)(newSibling)` |
@@ -325,6 +326,10 @@ For comprehensive guides on components:
 | `Obj.isEqual` | Deep equality check. | `if (Obj.isEqual(a, b)) {}` |
 | `Obj.pick` | Pick properties from object. | `const sub = Obj.pick(obj, ['a', 'b']);` |
 | `Obj.omit` | Omit properties from object. | `const rest = Obj.omit(obj, ['x']);` |
+| `Obj.map` | Map object entries or values. | `Obj.map(obj, ([k, v]) => [k, v])` |
+| `Obj.renameKey` | Rename a key (immutable). | `Obj.renameKey(obj, 'a', 'b')` |
+| `Obj.get` | Read nested value by path. | `Obj.get(obj, 'a.b.0')` |
+| `Obj.set` | Set nested value by path. | `Obj.set(obj, 'a.b', 1)` |
 
 ### Network & HTTP
 
@@ -403,6 +408,12 @@ For comprehensive guides on components:
 | `Option.none` | Create None option. | `return Option.none();` |
 | `Fn.pipe` | Pipe value through functions. | `const result = Fn.pipe(val, fn1, fn2);` |
 | `Fn.compose` | Compose functions right-to-left. | `const fn = Fn.compose(fn3, fn2, fn1);` |
+| `Fn.withArg` | Prefill first argument for functions. | `Fn.withArg(el, on, modify)` |
+| `Fn.dataLast` | Convert data-first to data-last (dual-mode). | `Fn.dataLast(on, { arity: 3 })` |
+| `Fn.dataLastPred` | Data-last via predicate. | `Fn.dataLastPred(isEl)(on)` |
+| `Fn.dataLastEl` | Data-last for ElementInput. | `Fn.dataLastEl(on)` |
+| `Fn.flex` | Flexible first/last argument order. | `Fn.flex(on, isEl)` |
+| `Fn.flexEl` | Flex for ElementInput. | `Fn.flexEl(on)` |
 | `ViewTransitions.start` | Start view transition. | `ViewTransitions.start(() => updateDOM());` |
 | `SW.register` | Register service worker. | `await SW.register('/sw.js');` |
 | `stripListeners` | Clone element without event listeners. | `const clean = stripListeners(el);` |
@@ -430,6 +441,17 @@ The library exports TypeScript types and interfaces for better type safety:
 | `StrictElementProps<T>` | Element properties with element-specific validation. |
 | `DeepReadonly<T>` | Makes all properties deeply readonly. |
 | `DeepPartial<T>` | Makes all properties deeply partial. |
+| `Path` | String or array path for `Obj.get/set`. |
+| `CreateWebComponentOptions` | Options for `createWebComponent`. |
+| `WithArgMapped` | Result type for `Fn.withArg`. |
+| `WithArgFn` | Type signature for `Fn.withArg`. |
+| `DataLastFn` | Dual-mode data-last function type. |
+| `DataLastMapped` | Tuple mapped type for `dataLast`. |
+| `DataLastPredFn` | Type signature for `Fn.dataLastPred`. |
+| `DataLastElFn` | Type signature for `Fn.dataLastEl`. |
+| `FlexFn` | Flexible first/last argument function type. |
+| `FlexMapped` | Tuple mapped type for `Fn.flex`. |
+| `FlexElFn` | Type signature for `Fn.flexEl`. |
 | `FormElement` | Union type for form elements (input, select, textarea). |
 | `QueryValue` | Valid URL query parameter value types. |
 | `QueryParams` | Record of query parameters. |
