@@ -8281,7 +8281,10 @@ export const Input = {
    * Watches input while respecting IME composition events.
    * Fires on compositionend or non-composing input.
    *
-   * @example Input.watchComposed(input)(value => update(value));
+   * @example
+   * ```typescript
+   * Input.watchComposed(input)((value) => update(value));
+   * ```
    */
   watchComposed: (el: FormElement | null) => {
     return (callback: (val: any, e: Event) => void): Unsubscribe => {
@@ -8377,6 +8380,12 @@ export interface AutoResizeOptions {
  * @param textarea - Target textarea
  * @param options - Resize options
  * @returns Cleanup function
+ *
+ * @example
+ * ```typescript
+ * const stop = autoResize(textarea, { maxHeight: 300 });
+ * // stop() to remove listeners
+ * ```
  */
 export const autoResize = (
   textarea: HTMLTextAreaElement | null,
@@ -8433,6 +8442,15 @@ export interface UploadController {
  * @param dropzone - Target element or selector
  * @param options - Upload configuration
  * @returns Upload controller with open/destroy
+ *
+ * @example
+ * ```typescript
+ * const upload = createUpload(zone, {
+ *   accept: ['image/*'],
+ *   maxSize: 5 * 1024 * 1024,
+ *   onFiles: (files) => console.log(files)
+ * });
+ * ```
  */
 export const createUpload = (
   dropzone: HTMLElement | string | null,
@@ -8565,6 +8583,11 @@ export interface DraggableOptions {
  * @param element - Element to drag
  * @param options - Drag behavior options
  * @returns Cleanup function
+ *
+ * @example
+ * ```typescript
+ * const stop = draggable(card, { axis: 'y', bounds: container });
+ * ```
  */
 export const draggable = (
   element: HTMLElement | null,
@@ -8680,6 +8703,15 @@ export interface SortableController {
  * @param container - Container element
  * @param options - Sortable options
  * @returns Sortable controller
+ *
+ * @example
+ * ```typescript
+ * const sortable = createSortable(list, {
+ *   items: 'li',
+ *   handle: '.drag-handle',
+ *   onReorder: (from, to) => console.log(from, to)
+ * });
+ * ```
  */
 export const createSortable = (
   container: HTMLElement | null,
@@ -8790,6 +8822,11 @@ export interface ClickOutsideOptions {
  * @param handler - Callback to run on outside click
  * @param options - Ignore list and capture flag
  * @returns Cleanup function
+ *
+ * @example
+ * ```typescript
+ * const stop = onClickOutside(menu, close, { ignore: [trigger] });
+ * ```
  */
 export const onClickOutside = (
   target: ElementInput,
@@ -8911,6 +8948,12 @@ export interface MediaQueryController<T extends MediaQueryMap> {
  *
  * @param queries - Map of query names to media queries
  * @returns Controller with matches and subscriptions
+ *
+ * @example
+ * ```typescript
+ * const screen = createMediaQuery({ mobile: '(max-width: 640px)' });
+ * screen.on('mobile', (matches) => console.log(matches));
+ * ```
  */
 export const createMediaQuery = <T extends MediaQueryMap>(
   queries: T
@@ -8976,6 +9019,36 @@ export const createMediaQuery = <T extends MediaQueryMap>(
 
 export const Key = {
   /**
+   * Returns true if the keyboard event matches a key or predicate.
+   * Supports optional currying.
+   *
+   * @example
+   * ```typescript
+   * if (Key.matches(e, 'Enter')) onSubmit();
+   * if (Key.matches(['ArrowUp', 'ArrowDown'])(e)) moveFocus();
+   * ```
+   */
+  matches: ((eventOrKey: KeyboardEvent | string | string[] | ((key: string) => boolean),
+    keyOrPredicate?: string | string[] | ((key: string) => boolean)) => {
+    const matchesKey = (event: KeyboardEvent, matcher: string | string[] | ((key: string) => boolean)) => {
+      if (typeof matcher === 'function') return matcher(event.key);
+      if (Array.isArray(matcher)) return matcher.includes(event.key);
+      return event.key === matcher;
+    };
+
+    if (typeof eventOrKey === 'object' && 'key' in eventOrKey) {
+      if (!keyOrPredicate) return false;
+      return matchesKey(eventOrKey, keyOrPredicate);
+    }
+
+    const matcher = eventOrKey;
+    return (event: KeyboardEvent) => matchesKey(event, matcher);
+  }) as {
+    (event: KeyboardEvent, key: string | string[] | ((key: string) => boolean)): boolean;
+    (key: string | string[] | ((key: string) => boolean)): (event: KeyboardEvent) => boolean;
+  },
+
+  /**
    * Listens for a specific key press.
    * @example Key.is(input)('Enter', onSubmit);
    */
@@ -8984,6 +9057,7 @@ export const Key = {
       if (e.key === key) handler(e as KeyboardEvent);
     });
   },
+
 
   /**
    * Listens for the 'Tab' key.
@@ -9131,6 +9205,11 @@ export const A11y = (() => {
      *
      * @param message - Message to announce
      * @param politeness - 'polite' or 'assertive'
+     *
+     * @example
+     * ```typescript
+     * A11y.announce('Saved', 'polite');
+     * ```
      */
     announce: (message: string, politeness: 'polite' | 'assertive' = 'polite') => {
       const region = ensureLiveRegion();
@@ -9155,6 +9234,11 @@ export const A11y = (() => {
      * @param panelInput - Panel element or selector
      * @param expanded - Optional expanded state (defaults to toggle)
      * @returns Final expanded state
+     *
+     * @example
+     * ```typescript
+     * A11y.setExpanded(button, panel, true);
+     * ```
      */
     setExpanded: (
       triggerInput: ElementInput,
@@ -9180,6 +9264,11 @@ export const A11y = (() => {
      * @param optionInput - Option element or selector
      * @param listboxInput - Optional listbox container
      * @param selected - Selected state (default: true)
+     *
+     * @example
+     * ```typescript
+     * A11y.setSelected(option, listbox, true);
+     * ```
      */
     setSelected: (
       optionInput: ElementInput,
@@ -9209,6 +9298,11 @@ export const A11y = (() => {
      * @param selector - Selector for focusable items
      * @param options - Roving options
      * @returns Cleanup function
+     *
+     * @example
+     * ```typescript
+     * const stop = A11y.roving(toolbar, 'button', { axis: 'horizontal' });
+     * ```
      */
     roving: (
       root: HTMLElement | null,

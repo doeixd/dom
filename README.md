@@ -248,8 +248,15 @@ For comprehensive guides on components:
 | `createListenerGroup` | Create a group of listeners with batch cleanup. | `const group = createListenerGroup();` |
 | `Evt.stop` | Stop event propagation. | `Evt.stop(e);` |
 | `Evt.prevent` | Prevent default action. | `Evt.prevent(e);` |
-| `Key.isEnter` | Check if Enter key was pressed. | `if (Key.isEnter(e)) submit();` |
-| `Key.isEscape` | Check if Escape key was pressed. | `if (Key.isEscape(e)) close();` |
+| `Key.matches` | Check key against matcher. | `if (Key.matches(e, 'Enter')) submit();` |
+| `Key.is` | Listen for a specific key. | `Key.is(input)('Enter', submit);` |
+| `Key.onTab` | Listen for Tab key. | `Key.onTab(root)(handler);` |
+| `Key.onArrow` | Listen for arrow keys. | `Key.onArrow(menu)((dir) => {})` |
+| `Focus.on` | Listen for focus events. | `Focus.on(input)(handler);` |
+| `Focus.onBlur` | Listen for blur events. | `Focus.onBlur(input)(handler);` |
+| `Focus.onIn` | Listen for focusin events. | `Focus.onIn(root)(handler);` |
+| `Focus.onOut` | Listen for focusout events. | `Focus.onOut(root)(handler);` |
+| `Focus.trap` | Trap focus within container. | `Focus.trap(modal);` |
 
 ### Forms & Inputs
 
@@ -314,9 +321,9 @@ For comprehensive guides on components:
 | `scrollInto` | Scroll element into view with options. | `scrollInto(el)({ behavior: 'smooth' });` |
 | `focus` | Focus an element. | `focus(input);` |
 | `blur` | Blur an element. | `blur(input);` |
-| `Focus.trap` | Trap focus within container. | `Focus.trap(modal);` |
 
 ### Data & Collections
+
 
 | Function | Description | Example |
 | :--- | :--- | :--- |
@@ -467,7 +474,6 @@ The library exports TypeScript types and interfaces for better type safety:
 | `StrictElementProps` | Element properties with element-specific validation. |
 | `DeepReadonly` | Makes all properties deeply readonly. |
 | `DeepPartial` | Makes all properties deeply partial. |
-
 | `Path` | String or array path for `Obj.get/set`. |
 | `FormSerializeOptions` | Options for `Form.serialize`. |
 | `ClickOutsideOptions` | Options for `onClickOutside`. |
@@ -1112,7 +1118,7 @@ function openModal() {
     releaseFocus,
     on(closeBtn)('click', closeModal),
     on(document)('keydown', (e) => {
-      if (Key.isEscape(e)) closeModal();
+      if (Key.matches(e, 'Escape')) closeModal();
     })
   ];
 
