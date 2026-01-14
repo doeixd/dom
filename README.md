@@ -281,6 +281,12 @@ For comprehensive guides on components:
 | `cls.toggle` | Toggle a class, with optional force boolean. | `cls.toggle(el)('open', isOpen)` |
 | `cls.has` | Check if element has a class. | `if (cls.has(el)('active')) {}` |
 | `cls.replace` | Replace one class with another. | `cls.replace(el)('old', 'new')` |
+| `cls.watch` | Alias for `watchClass`. | `cls.watch(el)('active', handler)` |
+| `cls.cycle` | Alias for `cycleClass`. | `cls.cycle(el)(['idle', 'loading'])` |
+| `watch.class` | Watch class changes. | `watch.class(el, 'active', handler)` |
+| `watch.attr` | Watch attribute changes. | `watch.attr(el, 'disabled', handler)` |
+| `watch.text` | Watch text changes. | `watch.text(el, handler)` |
+| `watch.mutations` | Watch DOM mutations. | `watch.mutations(el, handler)` |
 | `watchClass` | Run callback when a class changes. | `watchClass(el)('active', handler)` |
 | `cycleClass` | Cycle through a list of classes (state machine). | `cycleClass(el)(['idle', 'loading', 'done'])` |
 | `Data.set` | Set a `data-*` attribute. | `Data.set(el)('userId', 123)` |

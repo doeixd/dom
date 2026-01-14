@@ -2783,14 +2783,169 @@ export const watchAttr = def((target: Element | null, attrs: string | string[], 
  * const noop = watchText(null)(callback); // () => {}
  * ```
  */
-export const watchText = def((target: Element | null, callback: (text: string) => void): Unsubscribe => {
+export const watchText = def((target: Element | null, callback: (text: string, el: Element) => void): Unsubscribe => {
   if (!target) return () => { };
   const obs = new MutationObserver(() => {
-    callback(target.textContent || '');
+    callback(target.textContent || '', target);
   });
   obs.observe(target, { characterData: true, childList: true, subtree: true });
   return () => obs.disconnect();
 });
+
+const resolveWatchElement = <T extends Element>(target: ElementInput | null) => {
+  if (typeof target === 'string') return find(document)(target) as T | null;
+  if (typeof target === 'function') return target() as T | null;
+  return target as T | null;
+};
+
+/**
+ * Unified watch helpers for classes, attributes, text, and mutations.
+ *
+ * Supports both direct calls (`watch.class(el, 'active', cb)`) and
+ * fluent calls (`watch(el).class('active', cb)`).
+ *
+ * @example
+ * ```typescript
+ * watch.class(el, 'open', (isOpen) => console.log(isOpen));
+ * watch(el).attr('disabled', (value) => console.log(value));
+ * watch.mutations(el, { subtree: true }, (records) => console.log(records.length));
+ * ```
+ */
+export const watch = Object.assign(
+  <T extends Element>(target: ElementInput | null) => {
+    return {
+      class: (className: string, callback: (isPresent: boolean, el: T) => void) =>
+        watch.class<T>(target, className, callback),
+      attr: (attrName: string, callback: (value: string | null, el: T) => void) =>
+        watch.attr<T>(target, attrName, callback),
+      text: (callback: (text: string, el: T) => void) =>
+        watch.text<T>(target, callback),
+      mutations: (
+        optionsOrCallback?: MutationObserverInit | ((records: MutationRecord[], observer: MutationObserver, el: T) => void),
+        maybeCallback?: (records: MutationRecord[], observer: MutationObserver, el: T) => void
+      ) => watch.mutations<T>(target, optionsOrCallback as any, maybeCallback)
+    };
+  },
+  {
+    /**
+     * Observe class changes for a specific class name.
+     *
+     * @param target - Element, selector, or resolver
+     * @param className - Class to watch
+     * @param callback - Called when class toggles
+     * @returns Cleanup function
+     *
+     * @example
+     * ```typescript
+     * const stop = watch.class(btn, 'active', (isActive) => {
+     *   console.log(isActive);
+     * });
+     * ```
+     */
+    class: <T extends Element>(
+      target: ElementInput | null,
+      className: string,
+      callback: (isPresent: boolean, el: T) => void
+    ): Unsubscribe => {
+      const el = resolveWatchElement<T>(target);
+      return watchClass(el, className, (isPresent, element) => callback(isPresent, element as T));
+    },
+
+    /**
+     * Observe attribute changes for a specific attribute.
+     *
+     * @param target - Element, selector, or resolver
+     * @param attrName - Attribute to watch
+     * @param callback - Called when attribute changes
+     * @returns Cleanup function
+     *
+     * @example
+     * ```typescript
+     * watch.attr(input, 'aria-invalid', (value) => {
+     *   console.log(value);
+     * });
+     * ```
+     */
+    attr: <T extends Element>(
+      target: ElementInput | null,
+      attrName: string,
+      callback: (value: string | null, el: T) => void
+    ): Unsubscribe => {
+      const el = resolveWatchElement<T>(target);
+      return watchAttr(el, attrName, (value, element) => callback(value, element as unknown as T));
+    },
+
+    /**
+     * Observe text content changes.
+     *
+     * @param target - Element, selector, or resolver
+     * @param callback - Called when text changes
+     * @returns Cleanup function
+     *
+     * @example
+     * ```typescript
+     * watch.text(status, (text) => console.log(text));
+     * ```
+     */
+    text: <T extends Element>(
+      target: ElementInput | null,
+      callback: (text: string, el: T) => void
+    ): Unsubscribe => {
+      const el = resolveWatchElement<T>(target);
+      return watchText(el, (text, element) => callback(text, element as T));
+    },
+
+    /**
+     * Observe DOM mutations for a target element.
+     *
+     * Defaults to `{ attributes: true, childList: true, subtree: false }`.
+     *
+     * @param target - Element, selector, or resolver
+     * @param options - Mutation observer options or callback
+     * @param callback - Mutation observer callback
+     * @returns Cleanup function
+     *
+     * @example
+     * ```typescript
+     * const stop = watch.mutations(el, (records) => {
+     *   console.log(records.length);
+     * });
+     *
+     * watch.mutations(el, { subtree: true }, (records) => {
+     *   console.log(records);
+     * });
+     * ```
+     */
+    mutations: <T extends Element>(
+      target: ElementInput | null,
+      optionsOrCallback?: MutationObserverInit | ((records: MutationRecord[], observer: MutationObserver, el: T) => void),
+      maybeCallback?: (records: MutationRecord[], observer: MutationObserver, el: T) => void
+    ): Unsubscribe => {
+      const el = resolveWatchElement<T>(target);
+      if (!el) return () => { };
+
+      const defaultOptions: MutationObserverInit = {
+        attributes: true,
+        childList: true,
+        subtree: false
+      };
+
+      const callback =
+        typeof optionsOrCallback === 'function' ? optionsOrCallback : maybeCallback;
+      if (!callback) return () => { };
+
+      const options =
+        typeof optionsOrCallback === 'function'
+          ? defaultOptions
+          : { ...defaultOptions, ...optionsOrCallback };
+
+      const observer = new MutationObserver((records) => callback(records, observer, el));
+      observer.observe(el, options);
+      return () => observer.disconnect();
+    }
+  }
+);
+
 
 /**
  * Gets or sets an attribute on an element.
@@ -5409,6 +5564,12 @@ export const cycleClass = (target: Element | null) => {
     };
   };
 };
+
+Object.assign(cls, {
+  watch: watchClass,
+  cycle: cycleClass
+});
+
 
 // =============================================================================
 // 17. CLEANUP & TEMPLATES
