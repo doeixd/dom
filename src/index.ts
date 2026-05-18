@@ -14768,3 +14768,781 @@ export function createUpdateAfter<T extends Element, R = unknown>(
   // Stage 2+: Create wrapper directly
   return createWrapper(updater, initialValue);
 }
+
+
+
+// withEffects.ts
+
+/**
+ * A cleanup function returned by an effect.
+ *
+ * It runs:
+ * - before the next time this bound setter receives a value
+ * - when the effectful setter is manually destroyed
+ * - when the component registers/destroys it through `register`
+ */
+export type Cleanup = () => void;
+
+/**
+ * The phase in which an effect is running.
+ *
+ * - `before`: runs before the wrapped binder updates the DOM.
+ * - `after`: runs after the wrapped binder updates the DOM.
+ */
+export type EffectPhase = "before" | "after";
+
+/**
+ * Scheduling strategy for after-effects.
+ *
+ * `before` effects are intentionally synchronous so they can truly run
+ * before the DOM write.
+ */
+export type EffectSchedule =
+  | "sync"
+  | "microtask"
+  | "raf"
+  | "idle"
+  | "timeout"
+  | ((run: () => void) => void | Cleanup);
+
+/**
+ * Decides whether an effect should run for a given value.
+ *
+ * - `"changed"`: run only when `!equals(next, previous)`.
+ * - `"always"`: run on every setter call.
+ * - function: custom predicate.
+ */
+export type EffectWhen<TEl, TValue, TResult> =
+  | "changed"
+  | "always"
+  | ((ctx: EffectContext<TEl, TValue, TResult>) => boolean);
+
+/**
+ * Context passed to every effect.
+ */
+export interface EffectContext<TEl, TValue, TResult = void> {
+  /**
+   * The bound DOM element.
+   */
+  readonly el: TEl;
+
+  /**
+   * The value being written through the binder.
+   */
+  readonly value: TValue;
+
+  /**
+   * The previous value passed to this setter.
+   *
+   * `undefined` on the first run.
+   */
+  readonly previous: TValue | undefined;
+
+  /**
+   * Whether the value changed according to the configured `equals` function.
+   *
+   * The first run is always considered changed.
+   */
+  readonly changed: boolean;
+
+  /**
+   * The current run number for this bound setter.
+   *
+   * Starts at `1`.
+   */
+  readonly run: number;
+
+  /**
+   * Whether this is a before-effect or after-effect.
+   */
+  readonly phase: EffectPhase;
+
+  /**
+   * The return value from the wrapped binder setter.
+   *
+   * Available to after-effects. Usually `void`.
+   */
+  readonly result: TResult | undefined;
+
+  /**
+   * Aborted before the next run and when the setter is destroyed.
+   *
+   * Useful for async effects:
+   *
+   * ```ts
+   * after: async ({ signal }) => {
+   *   const res = await fetch("/api", { signal });
+   * }
+   * ```
+   */
+  readonly signal: AbortSignal;
+
+  /**
+   * Register cleanup work for this effect run.
+   *
+   * Equivalent to returning a cleanup function, but useful when registering
+   * multiple resources.
+   */
+  cleanup(fn: Cleanup): void;
+}
+
+/**
+ * Function run before or after a binder writes to the DOM.
+ *
+ * Return a cleanup function to dispose work before the next run.
+ */
+export type BinderEffect<TEl, TValue, TResult = void> = (
+  ctx: EffectContext<TEl, TValue, TResult>
+) => void | Cleanup;
+
+/**
+ * Full effect descriptor.
+ *
+ * Use this when an effect needs scheduling, a custom `when`, or a name for
+ * debugging/error reporting.
+ */
+export interface EffectDescriptor<TEl, TValue, TResult = void> {
+  /**
+   * Optional debug name used by `onError`.
+   */
+  name?: string;
+
+  /**
+   * The effect function.
+   */
+  effect: BinderEffect<TEl, TValue, TResult>;
+
+  /**
+   * Controls whether this effect should run.
+   *
+   * Defaults to the parent `withEffects` option, which defaults to `"changed"`.
+   */
+  when?: EffectWhen<TEl, TValue, TResult>;
+
+  /**
+   * Run this effect only once.
+   *
+   * Useful for one-time setup that still wants access to the element/value.
+   */
+  once?: boolean;
+
+  /**
+   * Scheduling strategy.
+   *
+   * Only applies to after-effects. Before-effects are always synchronous.
+   */
+  schedule?: EffectSchedule;
+}
+
+/**
+ * Effect input shorthand.
+ *
+ * All of these are valid:
+ *
+ * ```ts
+ * after: fn
+ * after: [fn1, fn2]
+ * after: { name: "flash", effect: fn, schedule: "raf" }
+ * after: [{ effect: fn1 }, { effect: fn2, when: "always" }]
+ * ```
+ */
+export type EffectInput<TEl, TValue, TResult = void> =
+  | BinderEffect<TEl, TValue, TResult>
+  | EffectDescriptor<TEl, TValue, TResult>
+  | ReadonlyArray<
+      BinderEffect<TEl, TValue, TResult> | EffectDescriptor<TEl, TValue, TResult>
+    >;
+
+/**
+ * Element-first binder shape.
+ *
+ * This matches primitives like:
+ *
+ * ```ts
+ * bind.text
+ * bind.value
+ * (el) => bind.prop("disabled", el)
+ * ```
+ */
+export type Binder<TEl, TValue, TResult = void> = (
+  el: TEl
+) => (value: TValue) => TResult;
+
+/**
+ * Setter returned after binding an element.
+ *
+ * It behaves like the original setter, but also exposes lifecycle methods.
+ */
+export interface EffectfulSetter<TValue, TResult = void> {
+  /**
+   * Write a value through the wrapped binder and run effects.
+   */
+  (value: TValue): TResult;
+
+  /**
+   * Clean up the current effect run.
+   *
+   * The setter may still be used again afterward.
+   */
+  cleanup(): void;
+
+  /**
+   * Permanently clean up this setter.
+   *
+   * Calling the setter after destroy will throw.
+   */
+  destroy(): void;
+
+  /**
+   * Whether this setter has been destroyed.
+   */
+  readonly destroyed: boolean;
+
+  /**
+   * Number of times this setter has been called.
+   */
+  readonly runs: number;
+
+  /**
+   * Previous value passed to this setter.
+   */
+  readonly previous: TValue | undefined;
+}
+
+/**
+ * Options for `withEffects`.
+ */
+export interface WithEffectsOptions<TEl, TValue, TResult = void> {
+  /**
+   * Effects that run before the binder writes to the DOM.
+   *
+   * Good for:
+   * - adding transition classes
+   * - reading previous DOM state
+   * - cancelling old work
+   */
+  before?: EffectInput<TEl, TValue, TResult>;
+
+  /**
+   * Effects that run after the binder writes to the DOM.
+   *
+   * Good for:
+   * - focusing elements
+   * - measuring layout
+   * - starting animations
+   * - syncing external systems
+   */
+  after?: EffectInput<TEl, TValue, TResult>;
+
+  /**
+   * Default condition for all effects.
+   *
+   * Defaults to `"changed"`.
+   */
+  when?: EffectWhen<TEl, TValue, TResult>;
+
+  /**
+   * Default schedule for after-effects.
+   *
+   * Defaults to `"sync"`.
+   *
+   * Individual after-effects can override this with their own `schedule`.
+   */
+  schedule?: EffectSchedule;
+
+  /**
+   * Value equality check.
+   *
+   * Defaults to `Object.is`.
+   */
+  equals?: (next: TValue, previous: TValue) => boolean;
+
+  /**
+   * Register the setter cleanup with a component lifecycle.
+   *
+   * This is designed to pair with something like `ctx.effect`.
+   *
+   * ```ts
+   * withEffects(bind.text, {
+   *   register: ctx.effect,
+   *   after: ...
+   * })
+   * ```
+   */
+  register?: (cleanup: Cleanup) => void;
+
+  /**
+   * Error handler for effects and cleanup functions.
+   *
+   * If omitted, errors are thrown.
+   */
+  onError?: (
+    error: unknown,
+    ctx: {
+      el: TEl;
+      value: TValue;
+      previous: TValue | undefined;
+      changed: boolean;
+      run: number;
+      phase: EffectPhase | "cleanup";
+      effectName?: string;
+    }
+  ) => void;
+}
+
+/**
+ * Wrap a binder primitive with cleanup-aware before/after effects.
+ *
+ * The returned function has the same element-first shape as the original binder,
+ * so it can be used directly inside `createBinder()` schemas.
+ *
+ * @example Basic usage
+ * ```ts
+ * const animatedText = withEffects(bind.text, {
+ *   before: ({ el }) => {
+ *     el.classList.add("is-updating");
+ *   },
+ *
+ *   after: {
+ *     schedule: "raf",
+ *     effect: ({ el }) => {
+ *       el.classList.remove("is-updating");
+ *     }
+ *   }
+ * });
+ *
+ * const ui = createBinder(ctx.refs, {
+ *   title: animatedText
+ * });
+ *
+ * ui({ title: "Hello" });
+ * ```
+ *
+ * @example Single effect shorthand
+ * ```ts
+ * const measuredText = withEffects(bind.text, ({ el, value }) => {
+ *   console.log("Text was updated:", value, el.textContent);
+ * });
+ * ```
+ *
+ * @example With cleanup
+ * ```ts
+ * const observedText = withEffects(bind.text, {
+ *   after: ({ el }) => {
+ *     const observer = new ResizeObserver(() => {
+ *       console.log(el.getBoundingClientRect());
+ *     });
+ *
+ *     observer.observe(el);
+ *
+ *     return () => observer.disconnect();
+ *   }
+ * });
+ * ```
+ *
+ * @example With component cleanup
+ * ```ts
+ * const ui = createBinder(ctx.refs, {
+ *   title: withEffects(bind.text, {
+ *     register: ctx.effect,
+ *     after: ({ el }) => {
+ *       el.animate([{ opacity: 0 }, { opacity: 1 }], 150);
+ *     }
+ *   })
+ * });
+ * ```
+ *
+ * @example Explicit generics
+ * ```ts
+ * const disabledWithFocus = withEffects<HTMLButtonElement, boolean>(
+ *   (el) => (value) => {
+ *     el.disabled = value;
+ *   },
+ *   {
+ *     after: ({ el, value }) => {
+ *       if (!value) el.focus();
+ *     }
+ *   }
+ * );
+ * ```
+ */
+export function withEffects<TEl, TValue, TResult = void>(
+  binder: Binder<TEl, TValue, TResult>,
+  effects?: WithEffectsOptions<TEl, TValue, TResult> | EffectInput<TEl, TValue, TResult>
+): (el: TEl) => EffectfulSetter<TValue, TResult> {
+  const options = normalizeOptions(effects);
+
+  return (el: TEl) => {
+    const set = binder(el);
+
+    let destroyed = false;
+    let runs = 0;
+    let hasPrevious = false;
+    let previous: TValue | undefined;
+
+    let controller: AbortController | undefined;
+    let currentCleanups: Cleanup[] = [];
+
+    const before = normalizeEffects(options.before);
+    const after = normalizeEffects(options.after);
+    const onceRan = new WeakSet<object>();
+
+    const cleanupCurrentRun = (phase: EffectPhase | "cleanup" = "cleanup") => {
+      controller?.abort();
+      controller = undefined;
+
+      const cleanups = currentCleanups;
+      currentCleanups = [];
+
+      for (let i = cleanups.length - 1; i >= 0; i--) {
+        try {
+          cleanups[i]();
+        } catch (error) {
+          handleError(error, {
+            phase,
+            effectName: "cleanup",
+            value: previous as TValue,
+            previous,
+            changed: false,
+            run: runs,
+          });
+        }
+      }
+    };
+
+    const handleError = (
+      error: unknown,
+      partial: {
+        phase: EffectPhase | "cleanup";
+        effectName?: string;
+        value: TValue;
+        previous: TValue | undefined;
+        changed: boolean;
+        run: number;
+      }
+    ) => {
+      if (options.onError) {
+        options.onError(error, {
+          el,
+          value: partial.value,
+          previous: partial.previous,
+          changed: partial.changed,
+          run: partial.run,
+          phase: partial.phase,
+          effectName: partial.effectName,
+        });
+        return;
+      }
+
+      throw error;
+    };
+
+    const makeContext = (
+      phase: EffectPhase,
+      value: TValue,
+      previousValue: TValue | undefined,
+      changed: boolean,
+      result: TResult | undefined
+    ): EffectContext<TEl, TValue, TResult> => {
+      if (!controller) controller = new AbortController();
+
+      return {
+        el,
+        value,
+        previous: previousValue,
+        changed,
+        run: runs,
+        phase,
+        result,
+        signal: controller.signal,
+        cleanup(fn) {
+          currentCleanups.push(fn);
+        },
+      };
+    };
+
+    const runEffect = (
+      descriptor: NormalizedEffect<TEl, TValue, TResult>,
+      ctx: EffectContext<TEl, TValue, TResult>
+    ) => {
+      if (descriptor.once && onceRan.has(descriptor)) return;
+      if (!shouldRun(descriptor.when ?? options.when ?? "changed", ctx)) return;
+
+      try {
+        const cleanup = descriptor.effect(ctx);
+        onceRan.add(descriptor);
+
+        if (typeof cleanup === "function") {
+          ctx.cleanup(cleanup);
+        }
+      } catch (error) {
+        handleError(error, {
+          phase: ctx.phase,
+          effectName: descriptor.name,
+          value: ctx.value,
+          previous: ctx.previous,
+          changed: ctx.changed,
+          run: ctx.run,
+        });
+      }
+    };
+
+    const setter = ((value: TValue): TResult => {
+      if (destroyed) {
+        throw new Error("withEffects: attempted to use a destroyed setter.");
+      }
+
+      const previousValue = hasPrevious ? previous : undefined;
+      const changed =
+        !hasPrevious || !options.equals(value, previousValue as TValue);
+
+      runs++;
+
+      cleanupCurrentRun();
+
+      controller = new AbortController();
+
+      const beforeCtx = makeContext(
+        "before",
+        value,
+        previousValue,
+        changed,
+        undefined
+      );
+
+      for (const descriptor of before) {
+        runEffect(descriptor, beforeCtx);
+      }
+
+      const result = set(value);
+
+      const afterCtx = makeContext(
+        "after",
+        value,
+        previousValue,
+        changed,
+        result
+      );
+
+      for (const descriptor of after) {
+        if (!shouldRun(descriptor.when ?? options.when ?? "changed", afterCtx)) {
+          continue;
+        }
+
+        if (descriptor.once && onceRan.has(descriptor)) {
+          continue;
+        }
+
+        const schedule = descriptor.schedule ?? options.schedule;
+
+        const cancel = scheduleRun(schedule, () => {
+          if (afterCtx.signal.aborted) return;
+          runEffect(descriptor, afterCtx);
+        });
+
+        if (cancel) {
+          afterCtx.cleanup(cancel);
+        }
+      }
+
+      previous = value;
+      hasPrevious = true;
+
+      return result;
+    }) as EffectfulSetter<TValue, TResult>;
+
+    Object.defineProperties(setter, {
+      cleanup: {
+        value: () => cleanupCurrentRun(),
+      },
+
+      destroy: {
+        value: () => {
+          if (destroyed) return;
+          destroyed = true;
+          cleanupCurrentRun();
+        },
+      },
+
+      destroyed: {
+        get: () => destroyed,
+      },
+
+      runs: {
+        get: () => runs,
+      },
+
+      previous: {
+        get: () => previous,
+      },
+    });
+
+    options.register?.(() => setter.destroy());
+
+    return setter;
+  };
+}
+
+/* -------------------------------------------------------------------------------------------------
+ * Internals
+ * -----------------------------------------------------------------------------------------------*/
+
+type NormalizedEffect<TEl, TValue, TResult> = EffectDescriptor<
+  TEl,
+  TValue,
+  TResult
+> & {
+  effect: BinderEffect<TEl, TValue, TResult>;
+};
+
+interface NormalizedOptions<TEl, TValue, TResult> {
+  before?: EffectInput<TEl, TValue, TResult>;
+  after?: EffectInput<TEl, TValue, TResult>;
+  when?: EffectWhen<TEl, TValue, TResult>;
+  schedule: EffectSchedule;
+  equals: (next: TValue, previous: TValue) => boolean;
+  register?: (cleanup: Cleanup) => void;
+  onError?: WithEffectsOptions<TEl, TValue, TResult>["onError"];
+}
+
+function normalizeOptions<TEl, TValue, TResult>(
+  input?: WithEffectsOptions<TEl, TValue, TResult> | EffectInput<TEl, TValue, TResult>
+): NormalizedOptions<TEl, TValue, TResult> {
+  if (!input) {
+    return {
+      after: undefined,
+      when: "changed",
+      schedule: "sync",
+      equals: Object.is,
+    };
+  }
+
+  if (isFullOptions(input)) {
+    return {
+      before: input.before,
+      after: input.after,
+      when: input.when ?? "changed",
+      schedule: input.schedule ?? "sync",
+      equals: input.equals ?? Object.is,
+      register: input.register,
+      onError: input.onError,
+    };
+  }
+
+  // Shorthand:
+  // withEffects(bind.text, fn)
+  // withEffects(bind.text, [fn1, fn2])
+  // withEffects(bind.text, { effect: fn, schedule: "raf" })
+  return {
+    after: input,
+    when: "changed",
+    schedule: "sync",
+    equals: Object.is,
+  };
+}
+
+function isFullOptions<TEl, TValue, TResult>(
+  value: unknown
+): value is WithEffectsOptions<TEl, TValue, TResult> {
+  if (!isObject(value)) return false;
+  if ("effect" in value) return false;
+  if (Array.isArray(value)) return false;
+  if (typeof value === "function") return false;
+
+  return (
+    "before" in value ||
+    "after" in value ||
+    "when" in value ||
+    "schedule" in value ||
+    "equals" in value ||
+    "register" in value ||
+    "onError" in value
+  );
+}
+
+function normalizeEffects<TEl, TValue, TResult>(
+  input?: EffectInput<TEl, TValue, TResult>
+): NormalizedEffect<TEl, TValue, TResult>[] {
+  if (!input) return [];
+
+  const items = Array.isArray(input) ? input : [input];
+
+  return items.map((item) => {
+    if (typeof item === "function") {
+      return { effect: item };
+    }
+
+    return item;
+  });
+}
+
+function shouldRun<TEl, TValue, TResult>(
+  when: EffectWhen<TEl, TValue, TResult>,
+  ctx: EffectContext<TEl, TValue, TResult>
+): boolean {
+  if (when === "always") return true;
+  if (when === "changed") return ctx.changed;
+  return when(ctx);
+}
+
+function scheduleRun(schedule: EffectSchedule, run: () => void): Cleanup | void {
+  if (schedule === "sync") {
+    run();
+    return;
+  }
+
+  if (schedule === "microtask") {
+    let cancelled = false;
+
+    queueMicrotask(() => {
+      if (!cancelled) run();
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }
+
+  if (schedule === "raf") {
+    if (typeof requestAnimationFrame === "function") {
+      const id = requestAnimationFrame(run);
+      return () => cancelAnimationFrame(id);
+    }
+
+    const id = setTimeout(run, 0);
+    return () => clearTimeout(id);
+  }
+
+  if (schedule === "idle") {
+    const requestIdle =
+      typeof globalThis !== "undefined" &&
+      typeof (globalThis as any).requestIdleCallback === "function"
+        ? (globalThis as any).requestIdleCallback
+        : undefined;
+
+    const cancelIdle =
+      typeof globalThis !== "undefined" &&
+      typeof (globalThis as any).cancelIdleCallback === "function"
+        ? (globalThis as any).cancelIdleCallback
+        : undefined;
+
+    if (requestIdle && cancelIdle) {
+      const id = requestIdle(run);
+      return () => cancelIdle(id);
+    }
+
+    const id = setTimeout(run, 1);
+    return () => clearTimeout(id);
+  }
+
+  if (schedule === "timeout") {
+    const id = setTimeout(run, 0);
+    return () => clearTimeout(id);
+  }
+
+  return schedule(run);
+}
+
+function isObject(value: unknown): value is Record<PropertyKey, unknown> {
+  return typeof value === "object" && value !== null;
+}
