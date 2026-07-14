@@ -9943,21 +9943,35 @@ export const Async = {
 // =============================================================================
 
 /**
- * Creates a Task Queue with concurrency control.
- * Useful for throttling API calls, toasts, or sequential animations.
- * 
+ * Creates a Task Queue with concurrency control, priorities, and cancellation.
+ * Useful for throttling API calls, toasts, sequential animations, or
+ * background prefetching that yields to user-triggered work.
+ *
+ * Tasks receive an `AbortSignal` so in-flight work (e.g. fetches) can be
+ * cancelled via `abort()` / `preempt()`. Higher priority runs first;
+ * the default priority is 0.
+ *
+ * Preempted/aborted tasks reject with a `DOMException` named `'AbortError'`
+ * and do NOT fire `onError` listeners — check `err.name === 'AbortError'`
+ * to distinguish "cancelled" from "failed".
+ *
  * @example
- * const q = createQueue({ concurrency: 1 });
- * q.add(() => api.save(A));
- * q.add(() => api.save(B));
- * await q.drain();
+ * const q = createQueue({ concurrency: 4 });
+ *
+ * // Low-priority background prewarming
+ * urls.forEach(url => q.add(signal => fetch(url, { signal }), { priority: -10 }));
+ *
+ * // User interaction: drop + abort everything below priority 0, then run the important request
+ * q.preempt(0);
+ * const data = await q.add(signal => fetch('/api/important', { signal }));
  */
 export const createQueue = (options: { concurrency?: number, autoStart?: boolean } = {}) => {
-  type Task<T = any> = () => Promise<T> | T;
+  type Task<T = any> = (signal: AbortSignal) => Promise<T> | T;
+  type Job = { fn: Task, resolve: Function, reject: Function, priority: number, controller: AbortController, promise: Promise<any> };
 
   const concurrency = options.concurrency || 1;
-  const queue: { fn: Task, resolve: Function, reject: Function }[] = [];
-  let active = 0;
+  const queue: Job[] = [];
+  const running = new Set<Job>();
   let isPaused = !options.autoStart && options.autoStart !== undefined;
 
   // Event listeners
@@ -9966,39 +9980,70 @@ export const createQueue = (options: { concurrency?: number, autoStart?: boolean
     error: []
   };
 
+  const abortError = () => new DOMException('The task was aborted.', 'AbortError');
+
   const next = () => {
-    if (isPaused || active >= concurrency || queue.length === 0) {
-      if (active === 0 && queue.length === 0) listeners.drain.forEach(fn => fn());
+    if (isPaused || running.size >= concurrency || queue.length === 0) {
+      if (running.size === 0 && queue.length === 0) listeners.drain.forEach(fn => fn());
       return;
     }
 
     const job = queue.shift();
     if (!job) return;
 
-    active++;
+    running.add(job);
 
     Promise.resolve()
-      .then(() => job.fn())
+      .then(() => job.fn(job.controller.signal))
       .then(res => job.resolve(res))
       .catch(err => {
-        listeners.error.forEach(fn => fn(err));
+        // Cancelled tasks are expected — don't treat them as errors.
+        const aborted = job.controller.signal.aborted || (err instanceof DOMException && err.name === 'AbortError');
+        if (!aborted) listeners.error.forEach(fn => fn(err));
+        // Abort-rejections are expected for fire-and-forget tasks — mark them
+        // handled so they don't surface as unhandled rejections. Callers that
+        // await/catch the promise still receive the rejection normally.
+        if (aborted) job.promise.catch(() => {});
         job.reject(err);
       })
       .finally(() => {
-        active--;
+        running.delete(job);
         next();
       });
 
     next(); // Try to start more if concurrency allows
   };
 
+  /** Rejects and removes pending jobs matching the predicate. */
+  const dropPending = (match: (job: Job) => boolean) => {
+    for (let i = queue.length - 1; i >= 0; i--) {
+      if (match(queue[i])) {
+        const [job] = queue.splice(i, 1);
+        job.promise.catch(() => {}); // see abort-rejection note above
+        job.reject(abortError());
+      }
+    }
+  };
+
   return {
-    /** Adds a task to the queue. Returns a promise that resolves when the task finishes. */
-    add: <T>(fn: Task<T>): Promise<T> => {
-      return new Promise((resolve, reject) => {
-        queue.push({ fn, resolve, reject });
-        next();
+    /**
+     * Adds a task to the queue. Returns a promise that resolves when the task finishes.
+     * The task receives an `AbortSignal` — pass it to `fetch` etc. so `abort()`/`preempt()`
+     * can cancel it while in flight.
+     * Higher `priority` runs first (default 0); ties run in insertion order.
+     */
+    add: <T>(fn: Task<T>, opts: { priority?: number } = {}): Promise<T> => {
+      const job = { fn, priority: opts.priority ?? 0, controller: new AbortController() } as Job;
+      job.promise = new Promise<T>((resolve, reject) => {
+        job.resolve = resolve;
+        job.reject = reject;
       });
+      // Insert after the last job with priority >= ours (stable within a priority).
+      let i = queue.length;
+      while (i > 0 && queue[i - 1].priority < job.priority) i--;
+      queue.splice(i, 0, job);
+      next();
+      return job.promise;
     },
 
     /** Pauses processing. Active tasks complete, but new ones wait. */
@@ -10007,19 +10052,37 @@ export const createQueue = (options: { concurrency?: number, autoStart?: boolean
     /** Resumes processing. */
     resume: () => { isPaused = false; next(); },
 
-    /** Clears all pending tasks. */
-    clear: () => { queue.length = 0; },
+    /** Clears all pending tasks (rejecting them with an AbortError). Does not touch in-flight tasks. */
+    clear: () => { dropPending(() => true); },
+
+    /**
+     * Cancels tasks below the given priority: pending ones are removed and
+     * in-flight ones have their `AbortSignal` aborted. Use before enqueueing
+     * urgent work so background tasks don't starve it.
+     */
+    preempt: (minPriority: number = 0) => {
+      dropPending(job => job.priority < minPriority);
+      running.forEach(job => {
+        if (job.priority < minPriority) job.controller.abort(abortError());
+      });
+    },
+
+    /** Aborts everything: pending tasks are rejected, in-flight signals are aborted. */
+    abort: () => {
+      dropPending(() => true);
+      running.forEach(job => job.controller.abort(abortError()));
+    },
 
     /** Returns the number of pending + active tasks. */
-    size: () => queue.length + active,
+    size: () => queue.length + running.size,
 
     /** Returns a promise that resolves when all tasks are complete. */
     drain: () => new Promise<void>(resolve => {
-      if (active === 0 && queue.length === 0) return resolve();
+      if (running.size === 0 && queue.length === 0) return resolve();
       listeners.drain.push(resolve);
     }),
 
-    /** Listen for errors (globally for the queue). */
+    /** Listen for errors (globally for the queue). Aborted tasks do not trigger this. */
     onError: (fn: (err: any) => void) => listeners.error.push(fn)
   };
 };
