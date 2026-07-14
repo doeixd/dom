@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.9](https://github.com/doeixd/dom/compare/v0.0.8...v0.0.9) (2026-07-14)
+
+
+### Features
+
+* functional components, Style, typed routing, HTTP QUERY, query codecs ([239082b](https://github.com/doeixd/dom/commit/239082b9489f7695bb40fdc2f37d2f35e7059a5b))
+
 ### [0.0.8](https://github.com/doeixd/dom/compare/v0.0.7...v0.0.8) (2026-07-14)
 
 
