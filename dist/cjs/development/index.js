@@ -25,6 +25,7 @@ __export(src_exports, {
   $sel: () => $sel,
   A11y: () => A11y,
   Async: () => Async,
+  Attr: () => Attr,
   Cookie: () => Cookie,
   CssVar: () => CssVar,
   Data: () => Data,
@@ -41,10 +42,13 @@ __export(src_exports, {
   Obj: () => Obj,
   Option: () => Option,
   Params: () => Params,
+  Query: () => Query,
   Result: () => Result,
   SW: () => SW,
   Session: () => Session,
   Signal: () => Signal,
+  Style: () => Style,
+  Tag: () => Tag,
   Text: () => Text,
   Traverse: () => Traverse,
   ViewTransitions: () => ViewTransitions,
@@ -60,6 +64,7 @@ __export(src_exports, {
   bindEvents: () => bindEvents,
   binder: () => binder,
   blur: () => blur,
+  buildPath: () => buildPath,
   cast: () => cast,
   chain: () => chain,
   clone: () => clone,
@@ -73,6 +78,7 @@ __export(src_exports, {
   createListenerGroup: () => createListenerGroup,
   createMediaQuery: () => createMediaQuery,
   createQueue: () => createQueue,
+  createRouter: () => createRouter,
   createSortable: () => createSortable,
   createStore: () => createStore,
   createUpdateAfter: () => createUpdateAfter,
@@ -89,6 +95,8 @@ __export(src_exports, {
   draggable: () => draggable,
   el: () => el,
   empty: () => empty,
+  encodeQueryParams: () => encodeQueryParams,
+  enhance: () => enhance,
   exec: () => exec,
   exists: () => exists,
   find: () => find,
@@ -108,6 +116,7 @@ __export(src_exports, {
   isInViewport: () => isInViewport,
   isTag: () => isTag,
   isVisible: () => isVisible,
+  matchPath: () => matchPath,
   modify: () => modify,
   mount: () => mount,
   mountComponent: () => mountComponent,
@@ -118,18 +127,23 @@ __export(src_exports, {
   onDelegated: () => onDelegated,
   onMount: () => onMount,
   onReady: () => onReady,
+  parseQuery: () => parseQuery,
   prepend: () => prepend,
   prop: () => prop,
   ready: () => ready,
   rect: () => rect,
   refs: () => refs,
+  refsOf: () => refsOf,
   remove: () => remove,
   require: () => require2,
+  route: () => route,
   sanitizeHTMLSimple: () => sanitizeHTMLSimple,
   sanitizeHTMLTextOnly: () => sanitizeHTMLTextOnly,
   scrollInto: () => scrollInto,
+  serializeQuery: () => serializeQuery,
   set: () => set,
   siblings: () => siblings,
+  spawn: () => spawn,
   store: () => store,
   stripListeners: () => stripListeners,
   tags: () => tags,
@@ -145,6 +159,7 @@ __export(src_exports, {
   watchAttr: () => watchAttr,
   watchClass: () => watchClass,
   watchText: () => watchText,
+  withEffects: () => withEffects,
   wrap: () => wrap
 });
 module.exports = __toCommonJS(src_exports);
@@ -363,19 +378,19 @@ var tempStyle = (element) => {
     return () => Object.assign(element.style, original);
   };
 };
-var append = def((parent, ...content) => {
+var append = /* @__PURE__ */ def((parent, ...content) => {
   parent == null ? void 0 : parent.append(..._nodes(content));
   return parent;
 });
-var prepend = def((parent, ...content) => {
+var prepend = /* @__PURE__ */ def((parent, ...content) => {
   parent == null ? void 0 : parent.prepend(..._nodes(content));
   return parent;
 });
-var after = def((target, ...content) => {
+var after = /* @__PURE__ */ def((target, ...content) => {
   target == null ? void 0 : target.after(..._nodes(content));
   return target;
 });
-var before = def((target, ...content) => {
+var before = /* @__PURE__ */ def((target, ...content) => {
   target == null ? void 0 : target.before(..._nodes(content));
   return target;
 });
@@ -387,14 +402,14 @@ var empty = (target) => {
   if (target) target.replaceChildren();
   return target;
 };
-var wrap = def((target, wrapper) => {
+var wrap = /* @__PURE__ */ def((target, wrapper) => {
   if (target && wrapper && target.parentNode) {
     target.parentNode.insertBefore(wrapper, target);
     wrapper.appendChild(target);
   }
   return wrapper;
 });
-var mount = def((parent, child) => {
+var mount = /* @__PURE__ */ def((parent, child) => {
   if (!child) return () => {
   };
   const parentEl = typeof parent === "string" ? document.querySelector(parent) : parent;
@@ -505,7 +520,7 @@ var svgElementTags = /* @__PURE__ */ new Set([
   "image",
   "foreignobject"
 ]);
-var h = new Proxy({}, {
+var h = /* @__PURE__ */ new Proxy({}, {
   get(_target, tag) {
     if (typeof tag !== "string") return void 0;
     if (!/^[a-z][a-z0-9]*$/i.test(tag)) {
@@ -692,7 +707,7 @@ var cls = {
     return !!el2 && el2.classList.contains(className);
   }
 };
-var watchClass = def((target, className, callback) => {
+var watchClass = /* @__PURE__ */ def((target, className, callback) => {
   if (!target) return () => {
   };
   let was = target.classList.contains(className);
@@ -904,7 +919,7 @@ var Data = {
     return () => obs.disconnect();
   })
 };
-var watchAttr = def((target, attrs, callback) => {
+var watchAttr = /* @__PURE__ */ def((target, attrs, callback) => {
   if (!target) return () => {
   };
   const obs = new MutationObserver((muts) => muts.forEach((m) => {
@@ -913,7 +928,7 @@ var watchAttr = def((target, attrs, callback) => {
   obs.observe(target, { attributes: true, attributeFilter: Array.isArray(attrs) ? attrs : [attrs] });
   return () => obs.disconnect();
 });
-var watchText = def((target, callback) => {
+var watchText = /* @__PURE__ */ def((target, callback) => {
   if (!target) return () => {
   };
   const obs = new MutationObserver(() => {
@@ -1093,7 +1108,7 @@ var ready = {
    */
   raf: () => new Promise((resolve) => requestAnimationFrame(() => resolve()))
 };
-var onMount = def((selector, handler, root = document, once = false) => {
+var onMount = /* @__PURE__ */ def((selector, handler, root = document, once = false) => {
   if (!selector) return () => {
   };
   const seen = /* @__PURE__ */ new WeakSet();
@@ -1137,7 +1152,7 @@ var onMount = def((selector, handler, root = document, once = false) => {
     obs = null;
   };
 });
-var waitFor = def((target, predicate) => {
+var waitFor = /* @__PURE__ */ def((target, predicate) => {
   return new Promise((resolve, reject) => {
     if (!target) {
       reject(new Error("waitFor: target is null"));
@@ -2393,99 +2408,108 @@ var throttle = (fn, ms) => {
     }
   };
 };
-var createStorage = (provider) => ({
-  /**
-   * Gets a value from storage and parses it.
-   * 
-   * Attempts to parse as JSON. If parsing fails, returns the raw string.
-   * Returns null if the key doesn't exist.
-   * 
-   * @template T - The expected type of the stored value
-   * @param key - The storage key
-   * @returns The parsed value or null
-   * 
-   * @example
-   * ```typescript
-   * // Get with type inference
-   * interface User { id: number; name: string; }
-   * const user = Local.get<User>('user');
-   * 
-   * // Get primitive
-   * const count = Local.get<number>('count');
-   * 
-   * // Get with fallback
-   * const theme = Local.get<string>('theme') || 'light';
-   * ```
-   */
-  get: (key) => {
-    const val = provider.getItem(key);
-    if (!val) return null;
-    try {
-      return JSON.parse(val);
-    } catch (e) {
-      return val;
-    }
-  },
-  /**
-   * Sets a value in storage (auto-stringifies objects).
-   * 
-   * Objects are JSON stringified. Primitives are converted to strings.
-   * 
-   * @param key - The storage key
-   * @returns A curried function that accepts the value
-   * 
-   * @example
-   * ```typescript
-   * // Store object
-   * Local.set('user')({ id: 1, name: 'John' });
-   * 
-   * // Store primitive
-   * Local.set('count')(42);
-   * Local.set('theme')('dark');
-   * 
-   * // Error handling
-   * try {
-   *   Local.set('largeData')(hugeObject);
-   * } catch (e) {
-   *   console.error('Storage quota exceeded');
-   * }
-   * ```
-   */
-  set: (key) => (value) => {
-    const val = typeof value === "object" ? JSON.stringify(value) : String(value);
-    provider.setItem(key, val);
-  },
-  /**
-   * Removes a key from storage.
-   * 
-   * @param key - The storage key to remove
-   * 
-   * @example
-   * ```typescript
-   * Local.remove('user');
-   * Session.remove('tempData');
-   * ```
-   */
-  remove: (key) => provider.removeItem(key),
-  /**
-   * Clears all storage.
-   * 
-   * **Warning**: This removes ALL keys from the storage, not just those
-   * created by your app. Use with caution.
-   * 
-   * @example
-   * ```typescript
-   * // Clear all localStorage
-   * Local.clear();
-   * 
-   * // Clear session storage
-   * Session.clear();
-   * ```
-   */
-  clear: () => provider.clear()
-});
-var Local = createStorage(window.localStorage);
-var Session = createStorage(window.sessionStorage);
+var createStorage = (getProvider) => {
+  let cached;
+  const provider = {
+    getItem: (k) => (cached != null ? cached : cached = getProvider()).getItem(k),
+    setItem: (k, v) => (cached != null ? cached : cached = getProvider()).setItem(k, v),
+    removeItem: (k) => (cached != null ? cached : cached = getProvider()).removeItem(k),
+    clear: () => (cached != null ? cached : cached = getProvider()).clear()
+  };
+  return {
+    /**
+     * Gets a value from storage and parses it.
+     * 
+     * Attempts to parse as JSON. If parsing fails, returns the raw string.
+     * Returns null if the key doesn't exist.
+     * 
+     * @template T - The expected type of the stored value
+     * @param key - The storage key
+     * @returns The parsed value or null
+     * 
+     * @example
+     * ```typescript
+     * // Get with type inference
+     * interface User { id: number; name: string; }
+     * const user = Local.get<User>('user');
+     * 
+     * // Get primitive
+     * const count = Local.get<number>('count');
+     * 
+     * // Get with fallback
+     * const theme = Local.get<string>('theme') || 'light';
+     * ```
+     */
+    get: (key) => {
+      const val = provider.getItem(key);
+      if (!val) return null;
+      try {
+        return JSON.parse(val);
+      } catch (e) {
+        return val;
+      }
+    },
+    /**
+     * Sets a value in storage (auto-stringifies objects).
+     * 
+     * Objects are JSON stringified. Primitives are converted to strings.
+     * 
+     * @param key - The storage key
+     * @returns A curried function that accepts the value
+     * 
+     * @example
+     * ```typescript
+     * // Store object
+     * Local.set('user')({ id: 1, name: 'John' });
+     * 
+     * // Store primitive
+     * Local.set('count')(42);
+     * Local.set('theme')('dark');
+     * 
+     * // Error handling
+     * try {
+     *   Local.set('largeData')(hugeObject);
+     * } catch (e) {
+     *   console.error('Storage quota exceeded');
+     * }
+     * ```
+     */
+    set: (key) => (value) => {
+      const val = typeof value === "object" ? JSON.stringify(value) : String(value);
+      provider.setItem(key, val);
+    },
+    /**
+     * Removes a key from storage.
+     * 
+     * @param key - The storage key to remove
+     * 
+     * @example
+     * ```typescript
+     * Local.remove('user');
+     * Session.remove('tempData');
+     * ```
+     */
+    remove: (key) => provider.removeItem(key),
+    /**
+     * Clears all storage.
+     * 
+     * **Warning**: This removes ALL keys from the storage, not just those
+     * created by your app. Use with caution.
+     * 
+     * @example
+     * ```typescript
+     * // Clear all localStorage
+     * Local.clear();
+     * 
+     * // Clear session storage
+     * Session.clear();
+     * ```
+     */
+    clear: () => provider.clear()
+  };
+};
+var Local = /* @__PURE__ */ createStorage(() => window.localStorage);
+var Session = /* @__PURE__ */ createStorage(() => window.sessionStorage);
 var Cookie = {
   /**
    * Gets a cookie value by name.
@@ -3628,7 +3652,7 @@ var $ = (target) => {
   };
   return wrapper;
 };
-var component = (rootOrSelector) => {
+var refsOf = (rootOrSelector) => {
   const root = typeof rootOrSelector === "string" ? find(document)(rootOrSelector) : rootOrSelector;
   if (!root) return {};
   const nodes = refs(root);
@@ -4813,36 +4837,62 @@ var Async = {
 var createQueue = (options = {}) => {
   const concurrency = options.concurrency || 1;
   const queue = [];
-  let active = 0;
+  const running = /* @__PURE__ */ new Set();
   let isPaused = !options.autoStart && options.autoStart !== void 0;
   const listeners = {
     drain: [],
     error: []
   };
+  const abortError = () => new DOMException("The task was aborted.", "AbortError");
   const next = () => {
-    if (isPaused || active >= concurrency || queue.length === 0) {
-      if (active === 0 && queue.length === 0) listeners.drain.forEach((fn) => fn());
+    if (isPaused || running.size >= concurrency || queue.length === 0) {
+      if (running.size === 0 && queue.length === 0) listeners.drain.forEach((fn) => fn());
       return;
     }
     const job = queue.shift();
     if (!job) return;
-    active++;
-    Promise.resolve().then(() => job.fn()).then((res) => job.resolve(res)).catch((err) => {
-      listeners.error.forEach((fn) => fn(err));
+    running.add(job);
+    Promise.resolve().then(() => job.fn(job.controller.signal)).then((res) => job.resolve(res)).catch((err) => {
+      const aborted = job.controller.signal.aborted || err instanceof DOMException && err.name === "AbortError";
+      if (!aborted) listeners.error.forEach((fn) => fn(err));
+      if (aborted) job.promise.catch(() => {
+      });
       job.reject(err);
     }).finally(() => {
-      active--;
+      running.delete(job);
       next();
     });
     next();
   };
+  const dropPending = (match) => {
+    for (let i = queue.length - 1; i >= 0; i--) {
+      if (match(queue[i])) {
+        const [job] = queue.splice(i, 1);
+        job.promise.catch(() => {
+        });
+        job.reject(abortError());
+      }
+    }
+  };
   return {
-    /** Adds a task to the queue. Returns a promise that resolves when the task finishes. */
-    add: (fn) => {
-      return new Promise((resolve, reject) => {
-        queue.push({ fn, resolve, reject });
-        next();
+    /**
+     * Adds a task to the queue. Returns a promise that resolves when the task finishes.
+     * The task receives an `AbortSignal` — pass it to `fetch` etc. so `abort()`/`preempt()`
+     * can cancel it while in flight.
+     * Higher `priority` runs first (default 0); ties run in insertion order.
+     */
+    add: (fn, opts = {}) => {
+      var _a;
+      const job = { fn, priority: (_a = opts.priority) != null ? _a : 0, controller: new AbortController() };
+      job.promise = new Promise((resolve, reject) => {
+        job.resolve = resolve;
+        job.reject = reject;
       });
+      let i = queue.length;
+      while (i > 0 && queue[i - 1].priority < job.priority) i--;
+      queue.splice(i, 0, job);
+      next();
+      return job.promise;
     },
     /** Pauses processing. Active tasks complete, but new ones wait. */
     pause: () => {
@@ -4853,20 +4903,112 @@ var createQueue = (options = {}) => {
       isPaused = false;
       next();
     },
-    /** Clears all pending tasks. */
+    /** Clears all pending tasks (rejecting them with an AbortError). Does not touch in-flight tasks. */
     clear: () => {
-      queue.length = 0;
+      dropPending(() => true);
+    },
+    /**
+     * Cancels tasks below the given priority: pending ones are removed and
+     * in-flight ones have their `AbortSignal` aborted. Use before enqueueing
+     * urgent work so background tasks don't starve it.
+     */
+    preempt: (minPriority = 0) => {
+      dropPending((job) => job.priority < minPriority);
+      running.forEach((job) => {
+        if (job.priority < minPriority) job.controller.abort(abortError());
+      });
+    },
+    /** Aborts everything: pending tasks are rejected, in-flight signals are aborted. */
+    abort: () => {
+      dropPending(() => true);
+      running.forEach((job) => job.controller.abort(abortError()));
     },
     /** Returns the number of pending + active tasks. */
-    size: () => queue.length + active,
+    size: () => queue.length + running.size,
     /** Returns a promise that resolves when all tasks are complete. */
     drain: () => new Promise((resolve) => {
-      if (active === 0 && queue.length === 0) return resolve();
+      if (running.size === 0 && queue.length === 0) return resolve();
       listeners.drain.push(resolve);
     }),
-    /** Listen for errors (globally for the queue). */
+    /** Listen for errors (globally for the queue). Aborted tasks do not trigger this. */
     onError: (fn) => listeners.error.push(fn)
   };
+};
+var encodeQueryParams = (params) => {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === null || value === void 0 || value === "") continue;
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (item !== null && item !== void 0 && item !== "") search.append(key, String(item));
+      });
+    } else {
+      search.append(key, String(value));
+    }
+  }
+  return search;
+};
+var Query = {
+  /** String param with an optional default (default `''`). */
+  string: (fallback = "") => ({
+    parse: (raw) => raw != null ? raw : fallback,
+    serialize: (v) => v
+  }),
+  /** Number param; non-numeric or absent values yield the default (default `0`). */
+  number: (fallback = 0) => ({
+    parse: (raw) => {
+      if (raw === null || raw.trim() === "") return fallback;
+      const n = Number(raw);
+      return Number.isNaN(n) ? fallback : n;
+    },
+    serialize: (v) => v
+  }),
+  /** Boolean param; `'true'`/`'1'`/`''` (bare flag) are true, else the default. */
+  boolean: (fallback = false) => ({
+    parse: (raw) => {
+      if (raw === null) return fallback;
+      return raw === "" || raw === "true" || raw === "1";
+    },
+    serialize: (v) => v ? "true" : null
+  }),
+  /** Literal-union param constrained to `values`, falling back if not a match. */
+  oneOf: (values, fallback) => ({
+    parse: (raw) => raw !== null && values.includes(raw) ? raw : fallback,
+    serialize: (v) => v
+  }),
+  /**
+   * Repeated-key array param (`?tag=a&tag=b`). Each item is decoded with the
+   * given item codec (default `Query.string()`).
+   */
+  array: (item = Query.string()) => ({
+    parse: (_raw, all) => all.map((v) => item.parse(v, [v])),
+    serialize: (v) => v.map((x) => item.serialize(x))
+  })
+};
+var _readSearch = (search) => {
+  const last = {};
+  const all = {};
+  new URLSearchParams(search).forEach((val, key) => {
+    last[key] = val;
+    (all[key] = all[key] || []).push(val);
+  });
+  return { last, all };
+};
+var parseQuery = (schema, search) => {
+  var _a, _b;
+  const { last, all } = _readSearch(search);
+  const out = {};
+  for (const key in schema) {
+    out[key] = schema[key].parse((_a = last[key]) != null ? _a : null, (_b = all[key]) != null ? _b : []);
+  }
+  return out;
+};
+var serializeQuery = (schema, values) => {
+  const out = {};
+  for (const key in schema) {
+    if (key in values) out[key] = schema[key].serialize(values[key]);
+  }
+  return out;
 };
 var History = {
   /**
@@ -4889,7 +5031,9 @@ var History = {
       url.searchParams.delete(k);
       if (v === null || v === void 0 || v === "") return;
       if (Array.isArray(v)) {
-        v.forEach((item) => url.searchParams.append(k, String(item)));
+        v.forEach((item) => {
+          if (item !== null && item !== void 0 && item !== "") url.searchParams.append(k, String(item));
+        });
       } else {
         url.searchParams.set(k, String(v));
       }
@@ -4898,17 +5042,42 @@ var History = {
     window.history[method](window.history.state, "", url.href);
   },
   /**
-   * Reads current Query Parameters into a typed Object.
-   * Note: duplicate keys (arrays) will return the *last* value, 
-   * use `History.readQueryAll()` if you expect arrays.
-   * 
-   * @template T
-   * @returns {T}
-   * 
-   * @example 
+   * Writes typed values to the URL query using a `Query` schema — the
+   * type-safe counterpart to `History.query`. Values are serialized through
+   * the schema's codecs (so a `number` becomes a string, a `boolean` a flag,
+   * etc.), then merged into the current URL.
+   *
+   * @example
+   * const schema = { page: Query.number(1), sort: Query.oneOf(['asc','desc'] as const, 'asc') };
+   * History.setQuery(schema, { page: 2, sort: 'desc' })();       // ?page=2&sort=desc
+   * History.setQuery(schema, { page: 3 })('replace');            // merges, replaces entry
+   */
+  setQuery: (schema, values) => History.query(serializeQuery(schema, values)),
+  /**
+   * Reads current Query Parameters.
+   *
+   * **Schema form (preferred)** — pass a `Query` codec schema to get *parsed,
+   * typed, defaulted* values instead of raw strings:
+   *
+   * ```typescript
+   * const { page, sort, tags } = History.readQuery({
+   *   page: Query.number(1),
+   *   sort: Query.oneOf(['asc', 'desc'] as const, 'asc'),
+   *   tags: Query.array(Query.string())
+   * });
+   * // { page: number; sort: 'asc' | 'desc'; tags: string[] }
+   * ```
+   *
+   * **Legacy form** — with no argument, returns raw strings cast to `T`
+   * (duplicate keys return the *last* value; use `History.readQueryAll()`
+   * for arrays). Note the cast is unchecked: values are always strings at
+   * runtime regardless of `T`.
+   *
+   * @example
    * const { page, sort } = History.readQuery<{ page: string, sort: string }>();
    */
-  readQuery: () => {
+  readQuery: (schema) => {
+    if (schema) return parseQuery(schema, window.location.search);
     return Object.fromEntries(new URLSearchParams(window.location.search));
   },
   /**
@@ -5710,13 +5879,13 @@ var Fn = {
    * cssSelector('.card')({ padding: '20px' });
    * ```
    */
-  withSelector: (fn, root = document) => {
+  withSelector: (fn, root) => {
     function wrapper(input, ...args) {
       let element = null;
       if (input === null || input === void 0) {
         element = null;
       } else if (typeof input === "string") {
-        element = root.querySelector(input);
+        element = (root != null ? root : document).querySelector(input);
       } else if (typeof input === "function") {
         element = input();
       } else {
@@ -6257,13 +6426,7 @@ var _mergeHeaders = (base, override) => {
 var _buildUrl = (path, baseURL, params) => {
   let url = baseURL ? `${baseURL}${path}` : path;
   if (params) {
-    const search = new URLSearchParams();
-    for (const [key, val] of Object.entries(params)) {
-      if (val !== null && val !== void 0) {
-        search.set(key, String(val));
-      }
-    }
-    const qs = search.toString();
+    const qs = encodeQueryParams(params).toString();
     if (qs) url += `${url.includes("?") ? "&" : "?"}${qs}`;
   }
   return url;
@@ -6467,6 +6630,38 @@ var Http = {
        */
       get: (path) => (init = {}) => requestWithAbort("GET", path, init),
       /**
+       * Performs a QUERY request (RFC 10008 — The HTTP QUERY Method).
+       *
+       * QUERY is **safe and idempotent** like GET, but carries the query in
+       * the request body like POST — for queries too large or too sensitive
+       * for a URL. Responses are cacheable, and requests may be transparently
+       * retried without side-effect concerns.
+       *
+       * Object bodies are JSON-encoded; pass a string body with an explicit
+       * `Content-Type` header for other query formats (SQL, JSONPath, …).
+       * Servers advertise supported formats via the `Accept-Query` response
+       * header (see `Http.parseAcceptQuery`).
+       *
+       * @template T - Response data type
+       * @param path - Endpoint path
+       * @returns A curried function that accepts request config with body
+       *
+       * @example
+       * ```typescript
+       * // JSON query
+       * const res = await http.query<User[]>('/contacts')({
+       *   body: { select: ['name', 'email'], where: { active: true } }
+       * });
+       *
+       * // SQL query body
+       * await http.query<Row[]>('/db')({
+       *   body: 'SELECT name FROM contacts WHERE active = TRUE',
+       *   headers: { 'Content-Type': 'application/sql' }
+       * });
+       * ```
+       */
+      query: (path) => (init = {}) => requestWithAbort("QUERY", path, init),
+      /**
        * Performs a POST request.
        * 
        * @template T - Response data type
@@ -6620,6 +6815,69 @@ var Http = {
     });
     if (!res.ok) throw new Error(`Http.post ${res.status}: ${res.statusText}`);
     return res.json();
+  },
+  /**
+   * Performs a simple QUERY request (RFC 10008 — The HTTP QUERY Method).
+   *
+   * QUERY is safe and idempotent like GET, but carries the query in the
+   * request body like POST — for queries too large or too sensitive for a
+   * URL. Object bodies are JSON-encoded (`application/json`); string bodies
+   * are sent as-is (default `text/plain` — override `Content-Type` for
+   * formats like `application/sql`).
+   *
+   * **Curried API**: url -> body -> headers for composition and reusability.
+   *
+   * Throws an error if the response is not ok.
+   *
+   * @template T - The expected response type
+   * @param url - The URL to query
+   * @returns A curried function accepting the query body then headers
+   *
+   * @example
+   * ```typescript
+   * // JSON query
+   * const users = await Http.query('/api/contacts')
+   *   ({ select: ['name', 'email'], where: { active: true } })
+   *   ();
+   *
+   * // SQL body with explicit content type
+   * const rows = await Http.query('/api/db')
+   *   ('SELECT name FROM contacts WHERE active = TRUE')
+   *   ({ 'Content-Type': 'application/sql' });
+   *
+   * // Partial application
+   * const searchContacts = Http.query('/api/contacts');
+   * const active = await searchContacts({ where: { active: true } })();
+   * ```
+   */
+  query: (url) => (body) => async (headers = {}) => {
+    const isString = typeof body === "string";
+    const res = await fetch(url, {
+      method: "QUERY",
+      headers: { "Content-Type": isString ? "text/plain" : "application/json", ...headers },
+      body: isString ? body : JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(`Http.query ${res.status}: ${res.statusText}`);
+    return res.json();
+  },
+  /**
+   * Parses an `Accept-Query` response header (RFC 10008) into the list of
+   * media types the resource supports for QUERY request bodies.
+   *
+   * Accepts a `Response`, an `HttpResponse` wrapper, or the raw header value.
+   * Returns an empty array when the header is absent.
+   *
+   * @example
+   * ```typescript
+   * const res = await fetch('/api/contacts', { method: 'OPTIONS' });
+   * Http.parseAcceptQuery(res); // ['application/jsonpath', 'application/sql']
+   * ```
+   */
+  parseAcceptQuery: (source) => {
+    var _a;
+    const raw = typeof source === "string" ? source : source instanceof Response ? source.headers.get("Accept-Query") : (_a = source == null ? void 0 : source.response) == null ? void 0 : _a.headers.get("Accept-Query");
+    if (!raw) return [];
+    return raw.split(",").map((entry) => entry.split(";")[0].trim().replace(/^"|"$/g, "")).filter(Boolean);
   },
   /**
    * Performs a simple PUT request without client configuration.
@@ -6970,7 +7228,7 @@ var domCtx = (target) => {
   runMountCallbacks();
   return Object.assign(ctx, { destroy });
 };
-var defineComponent = (target, setup) => {
+var enhance = (target, setup) => {
   const root = typeof target === "string" ? find(document)(target) : target;
   if (!root) return null;
   const { ctx, destroy, runMountCallbacks, auto } = createComponentContext(root);
@@ -6982,7 +7240,8 @@ var defineComponent = (target, setup) => {
     destroy
   };
 };
-var mountComponent = (templateFn, componentFn, target, _props) => {
+var defineComponent = enhance;
+var spawn = (templateFn, componentFn, target, _props) => {
   const { root } = templateFn();
   const rootEl = root instanceof DocumentFragment ? root.firstElementChild : root;
   target.appendChild(root);
@@ -6999,6 +7258,7 @@ var mountComponent = (templateFn, componentFn, target, _props) => {
     }
   };
 };
+var mountComponent = spawn;
 function createUpdateAfter(el2, updater, initialValue) {
   const createWrapper = (update, initial) => {
     let isBatching = false;
@@ -7140,6 +7400,611 @@ function createUpdateAfter(el2, updater, initialValue) {
   }
   return createWrapper(updater, initialValue);
 }
+function withEffects(binder2, effects) {
+  const options = normalizeOptions(effects);
+  return (el2) => {
+    var _a;
+    const set2 = binder2(el2);
+    let destroyed = false;
+    let runs = 0;
+    let hasPrevious = false;
+    let previous;
+    let controller;
+    let currentCleanups = [];
+    const before2 = normalizeEffects(options.before);
+    const after2 = normalizeEffects(options.after);
+    const onceRan = /* @__PURE__ */ new WeakSet();
+    const cleanupCurrentRun = (phase = "cleanup") => {
+      controller == null ? void 0 : controller.abort();
+      controller = void 0;
+      const cleanups = currentCleanups;
+      currentCleanups = [];
+      for (let i = cleanups.length - 1; i >= 0; i--) {
+        try {
+          cleanups[i]();
+        } catch (error) {
+          handleError(error, {
+            phase,
+            effectName: "cleanup",
+            value: previous,
+            previous,
+            changed: false,
+            run: runs
+          });
+        }
+      }
+    };
+    const handleError = (error, partial) => {
+      if (options.onError) {
+        options.onError(error, {
+          el: el2,
+          value: partial.value,
+          previous: partial.previous,
+          changed: partial.changed,
+          run: partial.run,
+          phase: partial.phase,
+          effectName: partial.effectName
+        });
+        return;
+      }
+      throw error;
+    };
+    const makeContext = (phase, value, previousValue, changed, result) => {
+      if (!controller) controller = new AbortController();
+      return {
+        el: el2,
+        value,
+        previous: previousValue,
+        changed,
+        run: runs,
+        phase,
+        result,
+        signal: controller.signal,
+        cleanup(fn) {
+          currentCleanups.push(fn);
+        }
+      };
+    };
+    const runEffect = (descriptor, ctx) => {
+      var _a2, _b;
+      if (descriptor.once && onceRan.has(descriptor)) return;
+      if (!shouldRun((_b = (_a2 = descriptor.when) != null ? _a2 : options.when) != null ? _b : "changed", ctx)) return;
+      try {
+        const cleanup = descriptor.effect(ctx);
+        onceRan.add(descriptor);
+        if (typeof cleanup === "function") {
+          ctx.cleanup(cleanup);
+        }
+      } catch (error) {
+        handleError(error, {
+          phase: ctx.phase,
+          effectName: descriptor.name,
+          value: ctx.value,
+          previous: ctx.previous,
+          changed: ctx.changed,
+          run: ctx.run
+        });
+      }
+    };
+    const setter = (value) => {
+      var _a2, _b, _c;
+      if (destroyed) {
+        throw new Error("withEffects: attempted to use a destroyed setter.");
+      }
+      const previousValue = hasPrevious ? previous : void 0;
+      const changed = !hasPrevious || !options.equals(value, previousValue);
+      runs++;
+      cleanupCurrentRun();
+      controller = new AbortController();
+      const beforeCtx = makeContext(
+        "before",
+        value,
+        previousValue,
+        changed,
+        void 0
+      );
+      for (const descriptor of before2) {
+        runEffect(descriptor, beforeCtx);
+      }
+      const result = set2(value);
+      const afterCtx = makeContext(
+        "after",
+        value,
+        previousValue,
+        changed,
+        result
+      );
+      for (const descriptor of after2) {
+        if (!shouldRun((_b = (_a2 = descriptor.when) != null ? _a2 : options.when) != null ? _b : "changed", afterCtx)) {
+          continue;
+        }
+        if (descriptor.once && onceRan.has(descriptor)) {
+          continue;
+        }
+        const schedule = (_c = descriptor.schedule) != null ? _c : options.schedule;
+        const cancel = scheduleRun(schedule, () => {
+          if (afterCtx.signal.aborted) return;
+          runEffect(descriptor, afterCtx);
+        });
+        if (cancel) {
+          afterCtx.cleanup(cancel);
+        }
+      }
+      previous = value;
+      hasPrevious = true;
+      return result;
+    };
+    Object.defineProperties(setter, {
+      cleanup: {
+        value: () => cleanupCurrentRun()
+      },
+      destroy: {
+        value: () => {
+          if (destroyed) return;
+          destroyed = true;
+          cleanupCurrentRun();
+        }
+      },
+      destroyed: {
+        get: () => destroyed
+      },
+      runs: {
+        get: () => runs
+      },
+      previous: {
+        get: () => previous
+      }
+    });
+    (_a = options.register) == null ? void 0 : _a.call(options, () => setter.destroy());
+    return setter;
+  };
+}
+function normalizeOptions(input) {
+  var _a, _b, _c;
+  if (!input) {
+    return {
+      after: void 0,
+      when: "changed",
+      schedule: "sync",
+      equals: Object.is
+    };
+  }
+  if (isFullOptions(input)) {
+    return {
+      before: input.before,
+      after: input.after,
+      when: (_a = input.when) != null ? _a : "changed",
+      schedule: (_b = input.schedule) != null ? _b : "sync",
+      equals: (_c = input.equals) != null ? _c : Object.is,
+      register: input.register,
+      onError: input.onError
+    };
+  }
+  return {
+    after: input,
+    when: "changed",
+    schedule: "sync",
+    equals: Object.is
+  };
+}
+function isFullOptions(value) {
+  if (!isObject(value)) return false;
+  if ("effect" in value) return false;
+  if (Array.isArray(value)) return false;
+  if (typeof value === "function") return false;
+  return "before" in value || "after" in value || "when" in value || "schedule" in value || "equals" in value || "register" in value || "onError" in value;
+}
+function normalizeEffects(input) {
+  if (!input) return [];
+  const items = Array.isArray(input) ? input : [input];
+  return items.map((item) => {
+    if (typeof item === "function") {
+      return { effect: item };
+    }
+    return item;
+  });
+}
+function shouldRun(when, ctx) {
+  if (when === "always") return true;
+  if (when === "changed") return ctx.changed;
+  return when(ctx);
+}
+function scheduleRun(schedule, run) {
+  if (schedule === "sync") {
+    run();
+    return;
+  }
+  if (schedule === "microtask") {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) run();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }
+  if (schedule === "raf") {
+    if (typeof requestAnimationFrame === "function") {
+      const id2 = requestAnimationFrame(run);
+      return () => cancelAnimationFrame(id2);
+    }
+    const id = setTimeout(run, 0);
+    return () => clearTimeout(id);
+  }
+  if (schedule === "idle") {
+    const requestIdle = typeof globalThis !== "undefined" && typeof globalThis.requestIdleCallback === "function" ? globalThis.requestIdleCallback : void 0;
+    const cancelIdle = typeof globalThis !== "undefined" && typeof globalThis.cancelIdleCallback === "function" ? globalThis.cancelIdleCallback : void 0;
+    if (requestIdle && cancelIdle) {
+      const id2 = requestIdle(run);
+      return () => cancelIdle(id2);
+    }
+    const id = setTimeout(run, 1);
+    return () => clearTimeout(id);
+  }
+  if (schedule === "timeout") {
+    const id = setTimeout(run, 0);
+    return () => clearTimeout(id);
+  }
+  return schedule(run);
+}
+function isObject(value) {
+  return typeof value === "object" && value !== null;
+}
+var _isComponentHandle = (value) => "nodes" in value && "update" in value && typeof value.mount === "function";
+var _applyProp = (el2, key, value) => {
+  if (/^on[a-z]/.test(key) && typeof value === "function") {
+    el2.addEventListener(key.slice(2).toLowerCase(), value);
+  } else if (key in el2) {
+    el2[key] = value;
+  } else if (value === true) {
+    el2.setAttribute(key, "");
+  } else if (value === false || value == null) {
+    el2.removeAttribute(key);
+  } else {
+    el2.setAttribute(key, String(value));
+  }
+};
+var Attr = /* @__PURE__ */ new Proxy({}, {
+  get: (_target, key) => (value) => (el2) => _applyProp(el2, key, value)
+});
+var UNITLESS_PROPS = /* @__PURE__ */ new Set([
+  "opacity",
+  "zIndex",
+  "lineHeight",
+  "fontWeight",
+  "flex",
+  "flexGrow",
+  "flexShrink",
+  "order",
+  "zoom",
+  "scale",
+  "aspectRatio",
+  "columnCount",
+  "animationIterationCount",
+  "orphans",
+  "widows"
+]);
+var _kebabCase = (key) => key.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase());
+var _styleValue = (key, value) => typeof value === "number" && value !== 0 && !UNITLESS_PROPS.has(key) && !key.startsWith("--") ? `${value}px` : String(value);
+var _applyStyle = (el2, key, value) => {
+  if (key.includes("-")) {
+    if (value == null) el2.style.removeProperty(key);
+    else el2.style.setProperty(key, _styleValue(key, value));
+  } else {
+    el2.style[key] = value == null ? "" : _styleValue(key, value);
+  }
+};
+var _declsToCss = (props) => {
+  let out = "";
+  for (const [k, v] of Object.entries(props)) {
+    if (v == null || typeof v === "object") continue;
+    out += `${k.startsWith("--") ? k : _kebabCase(k)}:${_styleValue(k, v)};`;
+  }
+  return out;
+};
+var _rulesToCss = (selector, props) => {
+  const decls = _declsToCss(props);
+  let out = decls ? `${selector}{${decls}}` : "";
+  for (const [k, v] of Object.entries(props)) {
+    if (v == null || typeof v !== "object") continue;
+    out += k.startsWith("@") ? `${k}{${_rulesToCss(selector, v)}}` : _rulesToCss(k.replace(/&/g, selector), v);
+  }
+  return out;
+};
+var _styleCounter = 0;
+var _pendingCss = [];
+var _styleEl = null;
+var _injectCss = (css2) => {
+  _pendingCss.push(css2);
+  if (typeof document === "undefined") return;
+  if (!_styleEl || !_styleEl.isConnected) {
+    _styleEl = document.createElement("style");
+    _styleEl.setAttribute("data-doeixd-dom", "");
+    document.head.appendChild(_styleEl);
+  }
+  _styleEl.appendChild(document.createTextNode(_pendingCss.join("")));
+  _pendingCss = [];
+};
+var Style = /* @__PURE__ */ (() => {
+  const styleFn = (...propsList) => (el2) => {
+    propsList.forEach((props) => Object.entries(props).forEach(([k, v]) => _applyStyle(el2, k, v)));
+  };
+  styleFn.scope = (props) => {
+    const cls2 = `dom-s${++_styleCounter}`;
+    let injected = false;
+    return (el2) => {
+      if (!injected) {
+        _injectCss(_rulesToCss("." + cls2, props));
+        injected = true;
+      }
+      el2.classList.add(cls2);
+    };
+  };
+  styleFn.keyframes = (frames, name) => {
+    const kfName = name != null ? name : `dom-kf${++_styleCounter}`;
+    let body = "";
+    for (const [frame, decls] of Object.entries(frames)) {
+      if (!decls) continue;
+      body += `${frame}{${_declsToCss(decls)}}`;
+    }
+    _injectCss(`@keyframes ${kfName}{${body}}`);
+    return kfName;
+  };
+  return new Proxy(styleFn, {
+    get: (target, key) => {
+      if (typeof key !== "string" || key in target) return Reflect.get(target, key);
+      return (value) => (el2) => _applyStyle(el2, key, value);
+    }
+  });
+})();
+var Tag = /* @__PURE__ */ new Proxy({}, {
+  get: (_target, tag) => {
+    if (!/^[a-z][a-z0-9-]*$/i.test(tag)) {
+      throw new Error(`Tag: Invalid tag name "${tag}"`);
+    }
+    return (...args) => {
+      const el2 = document.createElement(tag);
+      const apply2 = (arg) => {
+        if (arg == null || arg === false) return;
+        if (Array.isArray(arg)) {
+          arg.forEach(apply2);
+          return;
+        }
+        if (arg instanceof Node) {
+          el2.append(arg);
+          return;
+        }
+        if (typeof arg === "function") {
+          arg(el2);
+          return;
+        }
+        if (typeof arg === "object") {
+          if (_isComponentHandle(arg)) {
+            el2.append(...arg.nodes);
+            return;
+          }
+          Object.entries(arg).forEach(([k, v]) => _applyProp(el2, k, v));
+          return;
+        }
+        el2.append(String(arg));
+      };
+      args.forEach(apply2);
+      return el2;
+    };
+  }
+});
+var component = (setup) => {
+  return (props) => {
+    const bus = new EventTarget();
+    const controller = new AbortController();
+    let last = [];
+    let queued = false;
+    let render;
+    const doRender = () => {
+      const out = render();
+      const nodes = (Array.isArray(out) ? out : [out]).filter(Boolean);
+      const anchor = last.find((n) => n.parentNode);
+      if (anchor == null ? void 0 : anchor.parentNode) {
+        const parent = anchor.parentNode;
+        const keep = new Set(nodes);
+        nodes.forEach((n) => parent.insertBefore(n, anchor));
+        last.forEach((n) => {
+          if (!keep.has(n)) n.remove();
+        });
+      }
+      last = nodes;
+    };
+    const update = () => {
+      if (controller.signal.aborted || queued) return;
+      queued = true;
+      queueMicrotask(() => {
+        queued = false;
+        if (!controller.signal.aborted) doRender();
+      });
+    };
+    const on2 = (type, handler) => {
+      bus.addEventListener(type, handler, { signal: controller.signal });
+      return () => bus.removeEventListener(type, handler);
+    };
+    const ctx = {
+      target: bus,
+      signal: controller.signal,
+      update,
+      event: (fn) => (...args) => {
+        const result = fn(...args);
+        update();
+        return result;
+      },
+      dispatch: (type, ...[detail]) => bus.dispatchEvent(new CustomEvent(type, { detail })),
+      on: on2,
+      get last() {
+        return [...last];
+      }
+    };
+    render = setup(ctx, props);
+    doRender();
+    const instance = {
+      get nodes() {
+        return [...last];
+      },
+      get el() {
+        var _a;
+        return (_a = last[0]) != null ? _a : null;
+      },
+      mount: (parent) => {
+        parent.append(...last);
+        return instance;
+      },
+      on: on2,
+      update,
+      destroy: () => {
+        controller.abort();
+        last.forEach((n) => n.remove());
+      },
+      addEventListener: (...args) => bus.addEventListener(...args),
+      removeEventListener: (...args) => bus.removeEventListener(...args),
+      dispatchEvent: (event) => bus.dispatchEvent(event)
+    };
+    return instance;
+  };
+};
+var _compileRoute = (pattern) => {
+  const keys = [];
+  const source = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/:([A-Za-z0-9_]+)/g, (_m, name) => {
+    keys.push(name);
+    return "([^/]+)";
+  }).replace(/\*/g, () => {
+    keys.push("wildcard");
+    return "(.*)";
+  });
+  return { pattern, regex: new RegExp(`^${source}/?$`), keys };
+};
+var matchPath = (pattern, path) => {
+  const { regex, keys } = _compileRoute(pattern);
+  const m = regex.exec(path.split("?")[0]);
+  if (!m) return null;
+  const params = {};
+  keys.forEach((key, i) => {
+    var _a;
+    params[key] = decodeURIComponent((_a = m[i + 1]) != null ? _a : "");
+  });
+  return params;
+};
+var buildPath = (pattern, ...args) => {
+  var _a;
+  const params = (_a = args[0]) != null ? _a : {};
+  return pattern.replace(/:([A-Za-z0-9_]+)/g, (_m, name) => {
+    var _a2;
+    return encodeURIComponent((_a2 = params[name]) != null ? _a2 : "");
+  }).replace(/\*/g, () => {
+    var _a2;
+    return encodeURIComponent((_a2 = params.wildcard) != null ? _a2 : "");
+  });
+};
+var route = (pattern, handler) => ({ pattern, handler });
+var createRouter = (routes, options = {}) => {
+  var _a;
+  const bus = new EventTarget();
+  const compiled = routes.filter((r) => r.pattern !== "*").map((r) => ({ route: _compileRoute(r.pattern), handler: r.handler }));
+  const fallback = (_a = routes.find((r) => r.pattern === "*")) == null ? void 0 : _a.handler;
+  let parentEl = null;
+  let activeHandle = null;
+  let activeNodes = [];
+  let navController = null;
+  let currentPath = "";
+  let linkCleanup = null;
+  let popCleanup = null;
+  const clearActive = () => {
+    if (activeHandle) activeHandle.destroy();
+    else activeNodes.forEach((n) => n.remove());
+    activeHandle = null;
+    activeNodes = [];
+  };
+  const resolve = () => {
+    var _a2, _b;
+    if (!parentEl) return;
+    const path = window.location.pathname;
+    currentPath = path;
+    navController == null ? void 0 : navController.abort();
+    navController = new AbortController();
+    let matched = null;
+    for (const { route: compiledRoute, handler: handler2 } of compiled) {
+      const m = compiledRoute.regex.exec(path);
+      if (m) {
+        const params = {};
+        compiledRoute.keys.forEach((key, i) => {
+          var _a3;
+          params[key] = decodeURIComponent((_a3 = m[i + 1]) != null ? _a3 : "");
+        });
+        matched = { params, handler: handler2 };
+        break;
+      }
+    }
+    const handler = (_a2 = matched == null ? void 0 : matched.handler) != null ? _a2 : fallback;
+    if (!handler) {
+      clearActive();
+      return;
+    }
+    const query = Object.fromEntries(new URLSearchParams(window.location.search));
+    const view2 = handler({
+      params: (_b = matched == null ? void 0 : matched.params) != null ? _b : {},
+      query,
+      path,
+      signal: navController.signal
+    });
+    clearActive();
+    if (view2 && typeof view2.mount === "function" && "nodes" in view2) {
+      activeHandle = view2;
+      activeHandle.mount(parentEl);
+    } else {
+      activeNodes = [view2];
+      parentEl.append(view2);
+    }
+    bus.dispatchEvent(new CustomEvent("change", { detail: { path } }));
+  };
+  const navigate = (path, mode = "push") => {
+    History[mode](path);
+    resolve();
+  };
+  const router = {
+    mount: (parent) => {
+      parentEl = typeof parent === "string" ? find(document)(parent) : parent;
+      if (options.links !== false) {
+        const root = typeof options.links === "string" ? find(document)(options.links) : options.links instanceof Element ? options.links : document;
+        if (root) {
+          linkCleanup = onDelegated(root, "a[href]", "click", (e, a) => {
+            const href = a.getAttribute("href") || "";
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            const targetAttr = a.getAttribute("target");
+            if (targetAttr && targetAttr !== "_self") return;
+            if (/^([a-z]+:)?\/\//i.test(href) || href.startsWith("#") || href.startsWith("mailto:")) return;
+            e.preventDefault();
+            navigate(href);
+          });
+        }
+      }
+      popCleanup = History.onPop(() => resolve());
+      resolve();
+      return router;
+    },
+    navigate,
+    resolve,
+    get current() {
+      return currentPath;
+    },
+    destroy: () => {
+      navController == null ? void 0 : navController.abort();
+      linkCleanup == null ? void 0 : linkCleanup();
+      popCleanup == null ? void 0 : popCleanup();
+      clearActive();
+      parentEl = null;
+    },
+    addEventListener: (...args) => bus.addEventListener(...args),
+    removeEventListener: (...args) => bus.removeEventListener(...args),
+    dispatchEvent: (event) => bus.dispatchEvent(event)
+  };
+  return router;
+};
 /**
  * @doeixd/dom 
  * ==========================================
@@ -7152,6 +8017,16 @@ function createUpdateAfter(el2, updater, initialValue) {
  * 2. Curried: Functions return closures for composition/piping.
  * 3. Null-Safe: All functions fail gracefully on `null`/`undefined` targets.
  * 4. Type-Safe: Full Generics for HTML Elements, Events, and Return types.
+ *
+ * -----------------------------------------------------------------------------
+ * 🌲 TREE-SHAKING / SIDE EFFECTS
+ * -----------------------------------------------------------------------------
+ * This module is side-effect free: importing it must not touch the DOM,
+ * register listeners/observers, or mutate globals. All work happens inside
+ * exported functions. Top-level call-expression initializers (Proxies, `def`
+ * wrappers, `createStorage`) are annotated `@__PURE__` so bundlers can drop
+ * unused exports, and `package.json` declares `"sideEffects": false`.
+ * Keep it that way: no module-level statements with observable effects.
  *
  * -----------------------------------------------------------------------------
  * 📚 API DIRECTORY (27 MODULES)

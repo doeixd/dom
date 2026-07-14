@@ -44,7 +44,7 @@ btn.addEventListener('click', listener);
 
 **Write this:**
 ```typescript
-const Counter = defineComponent('#counter', (ctx) => {
+const Counter = enhance('#counter', (ctx) => {
   ctx.state.count = 0;
 
   ctx.on('click', ctx.refs.btn, () => {
@@ -85,7 +85,7 @@ HTML:
 
 TypeScript:
 ```typescript
-import { defineComponent } from '@doeixd/dom';
+import { enhance } from '@doeixd/dom';
 
 interface Refs {
   display: HTMLElement;
@@ -96,7 +96,7 @@ interface State {
   count: number;
 }
 
-const Counter = defineComponent<any, Refs, any, State>(
+const Counter = enhance<any, Refs, any, State>(
   '#counter',
   (ctx) => {
     // Initialize state
@@ -131,10 +131,10 @@ if (Counter) {
 }
 ```
 
-### Anatomy of defineComponent
+### Anatomy of enhance
 
 ```typescript
-const Component = defineComponent(target, setup);
+const Component = enhance(target, setup);
 ```
 
 **Parameters:**
@@ -204,10 +204,10 @@ ComponentContext (`ctx`) provides everything you need:
 
 ### Auto Cleanup Helper
 
-`defineComponent` provides a second argument called `auto` for generator-style cleanup registration. It accepts a function that receives a `register` helper for cleanup functions, and supports async setup.
+`enhance` provides a second argument called `auto` for generator-style cleanup registration. It accepts a function that receives a `register` helper for cleanup functions, and supports async setup.
 
 ```typescript
-const App = defineComponent('#app', (ctx, auto) => {
+const App = enhance('#app', (ctx, auto) => {
   auto((register) => {
     register(on(window)('resize', handleResize));
     return 'ready';
@@ -248,7 +248,7 @@ const App = defineComponent('#app', (ctx, auto) => {
 ### Type Parameters
 
 ```typescript
-defineComponent<API, Refs, Groups, State>(target, setup)
+enhance<API, Refs, Groups, State>(target, setup)
 ```
 
 **Generic Parameters:**
@@ -271,7 +271,7 @@ interface CounterGroups {
   tabs: HTMLDivElement[];
 }
 
-const Counter = defineComponent<any, CounterRefs, CounterGroups, any>(
+const Counter = enhance<any, CounterRefs, CounterGroups, any>(
   '#counter',
   (ctx) => {
     // ctx.refs.display is HTMLSpanElement
@@ -293,7 +293,7 @@ interface CounterState {
   active: boolean;
 }
 
-const Counter = defineComponent<any, any, any, CounterState>(
+const Counter = enhance<any, any, any, CounterState>(
   '#counter',
   (ctx) => {
     // All state properties are typed
@@ -318,7 +318,7 @@ interface CounterAPI {
   setValue: (n: number) => void;
 }
 
-const Counter = defineComponent<CounterAPI, Refs, any, State>(
+const Counter = enhance<CounterAPI, Refs, any, State>(
   '#counter',
   (ctx): CounterAPI => {
     ctx.state.count = 0;
@@ -364,7 +364,7 @@ interface TodoAPI {
   clearCompleted: () => void;
 }
 
-const TodoApp = defineComponent<TodoAPI, TodoRefs, any, TodoState>(
+const TodoApp = enhance<TodoAPI, TodoRefs, any, TodoState>(
   '#todo-app',
   (ctx): TodoAPI => {
     ctx.state.filter = 'all';
@@ -405,7 +405,7 @@ Add `data-ref="name"` to elements:
 Access via `ctx.refs`:
 
 ```typescript
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   ctx.refs.username; // HTMLInputElement
   ctx.refs.email;    // HTMLInputElement
   ctx.refs.submit;   // HTMLButtonElement
@@ -427,7 +427,7 @@ Multiple elements with the same `data-ref` become arrays:
 Access via `ctx.groups`:
 
 ```typescript
-const List = defineComponent('#list', (ctx) => {
+const List = enhance('#list', (ctx) => {
   ctx.groups.item; // HTMLLIElement[]
   ctx.groups.item.forEach(li => {
     console.log(li.textContent);
@@ -444,7 +444,7 @@ const List = defineComponent('#list', (ctx) => {
 `ctx.state` is a proxy over the root element's `data-*` attributes:
 
 ```typescript
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   // Write to state
   ctx.state.count = 5;
   // Updates: <div id="app" data-count="5">
@@ -471,7 +471,7 @@ const App = defineComponent('#app', (ctx) => {
 For non-DOM state:
 
 ```typescript
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   const localState = ctx.store({ items: [], cache: {} });
 
   localState.items.push('item1');
@@ -490,7 +490,7 @@ ctx.on(eventName, element, handler, options?)
 ```
 
 ```typescript
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   // Single element
   ctx.on('click', ctx.refs.btn, () => {
     console.log('Button clicked');
@@ -515,7 +515,7 @@ const App = defineComponent('#app', (ctx) => {
 #### ctx.bindEvents() - Declarative Events
 
 ```typescript
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   ctx.bindEvents({
     btn: {
       click: () => console.log('clicked'),
@@ -540,7 +540,7 @@ ctx.watch(key, handler)
 Watch `data-*` attribute changes:
 
 ```typescript
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   ctx.state.count = 0;
 
   ctx.watch('count', (value) => {
@@ -571,7 +571,7 @@ ctx.computed(deps, compute)
 Create derived reactive values:
 
 ```typescript
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   ctx.state.firstName = 'John';
   ctx.state.lastName = 'Doe';
 
@@ -598,7 +598,7 @@ const App = defineComponent('#app', (ctx) => {
 Executes after the setup function completes:
 
 ```typescript
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   ctx.onMount(() => {
     console.log('Component mounted');
     // Fetch initial data, start animations, etc.
@@ -619,7 +619,7 @@ const App = defineComponent('#app', (ctx) => {
 Register cleanup functions:
 
 ```typescript
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   ctx.onUnmount(() => {
     console.log('Component unmounting');
     // Cleanup custom resources
@@ -647,7 +647,7 @@ const App = defineComponent('#app', (ctx) => {
 The `bind` object provides common DOM update patterns:
 
 ```typescript
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   // Text content
   const setText = ctx.bind.text(ctx.refs.title);
   setText('Hello World'); // Sets textContent
@@ -688,7 +688,7 @@ const renderItem = (item: Todo) => `
   </li>
 `;
 
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   const setTodos = ctx.bind.list(ctx.refs.list, renderItem);
 
   const todos = [
@@ -703,7 +703,7 @@ const App = defineComponent('#app', (ctx) => {
 #### ctx.bind.val() - Custom Reactive Values
 
 ```typescript
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   const count = ctx.bind.val(0, (value) => {
     ctx.refs.display.textContent = String(value);
   });
@@ -718,7 +718,7 @@ const App = defineComponent('#app', (ctx) => {
 #### ctx.observe.intersection()
 
 ```typescript
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   ctx.observe.intersection(
     ctx.refs.lazyImage,
     (entries) => {
@@ -737,7 +737,7 @@ const App = defineComponent('#app', (ctx) => {
 #### ctx.observe.resize()
 
 ```typescript
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   ctx.observe.resize(ctx.refs.panel, (entries) => {
     const { width, height } = entries[0].contentRect;
     console.log(`Panel resized to ${width}x${height}`);
@@ -752,7 +752,7 @@ const App = defineComponent('#app', (ctx) => {
 All resources are automatically cleaned up when `destroy()` is called:
 
 ```typescript
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   // These are all auto-tracked:
   ctx.on('click', ctx.refs.btn, handler);          // ✓
   ctx.watch('count', handler);                     // ✓
@@ -771,7 +771,7 @@ App?.destroy(); // Everything cleaned up automatically
 ```
 
 **How it works:**
-- `defineComponent` creates a `ListenerGroup`
+- `enhance` creates a `ListenerGroup`
 - All tracked operations register cleanup functions
 - `destroy()` calls `ListenerGroup.clear()`
 - All cleanup functions execute in sequence
@@ -780,10 +780,10 @@ App?.destroy(); // Everything cleaned up automatically
 
 ### 1. Null Element Safety
 
-`defineComponent` returns `null` if the target element doesn't exist:
+`enhance` returns `null` if the target element doesn't exist:
 
 ```typescript
-const App = defineComponent('#nonexistent', (ctx) => { /* ... */ });
+const App = enhance('#nonexistent', (ctx) => { /* ... */ });
 
 // ✗ Don't do this:
 App.increment(); // Runtime error if App is null
@@ -803,7 +803,7 @@ App?.destroy();
 All string selectors in context methods are scoped to the component root:
 
 ```typescript
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   // ✓ Scoped: finds button inside #app
   ctx.find('button');
   ctx.on('click', 'button', handler);
@@ -821,7 +821,7 @@ const App = defineComponent('#app', (ctx) => {
 `ctx.state` reads and writes actual DOM attributes:
 
 ```typescript
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   // This writes to the DOM
   ctx.state.count = 0;
   // Result: <div id="app" data-count="0">
@@ -848,7 +848,7 @@ const App = defineComponent('#app', (ctx) => {
 Refs are queried once during component initialization:
 
 ```typescript
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   console.log(ctx.refs.dynamic); // undefined if added later
 
   // Add new element dynamically
@@ -864,7 +864,7 @@ const App = defineComponent('#app', (ctx) => {
 ### 5. Watchers Fire Immediately
 
 ```typescript
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   ctx.state.count = 5;
 
   ctx.watch('count', (val) => {
@@ -892,7 +892,7 @@ const App = defineComponent('#app', (ctx) => {
 DOM attributes are always strings:
 
 ```typescript
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   ctx.state.count = 5;
 
   const value = ctx.state.count;
@@ -916,7 +916,7 @@ Unlike React, components don't "re-render":
 
 ```typescript
 // ✗ React-style thinking doesn't work
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   ctx.state.items = [];
 
   // This won't update the UI automatically
@@ -924,7 +924,7 @@ const App = defineComponent('#app', (ctx) => {
 });
 
 // ✓ Explicitly update the UI
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   const items = ctx.store({ list: [] });
 
   const renderItems = ctx.bind.list(ctx.refs.list, item => `<li>${item}</li>`);
@@ -942,7 +942,7 @@ const App = defineComponent('#app', (ctx) => {
 
 ```typescript
 // ✗ Don't bind events in loops or conditionals without cleanup
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   function setupHandlers() {
     ctx.on('click', ctx.refs.btn, handler); // Multiple bindings!
   }
@@ -952,12 +952,12 @@ const App = defineComponent('#app', (ctx) => {
 });
 
 // ✓ Bind once during setup
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   ctx.on('click', ctx.refs.btn, handler);
 });
 
 // ✓ Or track and cleanup
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   let unsub: (() => void) | null = null;
 
   function setupHandlers() {
@@ -1008,7 +1008,7 @@ interface FormAPI {
   validate: () => boolean;
 }
 
-const SignupForm = defineComponent<FormAPI, FormRefs, any, FormState>(
+const SignupForm = enhance<FormAPI, FormRefs, any, FormState>(
   '#signup-form',
   (ctx): FormAPI => {
     ctx.state.isValid = false;
@@ -1137,7 +1137,7 @@ interface ListAPI {
   clearCompleted: () => void;
 }
 
-const TodoList = defineComponent<ListAPI, ListRefs>(
+const TodoList = enhance<ListAPI, ListRefs>(
   '#todo-list',
   (ctx): ListAPI => {
     const state = ctx.store<{ todos: Todo[]; nextId: number }>({
@@ -1239,7 +1239,7 @@ interface TabAPI {
   prev: () => void;
 }
 
-const Tabs = defineComponent<TabAPI, TabRefs, TabGroups, TabState>(
+const Tabs = enhance<TabAPI, TabRefs, TabGroups, TabState>(
   '#tabs',
   (ctx): TabAPI => {
     ctx.state.activeTab = 0;
@@ -1318,7 +1318,7 @@ interface ModalAPI {
   toggle: () => void;
 }
 
-const Modal = defineComponent<ModalAPI, ModalRefs, any, ModalState>(
+const Modal = enhance<ModalAPI, ModalRefs, any, ModalState>(
   '#modal',
   (ctx): ModalAPI => {
     ctx.state.isOpen = false;
@@ -1384,10 +1384,10 @@ const Modal = defineComponent<ModalAPI, ModalRefs, any, ModalState>(
 
 ## API Reference
 
-### defineComponent
+### enhance
 
 ```typescript
-function defineComponent<API, R, G, S>(
+function enhance<API, R, G, S>(
   target: string | HTMLElement | null,
   setup: (ctx: ComponentContext<R, G, S>, auto: AutoCleanup) => API | void
 ): ComponentInstance<API> | null
@@ -1473,10 +1473,10 @@ Returned component instance includes:
 - `root` - Reference to root element
 - `destroy()` - Cleanup function
 
-### mountComponent
+### spawn
 
 ```typescript
-function mountComponent<P>(
+function spawn<P>(
   template: (props: P) => HTMLElement,
   component: (el: HTMLElement, props: P) => ComponentInstance<any> | null,
   target: HTMLElement,
@@ -1504,11 +1504,11 @@ const template = (props) => {
   return div;
 };
 
-const component = (el, props) => defineComponent(el, (ctx) => {
+const component = (el, props) => enhance(el, (ctx) => {
   return { /* API */ };
 });
 
-const instance = mountComponent(template, component, document.body, {
+const instance = spawn(template, component, document.body, {
   id: 'my-component',
   label: 'Hello'
 });

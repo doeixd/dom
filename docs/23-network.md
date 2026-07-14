@@ -26,15 +26,38 @@ const Http = {
   get: <T>(url: string, headers?: Record<string, string>) => Promise<T>,
   post: (url: string) => <T>(body: any) => (headers?: Record<string, string>) => Promise<T>,
   put: (url: string) => <T>(body: any) => (headers?: Record<string, string>) => Promise<T>,
+  query: (url: string) => <T>(body: any) => (headers?: Record<string, string>) => Promise<T>,
   delete: <T>(url: string, headers?: Record<string, string>) => Promise<T>,
+  parseAcceptQuery: (source: Response | HttpResponse | string | null) => string[],
   create: (config?: HttpConfig) => HttpClient
 };
 ```
 
 **Behavior**
-- JSON body encoding for `post`/`put`.
+- JSON body encoding for `post`/`put`/`query` (string `query` bodies pass through as-is).
 - JSON response parsing.
 - Throws on non-2xx responses with a descriptive error.
+
+### QUERY (RFC 10008)
+`query` sends the **HTTP QUERY method** — safe and idempotent like GET, but
+with the query in the request body like POST. Use it for queries too large or
+too sensitive to put in a URL; responses are cacheable and requests can be
+retried without side-effect concerns.
+
+```typescript
+// JSON query
+const users = await Http.query('/api/contacts')
+  ({ select: ['name', 'email'], where: { active: true } })
+  ();
+
+// Other query formats: string body + explicit Content-Type
+const rows = await Http.query('/api/db')
+  ('SELECT name FROM contacts WHERE active = TRUE')
+  ({ 'Content-Type': 'application/sql' });
+
+// Discover the formats a resource supports (Accept-Query response header)
+Http.parseAcceptQuery(response); // ['application/jsonpath', 'application/sql']
+```
 
 ### `Http.create(config)`
 Create a configured client with defaults, interceptors, and helpers.
@@ -82,6 +105,7 @@ const res = await api.get<User>('/users/123')({
 Available methods:
 ```typescript
 api.get<T>(path)(init)
+api.query<T>(path)(init)   // RFC 10008 QUERY: safe/idempotent with a body
 api.post<T>(path)(init)
 api.put<T>(path)(init)
 api.delete<T>(path)(init)

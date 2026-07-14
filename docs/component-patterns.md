@@ -1,6 +1,6 @@
 # Advanced Component Patterns
 
-This guide covers advanced patterns and techniques for building higher-level abstractions on top of the `defineComponent` system.
+This guide covers advanced patterns and techniques for building higher-level abstractions on top of the `enhance` system.
 
 ## Table of Contents
 
@@ -22,7 +22,7 @@ The binder pattern separates UI updates from business logic by creating a typed 
 ### Basic Binder Usage
 
 ```typescript
-import { defineComponent, bind, apply } from '@doeixd/dom';
+import { enhance, bind, apply } from '@doeixd/dom';
 
 interface UserRefs {
   name: HTMLElement;
@@ -31,7 +31,7 @@ interface UserRefs {
   status: HTMLElement;
 }
 
-const UserCard = defineComponent<any, UserRefs>('#user-card', (ctx) => {
+const UserCard = enhance<any, UserRefs>('#user-card', (ctx) => {
   // Create setter map from schema
   const ui = ctx.binder({
     name: bind.text,
@@ -67,7 +67,7 @@ interface ProductRefs {
   badge: HTMLElement;
 }
 
-const ProductCard = defineComponent<any, ProductRefs>('#product', (ctx) => {
+const ProductCard = enhance<any, ProductRefs>('#product', (ctx) => {
   const ui = ctx.binder({
     title: bind.text,
     price: bind.text,
@@ -103,7 +103,7 @@ interface DashboardRefs {
   trend: HTMLElement;
 }
 
-const Dashboard = defineComponent<any, DashboardRefs>('#dashboard', (ctx) => {
+const Dashboard = enhance<any, DashboardRefs>('#dashboard', (ctx) => {
   const ui = ctx.binder({
     total: bind.text,
     average: bind.text,
@@ -164,7 +164,7 @@ const bindMarkdown = (el: HTMLElement | null): Setter<string> => {
 };
 
 // Usage
-const Article = defineComponent('#article', (ctx) => {
+const Article = enhance('#article', (ctx) => {
   const ui = ctx.binder({
     title: bind.text,
     price: bindCurrency,
@@ -188,9 +188,9 @@ These utilities allow you to compose transformations in a pipeline style.
 ### Chain Pattern - Pre-configured Transforms
 
 ```typescript
-import { defineComponent, cls, css, modify } from '@doeixd/dom';
+import { enhance, cls, css, modify } from '@doeixd/dom';
 
-const Card = defineComponent('#card', (ctx) => {
+const Card = enhance('#card', (ctx) => {
   // Apply multiple transforms at once
   ctx.chain(
     ctx.refs.button,
@@ -216,7 +216,7 @@ const Card = defineComponent('#card', (ctx) => {
 ### Exec Pattern - Runtime Callbacks
 
 ```typescript
-const ThemeCard = defineComponent('#themed-card', (ctx) => {
+const ThemeCard = enhance('#themed-card', (ctx) => {
   const theme = ctx.state.theme || 'light';
 
   // Execute functions with runtime values
@@ -280,7 +280,7 @@ const withTooltip = (text: string): Transform<HTMLElement> => {
 };
 
 // Use in components
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   pipeline(
     ctx.refs.button,
     makeClickable(() => console.log('clicked')),
@@ -292,12 +292,12 @@ const App = defineComponent('#app', (ctx) => {
 
 ## Auto Cleanup Helpers
 
-Use the `auto` helper (second argument to `defineComponent`) to collect cleanups from setup logic. It accepts a register function, supports async work, and integrates with component teardown.
+Use the `auto` helper (second argument to `enhance`) to collect cleanups from setup logic. It accepts a register function, supports async work, and integrates with component teardown.
 
 ```typescript
-import { defineComponent, on } from '@doeixd/dom';
+import { enhance, on } from '@doeixd/dom';
 
-const Tooltip = defineComponent('#tooltip', (ctx, auto) => {
+const Tooltip = enhance('#tooltip', (ctx, auto) => {
   auto((register) => {
     register(on(ctx.refs.button)('mouseenter', () => ctx.refs.tip.showPopover()));
     register(on(ctx.refs.button)('mouseleave', () => ctx.refs.tip.hidePopover()));
@@ -326,7 +326,7 @@ interface CounterAPI {
   onChange: (cb: (val: number) => void) => void;
 }
 
-const Counter = defineComponent<CounterAPI>('#counter', (ctx) => {
+const Counter = enhance<CounterAPI>('#counter', (ctx) => {
   ctx.state.count = 0;
   const listeners: Array<(val: number) => void> = [];
 
@@ -348,7 +348,7 @@ const Counter = defineComponent<CounterAPI>('#counter', (ctx) => {
 });
 
 // Parent component
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   if (!Counter) return {};
 
   // Listen to child changes
@@ -417,14 +417,14 @@ class ComponentRegistry {
 const registry = new ComponentRegistry();
 
 registry.register('counter', (el) =>
-  defineComponent(el, (ctx) => {
+  enhance(el, (ctx) => {
     // Counter implementation
     return {};
   })
 );
 
 registry.register('todo-list', (el) =>
-  defineComponent(el, (ctx) => {
+  enhance(el, (ctx) => {
     // TodoList implementation
     return {};
   })
@@ -453,7 +453,7 @@ interface CardAPI {
   setFooter: (content: string | HTMLElement) => void;
 }
 
-const Card = defineComponent<CardAPI, CardRefs>('#card', (ctx): CardAPI => {
+const Card = enhance<CardAPI, CardRefs>('#card', (ctx): CardAPI => {
   const setSlot = (slot: HTMLElement, content: string | HTMLElement) => {
     if (typeof content === 'string') {
       slot.innerHTML = content;
@@ -497,7 +497,7 @@ function useDebounce(delay: number = 300) {
 }
 
 // Usage
-const SearchBox = defineComponent('#search', (ctx) => {
+const SearchBox = enhance('#search', (ctx) => {
   const debounce = useDebounce(500);
 
   ctx.on('input', ctx.refs.input, () => {
@@ -559,7 +559,7 @@ function useLocalStorage<T>(key: string, defaultValue?: T): StorageHook<T> {
 }
 
 // Usage
-const PrefsPanel = defineComponent('#prefs', (ctx) => {
+const PrefsPanel = enhance('#prefs', (ctx) => {
   const storage = useLocalStorage<{ theme: string; fontSize: number }>('user-prefs', {
     theme: 'light',
     fontSize: 16
@@ -646,7 +646,7 @@ interface User {
   email: string;
 }
 
-const UserProfile = defineComponent('#profile', (ctx) => {
+const UserProfile = enhance('#profile', (ctx) => {
   const { fetch, state, refetch } = useFetch<User>();
 
   const ui = ctx.binder({
@@ -727,7 +727,7 @@ function useEventBus(bus: EventBus = globalBus) {
 }
 
 // Usage - Component A
-const ComponentA = defineComponent('#comp-a', (ctx) => {
+const ComponentA = enhance('#comp-a', (ctx) => {
   const { emit } = useEventBus();
 
   ctx.on('click', ctx.refs.btn, () => {
@@ -738,7 +738,7 @@ const ComponentA = defineComponent('#comp-a', (ctx) => {
 });
 
 // Usage - Component B
-const ComponentB = defineComponent('#comp-b', (ctx) => {
+const ComponentB = enhance('#comp-b', (ctx) => {
   const { on } = useEventBus();
 
   const unsub = on('user:login', (userData) => {
@@ -821,7 +821,7 @@ const pluginSystem = createPluginSystem();
 pluginSystem.register(loggerPlugin);
 pluginSystem.register(validatorPlugin);
 
-const App = defineComponent('#app', (baseCtx) => {
+const App = enhance('#app', (baseCtx) => {
   const ctx = pluginSystem.enhance(baseCtx);
 
   // Now ctx has logger and validator methods
@@ -904,7 +904,7 @@ const appStore = new Store<StoreState>({
 });
 
 // Use in components
-const Header = defineComponent('#header', (ctx) => {
+const Header = enhance('#header', (ctx) => {
   const unsub = appStore.subscribe('user', (user) => {
     ctx.refs.username.textContent = user?.name || 'Guest';
   });
@@ -914,7 +914,7 @@ const Header = defineComponent('#header', (ctx) => {
   return {};
 });
 
-const Cart = defineComponent('#cart', (ctx) => {
+const Cart = enhance('#cart', (ctx) => {
   const unsub = appStore.subscribe('cart', (cart) => {
     ctx.refs.count.textContent = String(cart.length);
   });
@@ -998,7 +998,7 @@ const todoStore = createReducerStore<TodoState>(
 );
 
 // Use in component
-const TodoApp = defineComponent('#todo-app', (ctx) => {
+const TodoApp = enhance('#todo-app', (ctx) => {
   const renderTodos = ctx.bind.list(ctx.refs.list, (todo) => `
     <li class="${todo.completed ? 'completed' : ''}">
       <input type="checkbox" data-id="${todo.id}" ${todo.completed ? 'checked' : ''} />
@@ -1048,7 +1048,7 @@ const TodoApp = defineComponent('#todo-app', (ctx) => {
 ### Runtime Component Creation
 
 ```typescript
-import { mountComponent } from '@doeixd/dom';
+import { spawn } from '@doeixd/dom';
 
 interface DynamicCardProps {
   title: string;
@@ -1072,7 +1072,7 @@ const cardTemplate = (props: DynamicCardProps) => {
 
 // Component factory
 const cardComponent = (el: HTMLElement, props: DynamicCardProps) => {
-  return defineComponent(el, (ctx) => {
+  return enhance(el, (ctx) => {
     if (props.onClose) {
       ctx.on('click', ctx.refs.closeBtn, () => {
         props.onClose!();
@@ -1092,12 +1092,12 @@ const cardComponent = (el: HTMLElement, props: DynamicCardProps) => {
 };
 
 // Usage
-const App = defineComponent('#app', (ctx) => {
+const App = enhance('#app', (ctx) => {
   const cards: any[] = [];
 
   return {
     addCard: (props: DynamicCardProps) => {
-      const card = mountComponent(
+      const card = spawn(
         cardTemplate,
         cardComponent,
         ctx.refs.container,
@@ -1148,7 +1148,7 @@ function createComponentFactory<P, API>(
         target.appendChild(el);
       }
 
-      const component = defineComponent(el, (ctx) => setup(ctx, props));
+      const component = enhance(el, (ctx) => setup(ctx, props));
 
       return component;
     },
@@ -1157,7 +1157,7 @@ function createComponentFactory<P, API>(
       return items.map(props => {
         const el = template(props);
         target.appendChild(el);
-        return defineComponent(el, (ctx) => setup(ctx, props));
+        return enhance(el, (ctx) => setup(ctx, props));
       }).filter(Boolean);
     }
   };
@@ -1227,7 +1227,7 @@ export function fireEvent(el: HTMLElement, eventName: string, detail?: any) {
 ### Example Tests
 
 ```typescript
-import { defineComponent } from '@doeixd/dom';
+import { enhance } from '@doeixd/dom';
 import { createTestElement, cleanupTestElement, fireEvent } from './test-utils';
 
 describe('Counter Component', () => {
@@ -1242,7 +1242,7 @@ describe('Counter Component', () => {
       </div>
     `);
 
-    component = defineComponent('#counter', (ctx) => {
+    component = enhance('#counter', (ctx) => {
       ctx.state.count = 0;
 
       ctx.on('click', ctx.refs.btn, () => {

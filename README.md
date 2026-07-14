@@ -129,7 +129,7 @@ $('button').modify({ text: 'Click' }).addClass('active');
 
 For complex applications, `@doeixd/dom` provides a lightweight component architecture. It bridges the gap between low-level DOM manipulation and high-level frameworks like React or Vue, without the build steps or virtual DOM overhead.
 
-### `defineComponent`
+### `enhance`
 
 This function creates a self-contained logic unit attached to a DOM element. It solves three major problems in Vanilla JS development:
 1.  **Ref Management:** Automatically maps `data-ref` elements to variables.
@@ -148,14 +148,14 @@ This function creates a self-contained logic unit attached to a DOM element. It 
 
 **TypeScript:**
 ```typescript
-import { defineComponent } from '@doeixd/dom';
+import { enhance } from '@doeixd/dom';
 
 // 1. Define Types (Optional)
 interface Refs { display: HTMLElement; btn: HTMLButtonElement; }
 interface State { count: number; }
 
 // 2. Define Logic
-const Counter = defineComponent<any, Refs, any, State>('#counter', (ctx) => {
+const Counter = enhance<any, Refs, any, State>('#counter', (ctx) => {
   const { display, btn } = ctx.refs;
 
   // Initialize State (sets data-count="0" in DOM)
@@ -352,7 +352,7 @@ For comprehensive guides on components:
 | `refs` | Get all `data-ref` elements as object. | `const {btn, input} = refs(root);` |
 | `groupRefs` | Get grouped `data-ref` elements as arrays. | `const {items} = groupRefs(root);` |
 | `viewRefs` | Create a view with typed refs. | `const view = viewRefs<Refs>((ctx) => ...);` |
-| `component` | Create typed component from refs. | `const c = component<T>('#root');` |
+| `refsOf` | Gather typed refs from a DOM tree. | `const c = refsOf<T>('#root');` |
 | `store` | Attach arbitrary data to an element. | `store(el).set('count', 5);` |
 | `batch` | Batch operations on element collection. | `batch(items).addClass('active');` |
 | `groupBy` | Group elements by attribute or callback. | `groupBy(items)('data-category');` |
@@ -446,13 +446,13 @@ For comprehensive guides on components:
 | `createBus` | Create typed event bus (pub/sub). | `const bus = createBus<Events>();` |
 | `createStore` | Create reactive store. | `const store = createStore({count: 0});` |
 | `createMediaQuery` | Reactive media query helper. | `createMediaQuery({ mobile: '(max-width: 640px)' })` |
-| `defineComponent` | Define a component with lifecycle. | `defineComponent('#app', (ctx) => {...});` |
+| `enhance` | Attach behavior to existing DOM. | `enhance('#app', (ctx) => {...});` |
 | `domCtx` | Create a scoped component context. | `const ctx = domCtx('#root');` |
 | `A11y.announce` | Screen reader announcement. | `A11y.announce('Saved', 'polite')` |
 | `A11y.setExpanded` | Manage aria-expanded/controls. | `A11y.setExpanded(btn, panel)` |
 | `A11y.setSelected` | Manage aria-selected in listbox. | `A11y.setSelected(option, listbox)` |
 | `A11y.roving` | Roving tabindex navigation. | `A11y.roving(toolbar, 'button')` |
-| `mountComponent` | Mount a component instance. | `mountComponent(instance, '#root');` |
+| `spawn` | Instantiate + append a component dynamically. | `spawn(instance, '#root');` |
 | `Result.ok` | Create success result. | `return Result.ok(value);` |
 | `Result.err` | Create error result. | `return Result.err(error);` |
 | `Option.some` | Create Some option. | `return Option.some(value);` |
@@ -588,9 +588,9 @@ on(form)('submit', async (e) => {
 });
 ```
 
-### Organizing with `component`
+### Organizing with `refsOf`
 
-For more complex UI, the `component` helper collects elements with `data-ref` attributes into a typed object, avoiding repeated `find` calls.
+For more complex UI, the `refsOf` helper collects elements with `data-ref` attributes into a typed object, avoiding repeated `find` calls.
 
 **HTML:**
 ```html
@@ -604,7 +604,7 @@ For more complex UI, the `component` helper collects elements with `data-ref` at
 ```typescript
 import { component, on, modify } from '@doeixd/dom';
 
-const profile = component<{
+const profile = refsOf<{
   name: HTMLHeadingElement;
   email: HTMLParagraphElement;
   editBtn: HTMLButtonElement;
@@ -1211,7 +1211,7 @@ interface ProfileCardRefs {
 }
 
 function createProfileCard(userData: User) {
-  const card = component<ProfileCardRefs>('#profile-card');
+  const card = refsOf<ProfileCardRefs>('#profile-card');
 
   // Type-safe access to all refs
   modify(card.name)({ text: userData.name });

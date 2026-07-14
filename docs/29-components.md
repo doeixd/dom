@@ -7,11 +7,11 @@ Organizing related elements and logic into components improves maintainability. 
 
 ## API Reference
 
-### `component`
+### `refsOf`
 Transforms a DOM tree into a component object by mapping `data-ref` nodes.
 
 ```typescript
-function component<T extends Record<string, HTMLElement>>(
+function refsOf<T extends Record<string, HTMLElement>>(
   rootOrSelector: HTMLElement | string | null
 ): T & { root: HTMLElement | null };
 ```
@@ -23,21 +23,21 @@ Wraps multiple elements for batch operations.
 function $$(selectorOrList: string | Element[] | NodeListOf<Element>): BatchWrapper;
 ```
 
-### `defineComponent`
+### `enhance`
 Creates a reactive, self-cleaning component with setup pattern (similar to Vue 3 Composition API).
 
 ```typescript
-function defineComponent<API, R, G, S>(
+function enhance<API, R, G, S>(
   target: string | HTMLElement | null,
   setup: (ctx: ComponentContext<R, G, S>) => API | void
 ): ComponentInstance<API> | null;
 ```
 
-### `mountComponent`
+### `spawn`
 Spawns a component dynamically (useful for modals, toasts, etc.).
 
 ```typescript
-function mountComponent<API>(
+function spawn<API>(
   templateFn: () => { root: HTMLElement | DocumentFragment },
   componentFn: (root: HTMLElement) => ComponentInstance<API> | null,
   target: HTMLElement
@@ -46,11 +46,11 @@ function mountComponent<API>(
 
 ## Examples
 
-### Simple Component
+### Gathering Refs
 ```typescript
-import { component } from '@doeixd/dom';
+import { refsOf } from '@doeixd/dom';
 
-const card = component<{
+const card = refsOf<{
   title: HTMLElement;
   content: HTMLElement;
   btn: HTMLButtonElement;
@@ -73,9 +73,9 @@ $$('.item')
 
 ### Reactive Component
 ```typescript
-import { defineComponent } from '@doeixd/dom';
+import { enhance } from '@doeixd/dom';
 
-const Counter = defineComponent('#app', (ctx) => {
+const Counter = enhance('#app', (ctx) => {
   ctx.state.count = 0;
 
   const ui = ctx.binder({

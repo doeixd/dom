@@ -54,7 +54,7 @@ I will create a `docs/` directory and the following files. Each file will contai
 
 #### Advanced & Utilities
 28. [NEW] [docs/28-fluent.md](file:///C:/Users/Patrick/dom/docs/28-fluent.md) (`$`)
-29. [NEW] [docs/29-components.md](file:///C:/Users/Patrick/dom/docs/29-components.md) (`component`, `$$`, `defineComponent`, `mountComponent`)
+29. [NEW] [docs/29-components.md](file:///C:/Users/Patrick/dom/docs/29-components.md) (`component`, `$$`, `enhance`, `spawn`)
 30. [NEW] [docs/30-store.md](file:///C:/Users/Patrick/dom/docs/30-store.md) (`store`)
 31. [NEW] [docs/31-forms.md](file:///C:/Users/Patrick/dom/docs/31-forms.md) (`Input`, `form`)
 32. [NEW] [docs/32-event-helpers.md](file:///C:/Users/Patrick/dom/docs/32-event-helpers.md) (`Evt`)

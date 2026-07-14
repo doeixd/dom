@@ -12,6 +12,16 @@
  * 4. Type-Safe: Full Generics for HTML Elements, Events, and Return types.
  *
  * -----------------------------------------------------------------------------
+ * 🌲 TREE-SHAKING / SIDE EFFECTS
+ * -----------------------------------------------------------------------------
+ * This module is side-effect free: importing it must not touch the DOM,
+ * register listeners/observers, or mutate globals. All work happens inside
+ * exported functions. Top-level call-expression initializers (Proxies, `def`
+ * wrappers, `createStorage`) are annotated `@__PURE__` so bundlers can drop
+ * unused exports, and `package.json` declares `"sideEffects": false`.
+ * Keep it that way: no module-level statements with observable effects.
+ *
+ * -----------------------------------------------------------------------------
  * 📚 API DIRECTORY (27 MODULES)
  * -----------------------------------------------------------------------------
  *
@@ -1482,7 +1492,7 @@ export const tempStyle = (element: HTMLElement | null) => {
  * append(parent)(child2);
  * ```
  */
-export const append = def((parent: HTMLElement | null, ...content: (string | Node | null | undefined)[]) => {
+export const append = /* @__PURE__ */ def((parent: HTMLElement | null, ...content: (string | Node | null | undefined)[]) => {
   parent?.append(..._nodes(content));
   return parent;
 });
@@ -1512,7 +1522,7 @@ export const append = def((parent: HTMLElement | null, ...content: (string | Nod
  * prepend(container)(header);
  * ```
  */
-export const prepend = def((parent: HTMLElement | null, ...content: (string | Node | null | undefined)[]) => {
+export const prepend = /* @__PURE__ */ def((parent: HTMLElement | null, ...content: (string | Node | null | undefined)[]) => {
   parent?.prepend(..._nodes(content));
   return parent;
 });
@@ -1541,7 +1551,7 @@ export const prepend = def((parent: HTMLElement | null, ...content: (string | No
  * after(header)(banner, notice, alert);
  * ```
  */
-export const after = def((target: Element | null, ...content: (string | Node | null | undefined)[]) => {
+export const after = /* @__PURE__ */ def((target: Element | null, ...content: (string | Node | null | undefined)[]) => {
   target?.after(..._nodes(content));
   return target;
 });
@@ -1566,7 +1576,7 @@ export const after = def((target: Element | null, ...content: (string | Node | n
  * before(footer)(disclaimer);
  * ```
  */
-export const before = def((target: Element | null, ...content: (string | Node | null | undefined)[]) => {
+export const before = /* @__PURE__ */ def((target: Element | null, ...content: (string | Node | null | undefined)[]) => {
   target?.before(..._nodes(content));
   return target;
 });
@@ -1652,7 +1662,7 @@ export const empty = (target: Element | null) => {
  * append(wrapper)(el('figcaption')({})(['Image caption']));
  * ```
  */
-export const wrap = def((target: HTMLElement | null, wrapper: HTMLElement) => {
+export const wrap = /* @__PURE__ */ def((target: HTMLElement | null, wrapper: HTMLElement) => {
   if (target && wrapper && target.parentNode) {
     target.parentNode.insertBefore(wrapper, target);
     wrapper.appendChild(target);
@@ -1709,7 +1719,7 @@ export const wrap = def((target: HTMLElement | null, wrapper: HTMLElement) => {
  * };
  * ```
  */
-export const mount = def((parent: Element | string | null, child: Element | null): Unsubscribe => {
+export const mount = /* @__PURE__ */ def((parent: Element | string | null, child: Element | null): Unsubscribe => {
   if (!child) return () => { };
 
   const parentEl = typeof parent === 'string' ? document.querySelector(parent) : parent;
@@ -2105,7 +2115,7 @@ const svgElementTags = new Set<string>([
  * console.log(formRefs.name, formRefs.email, formRefs.submit);
  * ```
  */
-export const h = new Proxy({} as Record<string, (props?: HElementProps, children?: (string | Node)[]) => HTMLElement>, {
+export const h = /* @__PURE__ */ new Proxy({} as Record<string, (props?: HElementProps, children?: (string | Node)[]) => HTMLElement>, {
   get(_target, tag: string) {
     if (typeof tag !== 'string') return undefined;
 
@@ -2434,7 +2444,7 @@ export const cls = {
  * const noop = watchClass(null)('active', callback); // () => {}
  * ```
  */
-export const watchClass = def((target: Element | null, className: string, callback: (isPresent: boolean, el: Element) => void): Unsubscribe => {
+export const watchClass = /* @__PURE__ */ def((target: Element | null, className: string, callback: (isPresent: boolean, el: Element) => void): Unsubscribe => {
   if (!target) return () => { };
   let was = target.classList.contains(className);
   const obs = new MutationObserver(() => {
@@ -2733,7 +2743,7 @@ export const Data = {
  * const noop = watchAttr(null)('disabled', callback); // () => {}
  * ```
  */
-export const watchAttr = def((target: Element | null, attrs: string | string[], callback: (val: string | null, attr: string) => void): Unsubscribe => {
+export const watchAttr = /* @__PURE__ */ def((target: Element | null, attrs: string | string[], callback: (val: string | null, attr: string) => void): Unsubscribe => {
   if (!target) return () => { };
   const obs = new MutationObserver((muts) => muts.forEach(m => {
     if (m.attributeName) callback(target.getAttribute(m.attributeName), m.attributeName);
@@ -2783,7 +2793,7 @@ export const watchAttr = def((target: Element | null, attrs: string | string[], 
  * const noop = watchText(null)(callback); // () => {}
  * ```
  */
-export const watchText = def((target: Element | null, callback: (text: string, el: Element) => void): Unsubscribe => {
+export const watchText = /* @__PURE__ */ def((target: Element | null, callback: (text: string, el: Element) => void): Unsubscribe => {
   if (!target) return () => { };
   const obs = new MutationObserver(() => {
     callback(target.textContent || '', target);
@@ -3220,7 +3230,7 @@ export const ready = {
  * });
  * ```
  */
-export const onMount = def((selector: string | null, handler: (el: Element) => void, root: ParentNode = document, once = false): Unsubscribe => {
+export const onMount = /* @__PURE__ */ def((selector: string | null, handler: (el: Element) => void, root: ParentNode = document, once = false): Unsubscribe => {
   if (!selector) return () => { };
   const seen = new WeakSet();
   let foundAny = false;
@@ -3333,7 +3343,7 @@ export const onMount = def((selector: string | null, handler: (el: Element) => v
  * console.log('All required fields filled');
  * ```
  */
-export const waitFor = def((target: Element | null, predicate: (el: Element) => boolean): Promise<Element> => {
+export const waitFor = /* @__PURE__ */ def((target: Element | null, predicate: (el: Element) => boolean): Promise<Element> => {
   return new Promise((resolve, reject) => {
     if (!target) {
       reject(new Error('waitFor: target is null'));
@@ -6202,7 +6212,17 @@ export const throttle = <T extends (...args: any[]) => any>(fn: T, ms: number) =
  * @param provider - The Storage object (localStorage or sessionStorage)
  * @returns Object with get, set, remove, and clear methods
  */
-const createStorage = (provider: Storage) => ({
+const createStorage = (getProvider: () => Storage) => {
+  // Resolved lazily so importing this module never touches `window`
+  // (SSR/Node-safe) and unused storage helpers tree-shake cleanly.
+  let cached: Storage | undefined;
+  const provider = {
+    getItem: (k: string) => (cached ??= getProvider()).getItem(k),
+    setItem: (k: string, v: string) => (cached ??= getProvider()).setItem(k, v),
+    removeItem: (k: string) => (cached ??= getProvider()).removeItem(k),
+    clear: () => (cached ??= getProvider()).clear()
+  };
+  return ({
   /**
    * Gets a value from storage and parses it.
    * 
@@ -6292,7 +6312,8 @@ const createStorage = (provider: Storage) => ({
    * ```
    */
   clear: () => provider.clear()
-});
+  });
+};
 
 /**
  * localStorage wrapper with automatic JSON serialization.
@@ -6332,7 +6353,7 @@ const createStorage = (provider: Storage) => ({
  * Local.clear();
  * ```
  */
-export const Local = createStorage(window.localStorage);
+export const Local = /* @__PURE__ */ createStorage(() => window.localStorage);
 /**
  * sessionStorage wrapper with automatic JSON serialization.
  * 
@@ -6367,7 +6388,7 @@ export const Local = createStorage(window.localStorage);
  * Session.remove('wizardData');
  * ```
  */
-export const Session = createStorage(window.sessionStorage);
+export const Session = /* @__PURE__ */ createStorage(() => window.sessionStorage);
 
 
 // =============================================================================
@@ -8176,29 +8197,32 @@ export const $ = <T extends HTMLElement>(target: T | null) => {
  * }
  * 
  * // Initialize
- * const card = component<CardRefs>('#card');
- * 
+ * const card = refsOf<CardRefs>('#card');
+ *
  * // Access refs directly (type-safe)
  * card.title.textContent = 'Hello World';
  * card.input.value = 'Initial value';
- * 
+ *
  * // Use with fluent API
  * $(card.btn).on('click', () => {
  *   console.log(card.input.value);
  * });
- * 
+ *
  * // Component Factory Pattern
  * function createCard(data: any) {
  *   const el = clone(template);
- *   const cmp = component<CardRefs>(el);
- *   
+ *   const cmp = refsOf<CardRefs>(el);
+ *
  *   cmp.title.textContent = data.title;
- *   
+ *
  *   return cmp;
  * }
  * ```
+ *
+ * Note: prior to 0.0.9 this function was named `component`. That name now
+ * refers to the functional component factory (see section 43).
  */
-export const component = <T extends Record<string, HTMLElement>>(rootOrSelector: HTMLElement | string | null) => {
+export const refsOf = <T extends Record<string, HTMLElement>>(rootOrSelector: HTMLElement | string | null) => {
   const root = typeof rootOrSelector === 'string' ? find(document)(rootOrSelector) : rootOrSelector;
   if (!root) return {} as T & { root: null };
 
@@ -10097,6 +10121,155 @@ export const createQueue = (options: { concurrency?: number, autoStart?: boolean
 export type QueryValue = string | number | boolean | null | undefined;
 export type QueryParams = Record<string, QueryValue | QueryValue[]>;
 
+/**
+ * Encodes `QueryParams` into a `URLSearchParams`. The single shared codec for
+ * URL state (`History.query`) and HTTP requests (`Http` `params`):
+ * - `null`/`undefined`/`''` values are skipped
+ * - arrays become repeated keys (`{ tag: ['a','b'] }` → `tag=a&tag=b`)
+ *
+ * @example
+ * encodeQueryParams({ page: 2, tags: ['a', 'b'] }).toString(); // 'page=2&tags=a&tags=b'
+ */
+export const encodeQueryParams = (params: QueryParams): URLSearchParams => {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === null || value === undefined || value === '') continue;
+    if (Array.isArray(value)) {
+      value.forEach(item => {
+        if (item !== null && item !== undefined && item !== '') search.append(key, String(item));
+      });
+    } else {
+      search.append(key, String(value));
+    }
+  }
+  return search;
+};
+
+/**
+ * A bidirectional codec for a single query parameter. `parse` turns the raw
+ * URL value(s) into a typed value (applying defaults); `serialize` turns a
+ * typed value back into `QueryParams` form for the URL.
+ *
+ * @template T - The decoded value type.
+ */
+export interface QueryCodec<T> {
+  /** Decodes the raw value(s) for this key. `raw` is `null` when absent. */
+  parse: (raw: string | null, all: string[]) => T;
+  /** Encodes a typed value back to URL form (string, array, or nullish). */
+  serialize: (value: T) => QueryValue | QueryValue[];
+}
+
+/** A schema mapping query keys to codecs. */
+export type QuerySchema = Record<string, QueryCodec<any>>;
+
+/** The decoded object type produced by a `QuerySchema`. */
+export type ParsedQuery<S extends QuerySchema> = { [K in keyof S]: S[K] extends QueryCodec<infer T> ? T : never };
+
+/**
+ * Bidirectional, type-safe codecs for URL query parameters.
+ *
+ * URLs are stringly-typed; these codecs parse raw strings into real values
+ * (with defaults) and serialize them back symmetrically. Use with
+ * `History.readQuery(schema)`, `History.setQuery(schema, values)`, and
+ * `parseQuery` / `serializeQuery`.
+ *
+ * @example
+ * const schema = {
+ *   page: Query.number(1),
+ *   sort: Query.oneOf(['asc', 'desc'] as const, 'asc'),
+ *   tags: Query.array(Query.string()),
+ *   open: Query.boolean(false)
+ * };
+ * const state = History.readQuery(schema);
+ * // { page: number; sort: 'asc' | 'desc'; tags: string[]; open: boolean }
+ */
+export const Query = {
+  /** String param with an optional default (default `''`). */
+  string: (fallback = ''): QueryCodec<string> => ({
+    parse: (raw) => raw ?? fallback,
+    serialize: (v) => v
+  }),
+
+  /** Number param; non-numeric or absent values yield the default (default `0`). */
+  number: (fallback = 0): QueryCodec<number> => ({
+    parse: (raw) => {
+      if (raw === null || raw.trim() === '') return fallback;
+      const n = Number(raw);
+      return Number.isNaN(n) ? fallback : n;
+    },
+    serialize: (v) => v
+  }),
+
+  /** Boolean param; `'true'`/`'1'`/`''` (bare flag) are true, else the default. */
+  boolean: (fallback = false): QueryCodec<boolean> => ({
+    parse: (raw) => {
+      if (raw === null) return fallback;
+      return raw === '' || raw === 'true' || raw === '1';
+    },
+    serialize: (v) => (v ? 'true' : null)
+  }),
+
+  /** Literal-union param constrained to `values`, falling back if not a match. */
+  oneOf: <const T extends readonly string[]>(values: T, fallback: T[number]): QueryCodec<T[number]> => ({
+    parse: (raw) => (raw !== null && (values as readonly string[]).includes(raw) ? (raw as T[number]) : fallback),
+    serialize: (v) => v
+  }),
+
+  /**
+   * Repeated-key array param (`?tag=a&tag=b`). Each item is decoded with the
+   * given item codec (default `Query.string()`).
+   */
+  array: <T = string>(item: QueryCodec<T> = Query.string() as unknown as QueryCodec<T>): QueryCodec<T[]> => ({
+    parse: (_raw, all) => all.map(v => item.parse(v, [v])),
+    serialize: (v) => v.map(x => item.serialize(x) as QueryValue)
+  })
+};
+
+/** Groups raw search params into `{ last-value, all-values }` per key. */
+const _readSearch = (search: string): { last: Record<string, string>; all: Record<string, string[]> } => {
+  const last: Record<string, string> = {};
+  const all: Record<string, string[]> = {};
+  new URLSearchParams(search).forEach((val, key) => {
+    last[key] = val;
+    (all[key] = all[key] || []).push(val);
+  });
+  return { last, all };
+};
+
+/**
+ * Parses a query string (or `location.search`) against a `QuerySchema`,
+ * returning a fully typed, defaulted object.
+ *
+ * @example
+ * parseQuery({ page: Query.number(1) }, '?page=3'); // { page: 3 }
+ */
+export const parseQuery = <S extends QuerySchema>(schema: S, search: string): ParsedQuery<S> => {
+  const { last, all } = _readSearch(search);
+  const out = {} as ParsedQuery<S>;
+  for (const key in schema) {
+    out[key] = schema[key].parse(last[key] ?? null, all[key] ?? []);
+  }
+  return out;
+};
+
+/**
+ * Serializes a typed values object into `QueryParams` using a `QuerySchema`.
+ * The inverse of `parseQuery` — round-tripping is symmetric.
+ *
+ * @example
+ * serializeQuery({ page: Query.number(1) }, { page: 3 }); // { page: 3 }
+ */
+export const serializeQuery = <S extends QuerySchema>(
+  schema: S,
+  values: Partial<ParsedQuery<S>>
+): QueryParams => {
+  const out: QueryParams = {};
+  for (const key in schema) {
+    if (key in values) out[key] = schema[key].serialize((values as ParsedQuery<S>)[key]);
+  }
+  return out;
+};
+
 export const History = {
   /**
    * Updates the URL Query Parameters with new values.
@@ -10119,11 +10292,13 @@ export const History = {
       // 1. Remove existing keys to overwrite/clear them
       url.searchParams.delete(k);
 
-      // 2. Set new values
+      // 2. Set new values (repeated keys for arrays)
       if (v === null || v === undefined || v === '') return;
 
       if (Array.isArray(v)) {
-        v.forEach(item => url.searchParams.append(k, String(item)));
+        v.forEach(item => {
+          if (item !== null && item !== undefined && item !== '') url.searchParams.append(k, String(item));
+        });
       } else {
         url.searchParams.set(k, String(v));
       }
@@ -10134,18 +10309,48 @@ export const History = {
   },
 
   /**
-   * Reads current Query Parameters into a typed Object.
-   * Note: duplicate keys (arrays) will return the *last* value, 
-   * use `History.readQueryAll()` if you expect arrays.
-   * 
-   * @template T
-   * @returns {T}
-   * 
-   * @example 
+   * Writes typed values to the URL query using a `Query` schema — the
+   * type-safe counterpart to `History.query`. Values are serialized through
+   * the schema's codecs (so a `number` becomes a string, a `boolean` a flag,
+   * etc.), then merged into the current URL.
+   *
+   * @example
+   * const schema = { page: Query.number(1), sort: Query.oneOf(['asc','desc'] as const, 'asc') };
+   * History.setQuery(schema, { page: 2, sort: 'desc' })();       // ?page=2&sort=desc
+   * History.setQuery(schema, { page: 3 })('replace');            // merges, replaces entry
+   */
+  setQuery: <S extends QuerySchema>(schema: S, values: Partial<ParsedQuery<S>>) =>
+    History.query(serializeQuery(schema, values)),
+
+  /**
+   * Reads current Query Parameters.
+   *
+   * **Schema form (preferred)** — pass a `Query` codec schema to get *parsed,
+   * typed, defaulted* values instead of raw strings:
+   *
+   * ```typescript
+   * const { page, sort, tags } = History.readQuery({
+   *   page: Query.number(1),
+   *   sort: Query.oneOf(['asc', 'desc'] as const, 'asc'),
+   *   tags: Query.array(Query.string())
+   * });
+   * // { page: number; sort: 'asc' | 'desc'; tags: string[] }
+   * ```
+   *
+   * **Legacy form** — with no argument, returns raw strings cast to `T`
+   * (duplicate keys return the *last* value; use `History.readQueryAll()`
+   * for arrays). Note the cast is unchecked: values are always strings at
+   * runtime regardless of `T`.
+   *
+   * @example
    * const { page, sort } = History.readQuery<{ page: string, sort: string }>();
    */
-  readQuery: <T extends Record<string, string>>(): T => {
-    return Object.fromEntries(new URLSearchParams(window.location.search)) as unknown as T;
+  readQuery: (<S extends QuerySchema | undefined = undefined>(schema?: S) => {
+    if (schema) return parseQuery(schema, window.location.search);
+    return Object.fromEntries(new URLSearchParams(window.location.search));
+  }) as {
+    <T extends Record<string, string>>(): T;
+    <S extends QuerySchema>(schema: S): ParsedQuery<S>;
   },
 
   /**
@@ -11133,7 +11338,9 @@ export const Fn = {
    */
   withSelector: <T extends HTMLElement, A extends any[], R>(
     fn: (element: T | null, ...args: A) => R,
-    root: ParentNode = document
+    // Resolved lazily inside the wrapper: evaluating `document` here would be
+    // a module-level side effect when building `$sel` (breaks SSR import).
+    root?: ParentNode
   ): SelectorFunction<T, A, R> => {
     function wrapper<S extends string>(
       input: ElementInput<S>,
@@ -11145,7 +11352,7 @@ export const Fn = {
       if (input === null || input === undefined) {
         element = null;
       } else if (typeof input === 'string') {
-        element = root.querySelector(input) as unknown as T | null;
+        element = (root ?? document).querySelector(input) as unknown as T | null;
       } else if (typeof input === 'function') {
         element = input() as unknown as T | null;
       } else {
@@ -12288,7 +12495,7 @@ export function exec<T extends HTMLElement>(
 /**
  * HTTP request method type.
  */
-export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS';
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS' | 'QUERY';
 
 /**
  * HTTP response status code.
@@ -12307,7 +12514,7 @@ export interface HttpRequestInit extends Omit<RequestInit, 'body'> {
   /** Base URL to prepend (overrides Http defaults) */
   baseURL?: string;
   /** Query parameters to append */
-  params?: Record<string, string | number | boolean | null | undefined>;
+  params?: QueryParams;
   /** Custom timeout in ms (0 = no timeout) */
   timeout?: number;
   /** Retry count on network failure (default: 0) */
@@ -12407,17 +12614,11 @@ const _mergeHeaders = (
  * Builds a full URL with optional base and params.
  * @internal
  */
-const _buildUrl = (path: string, baseURL?: string, params?: Record<string, any>): string => {
+const _buildUrl = (path: string, baseURL?: string, params?: QueryParams): string => {
   let url = baseURL ? `${baseURL}${path}` : path;
 
   if (params) {
-    const search = new URLSearchParams();
-    for (const [key, val] of Object.entries(params)) {
-      if (val !== null && val !== undefined) {
-        search.set(key, String(val));
-      }
-    }
-    const qs = search.toString();
+    const qs = encodeQueryParams(params).toString();
     if (qs) url += `${url.includes('?') ? '&' : '?'}${qs}`;
   }
 
@@ -12793,6 +12994,39 @@ export const Http = {
       get: <T = any>(path: string) => (init: HttpRequestInit = {}) => requestWithAbort<T>('GET', path, init),
 
       /**
+       * Performs a QUERY request (RFC 10008 — The HTTP QUERY Method).
+       *
+       * QUERY is **safe and idempotent** like GET, but carries the query in
+       * the request body like POST — for queries too large or too sensitive
+       * for a URL. Responses are cacheable, and requests may be transparently
+       * retried without side-effect concerns.
+       *
+       * Object bodies are JSON-encoded; pass a string body with an explicit
+       * `Content-Type` header for other query formats (SQL, JSONPath, …).
+       * Servers advertise supported formats via the `Accept-Query` response
+       * header (see `Http.parseAcceptQuery`).
+       *
+       * @template T - Response data type
+       * @param path - Endpoint path
+       * @returns A curried function that accepts request config with body
+       *
+       * @example
+       * ```typescript
+       * // JSON query
+       * const res = await http.query<User[]>('/contacts')({
+       *   body: { select: ['name', 'email'], where: { active: true } }
+       * });
+       *
+       * // SQL query body
+       * await http.query<Row[]>('/db')({
+       *   body: 'SELECT name FROM contacts WHERE active = TRUE',
+       *   headers: { 'Content-Type': 'application/sql' }
+       * });
+       * ```
+       */
+      query: <T = any>(path: string) => (init: HttpRequestInit = {}) => requestWithAbort<T>('QUERY', path, init),
+
+      /**
        * Performs a POST request.
        * 
        * @template T - Response data type
@@ -12954,6 +13188,77 @@ export const Http = {
     });
     if (!res.ok) throw new Error(`Http.post ${res.status}: ${res.statusText}`);
     return res.json();
+  },
+
+  /**
+   * Performs a simple QUERY request (RFC 10008 — The HTTP QUERY Method).
+   *
+   * QUERY is safe and idempotent like GET, but carries the query in the
+   * request body like POST — for queries too large or too sensitive for a
+   * URL. Object bodies are JSON-encoded (`application/json`); string bodies
+   * are sent as-is (default `text/plain` — override `Content-Type` for
+   * formats like `application/sql`).
+   *
+   * **Curried API**: url -> body -> headers for composition and reusability.
+   *
+   * Throws an error if the response is not ok.
+   *
+   * @template T - The expected response type
+   * @param url - The URL to query
+   * @returns A curried function accepting the query body then headers
+   *
+   * @example
+   * ```typescript
+   * // JSON query
+   * const users = await Http.query('/api/contacts')
+   *   ({ select: ['name', 'email'], where: { active: true } })
+   *   ();
+   *
+   * // SQL body with explicit content type
+   * const rows = await Http.query('/api/db')
+   *   ('SELECT name FROM contacts WHERE active = TRUE')
+   *   ({ 'Content-Type': 'application/sql' });
+   *
+   * // Partial application
+   * const searchContacts = Http.query('/api/contacts');
+   * const active = await searchContacts({ where: { active: true } })();
+   * ```
+   */
+  query: (url: string) => <T>(body: any) => async (headers: Record<string, string> = {}): Promise<T> => {
+    const isString = typeof body === 'string';
+    const res = await fetch(url, {
+      method: 'QUERY',
+      headers: { 'Content-Type': isString ? 'text/plain' : 'application/json', ...headers },
+      body: isString ? body : JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(`Http.query ${res.status}: ${res.statusText}`);
+    return res.json();
+  },
+
+  /**
+   * Parses an `Accept-Query` response header (RFC 10008) into the list of
+   * media types the resource supports for QUERY request bodies.
+   *
+   * Accepts a `Response`, an `HttpResponse` wrapper, or the raw header value.
+   * Returns an empty array when the header is absent.
+   *
+   * @example
+   * ```typescript
+   * const res = await fetch('/api/contacts', { method: 'OPTIONS' });
+   * Http.parseAcceptQuery(res); // ['application/jsonpath', 'application/sql']
+   * ```
+   */
+  parseAcceptQuery: (source: globalThis.Response | HttpResponse | string | null | undefined): string[] => {
+    const raw = typeof source === 'string'
+      ? source
+      : source instanceof Response
+        ? source.headers.get('Accept-Query')
+        : source?.response?.headers.get('Accept-Query');
+    if (!raw) return [];
+    return raw
+      .split(',')
+      .map(entry => entry.split(';')[0].trim().replace(/^"|"$/g, ''))
+      .filter(Boolean);
   },
 
   /**
@@ -13417,7 +13722,7 @@ export function sanitizeHTMLTextOnly<T = string>(html: string): T {
 
 
 // =============================================================================
-// 42. COMPONENT ARCHITECTURE (Release Candidate)
+// 42. ENHANCE — BEHAVIOR FOR EXISTING DOM (formerly "Component Architecture")
 // =============================================================================
 
 /**
@@ -13711,7 +14016,7 @@ export interface ComponentContext<
 
 /**
  * Context returned by `domCtx`.
- * Provides the same scoped toolkit as `defineComponent` plus a destroy method.
+ * Provides the same scoped toolkit as `enhance` plus a destroy method.
  */
 export type DomContext<
   Refs extends Record<string, HTMLElement> = any,
@@ -13936,7 +14241,7 @@ const createComponentContext = <
 /**
  * Creates a component-like context for a root element.
  *
- * Returns a scoped toolkit matching `defineComponent` without creating a full
+ * Returns a scoped toolkit matching `enhance` without creating a full
  * component instance. Includes automatic cleanup via `destroy()`.
  *
  * @template R - The shape of `refs` (elements marked with `data-ref="name"`).
@@ -14004,7 +14309,7 @@ export const domCtx = <
  * interface CounterState { count: number; }
  * 
  * // 2. Component Definition
- * const Counter = defineComponent<any, CounterRefs, CounterGroups, CounterState>('#app', (ctx) => {
+ * const Counter = enhance<any, CounterRefs, CounterGroups, CounterState>('#app', (ctx) => {
  *   
  *   // Initialize State in DOM
  *   ctx.state.count = 0;
@@ -14037,7 +14342,7 @@ export const domCtx = <
  * Counter.destroy();
  * ```
  */
-export const defineComponent = <
+export const enhance = <
   API extends Record<string, any> = {},
   R extends Record<string, HTMLElement> = any,
   G extends Record<string, HTMLElement[]> = any,
@@ -14061,6 +14366,13 @@ export const defineComponent = <
   };
 };
 
+/**
+ * @deprecated Renamed to {@link enhance} in 0.0.9 — "enhance" describes what it
+ * does: attach behavior to DOM that already exists. This alias will be removed
+ * in a future release.
+ */
+export const defineComponent = enhance;
+
 
 
 /**
@@ -14068,7 +14380,7 @@ export const defineComponent = <
  * Useful for Modals, Toasts, or dynamic lists.
  * 
  * @param templateFn - The view factory (from `view()`)
- * @param componentFn - The logic factory (from `defineComponent`)
+ * @param componentFn - The logic factory (from `enhance`)
  * @param target - Where to append the result
  * @param props - Initial props
  * 
@@ -14086,7 +14398,7 @@ export const defineComponent = <
  * `);
  * 
  * // 2. Define the component logic
- * const ModalComponent = (root: HTMLElement) => defineComponent(root, (ctx) => {
+ * const ModalComponent = (root: HTMLElement) => enhance(root, (ctx) => {
  *   ctx.bindEvents({
  *     closeBtn: {
  *       click: () => instance.destroy()
@@ -14100,7 +14412,7 @@ export const defineComponent = <
  * });
  * 
  * // 3. Spawn the modal
- * const instance = mountComponent(
+ * const instance = spawn(
  *   () => ModalTemplate({ title: 'Alert', message: 'Hello World!' }),
  *   ModalComponent,
  *   document.body
@@ -14113,7 +14425,7 @@ export const defineComponent = <
  * instance.destroy(); // Removes DOM and cleans up listeners
  * ```
  */
-export const mountComponent = <API>(
+export const spawn = <API>(
   templateFn: () => { root: HTMLElement | DocumentFragment },
   componentFn: (root: HTMLElement) => ComponentInstance<API> | null,
   target: HTMLElement,
@@ -14144,6 +14456,13 @@ export const mountComponent = <API>(
     }
   };
 };
+
+/**
+ * @deprecated Renamed to {@link spawn} in 0.0.9 — it dynamically instantiates
+ * and appends a component (modals, toasts). This alias will be removed in a
+ * future release.
+ */
+export const mountComponent = spawn;
 
 /**
  * Control object passed to wrapped functions for fine-grained update control.
@@ -15496,8 +15815,10 @@ function normalizeOptions<TEl, TValue, TResult>(
   // withEffects(bind.text, fn)
   // withEffects(bind.text, [fn1, fn2])
   // withEffects(bind.text, { effect: fn, schedule: "raf" })
+  // `isFullOptions` ruled out the full-options shape above, so `input` is an
+  // EffectInput here (the negative type guard doesn't narrow the union).
   return {
-    after: input,
+    after: input as EffectInput<TEl, TValue, TResult>,
     when: "changed",
     schedule: "sync",
     equals: Object.is,
@@ -15609,3 +15930,891 @@ function scheduleRun(schedule: EffectSchedule, run: () => void): Cleanup | void 
 function isObject(value: unknown): value is Record<PropertyKey, unknown> {
   return typeof value === "object" && value !== null;
 }
+
+// =============================================================================
+// 43. COMPONENT — JS-FIRST FUNCTIONAL COMPONENTS (Tag / Attr / component)
+//
+// Own the HTML? Use `component`. The server owns it? Use `enhance` (section 42).
+// =============================================================================
+
+/**
+ * A curried element modifier: receives the element being built and mutates it
+ * (sets a property/attribute or attaches a listener). Produced by `Attr.*`.
+ *
+ * The generic constrains which elements the modifier may be applied to:
+ * `Tag.div(Attr.value('x'))` is a compile error because `HTMLDivElement`
+ * has no `value` property.
+ */
+export type ElementModifier<E extends Element = Element> = (el: E) => void;
+
+/** Detects readonly properties (identity trick over mapped modifiers). */
+type IfEquals<X, Y, A = X, B = never> =
+  (<T>() => T extends X ? 1 : 2) extends (<T>() => T extends Y ? 1 : 2) ? A : B;
+
+/** Keys of T that are writable (excludes readonly DOM properties). */
+type WritableKeys<T> = {
+  [P in keyof T]-?: IfEquals<{ [Q in P]: T[P] }, { -readonly [Q in P]: T[P] }, P>
+}[keyof T];
+
+/**
+ * Distributed keyof over a union, keeping only literal string keys.
+ * (Some elements, e.g. HTMLFormElement, have string index signatures whose
+ * `string` key would otherwise swallow the whole mapped type.)
+ */
+type KeysOfUnion<T> = T extends any
+  ? { [K in keyof T]-?: K extends string ? (string extends K ? never : K) : never }[keyof T]
+  : never;
+
+/** Union of every concrete HTML element type. */
+type AnyHTMLElement = HTMLElementTagNameMap[keyof HTMLElementTagNameMap];
+
+/** The members of the union that have property K. */
+type ElementsWithProp<K extends PropertyKey> = Extract<AnyHTMLElement, Record<K, any>>;
+
+/**
+ * Typed props object for `Tag.<tag>({...})`:
+ * - writable, non-function properties of the concrete element, by their type
+ * - `on<event>` keys take a typed handler for that event
+ * - `style` accepts a cssText string
+ * - `data-*` / `aria-*` keys accept anything (stringified into attributes)
+ *
+ * Object literals get excess-property checking, so typos are compile errors.
+ */
+export type TagProps<E extends Element = HTMLElement> =
+  & { [K in WritableKeys<E> as K extends `on${string}` | symbol ? never : E[K] extends (...args: any[]) => any ? never : K]?: E[K] }
+  & { [K in keyof HTMLElementEventMap as `on${K}`]?: (e: HTMLElementEventMap[K]) => void }
+  & { style?: string }
+  & { [key: `data-${string}`]: unknown }
+  & { [key: `aria-${string}`]: unknown }
+  // Bar functions from matching this all-optional object type, so a mismatched
+  // ElementModifier can't sneak into Tag's argument union through it.
+  & { call?: never; apply?: never };
+
+/** Anything `Tag.*` accepts as an argument, typed to the element being built. */
+export type TagArg<E extends Element = HTMLElement> =
+  | Node
+  | string
+  | number
+  | ElementModifier<E>
+  | ComponentHandle<any>
+  | TagProps<E>
+  | null
+  | undefined
+  | false
+  | TagArg<E>[];
+
+/**
+ * Typed setter map for `Attr`. Each setter's return type records which
+ * elements it applies to, so misuse fails at the `Tag` call site:
+ * - `on<event>` keys take a typed handler and apply to any element
+ * - writable `HTMLElement` properties take that property's type, apply to any HTML element
+ * - element-specific properties (`value`, `disabled`, `href`, …) take the
+ *   property's type and only apply to elements that have it
+ * - `data-*` / `aria-*` keys take anything and apply anywhere
+ */
+export type AttrSetters =
+  & { [K in keyof HTMLElementEventMap as `on${K}`]: (handler: (e: HTMLElementEventMap[K]) => void) => ElementModifier<Element> }
+  & { [K in WritableKeys<HTMLElement> as K extends `on${string}` | symbol ? never : HTMLElement[K] extends (...args: any[]) => any ? never : K]:
+      (value: HTMLElement[K]) => ElementModifier<HTMLElement> }
+  & { [K in Exclude<KeysOfUnion<AnyHTMLElement>, keyof HTMLElement> as K extends `on${string}` | symbol ? never : ElementsWithProp<K>[K] extends (...args: any[]) => any ? never : K]:
+      (value: ElementsWithProp<K>[K]) => ElementModifier<ElementsWithProp<K>> }
+  & { [key: `data-${string}`]: (value: unknown) => ElementModifier<Element> }
+  & { [key: `aria-${string}`]: (value: unknown) => ElementModifier<Element> };
+
+/**
+ * Typed factory map for `Tag`: known HTML tag names return their concrete
+ * element type (`Tag.input(...)` → `HTMLInputElement`) and check their
+ * arguments against it; unknown tags (custom elements) return `HTMLElement`.
+ */
+export type TagFactories =
+  & { [K in keyof HTMLElementTagNameMap]: (...args: TagArg<HTMLElementTagNameMap[K]>[]) => HTMLElementTagNameMap[K] }
+  & Record<string, (...args: TagArg[]) => HTMLElement>;
+
+/** Duck-type check for a `ComponentHandle` passed as a `Tag` child. */
+const _isComponentHandle = (value: object): value is ComponentHandle<any> =>
+  'nodes' in value && 'update' in value && typeof (value as any).mount === 'function';
+
+const _applyProp = (el: any, key: string, value: unknown): void => {
+  if (/^on[a-z]/.test(key) && typeof value === 'function') {
+    el.addEventListener(key.slice(2).toLowerCase(), value as EventListener);
+  } else if (key in el) {
+    el[key] = value;
+  } else if (value === true) {
+    el.setAttribute(key, '');
+  } else if (value === false || value == null) {
+    el.removeAttribute(key);
+  } else {
+    el.setAttribute(key, String(value));
+  }
+};
+
+/**
+ * Curried attribute/property/listener modifiers for use with `Tag`.
+ * Any property access returns a `(value) => (el) => void` setter:
+ * - `on*` keys with a function value attach a listener (`Attr.onclick(fn)`)
+ * - keys that exist on the element set the property (`Attr.innerText('Hi')`)
+ * - anything else sets/removes an attribute (`true` → empty attr, `false`/null → removed)
+ *
+ * Typing: `on*` handlers, `HTMLElement` properties, AND element-specific
+ * properties are all type-checked (see {@link AttrSetters}). Element-specific
+ * setters carry their element constraint into `Tag` — `Tag.div(Attr.value('x'))`
+ * is a compile error because `<div>` has no `value`. `data-*`/`aria-*` accept
+ * anything. For attributes outside these groups, use `attr()` or `modify()`.
+ *
+ * @example
+ * Tag.button(
+ *   Attr.onclick(() => save()),
+ *   Attr.disabled(isSaving),
+ *   Attr.innerText('Save')
+ * )
+ */
+export const Attr = /* @__PURE__ */ new Proxy({} as AttrSetters, {
+  get: (_target, key: string) => (value: any): ElementModifier<Element> => (el) => _applyProp(el, key, value)
+});
+
+/** An element with an inline `style` (HTML or SVG). */
+type Styleable = HTMLElement | SVGElement;
+
+/** Writable string-valued CSS property names from CSSStyleDeclaration. */
+type StyleKeys = {
+  [K in keyof CSSStyleDeclaration]-?: K extends string
+    ? CSSStyleDeclaration[K] extends string ? K : never
+    : never
+}[keyof CSSStyleDeclaration];
+
+/**
+ * Curated literal unions for common enum-like CSS properties. These improve
+ * autocomplete; `(string & {})` keeps every valid CSS value accepted.
+ */
+interface CSSKnownValues {
+  display: 'none' | 'block' | 'inline' | 'inline-block' | 'flex' | 'inline-flex' | 'grid' | 'inline-grid' | 'contents' | 'flow-root';
+  position: 'static' | 'relative' | 'absolute' | 'fixed' | 'sticky';
+  overflow: 'visible' | 'hidden' | 'clip' | 'scroll' | 'auto';
+  textAlign: 'left' | 'right' | 'center' | 'justify' | 'start' | 'end';
+  justifyContent: 'flex-start' | 'flex-end' | 'center' | 'space-between' | 'space-around' | 'space-evenly' | 'start' | 'end' | 'stretch';
+  alignItems: 'flex-start' | 'flex-end' | 'center' | 'baseline' | 'stretch' | 'start' | 'end';
+  flexDirection: 'row' | 'row-reverse' | 'column' | 'column-reverse';
+  flexWrap: 'nowrap' | 'wrap' | 'wrap-reverse';
+  cursor: 'auto' | 'default' | 'pointer' | 'grab' | 'grabbing' | 'text' | 'move' | 'not-allowed' | 'wait' | 'crosshair';
+  pointerEvents: 'auto' | 'none';
+  userSelect: 'auto' | 'none' | 'text' | 'all';
+  visibility: 'visible' | 'hidden' | 'collapse';
+  whiteSpace: 'normal' | 'nowrap' | 'pre' | 'pre-wrap' | 'pre-line' | 'break-spaces';
+  boxSizing: 'content-box' | 'border-box';
+}
+
+/** The value type for a camelCase CSS property (autocomplete via CSSKnownValues). */
+type StyleValueFor<K> = (K extends keyof CSSKnownValues ? CSSKnownValues[K] | (string & {}) : string) | number | null;
+
+/**
+ * Properties whose numeric values are used as-is; all other numbers get `px`.
+ */
+const UNITLESS_PROPS = /* @__PURE__ */ new Set([
+  'opacity', 'zIndex', 'lineHeight', 'fontWeight', 'flex', 'flexGrow',
+  'flexShrink', 'order', 'zoom', 'scale', 'aspectRatio', 'columnCount',
+  'animationIterationCount', 'orphans', 'widows'
+]);
+
+/** Plain camelCase declarations plus `--custom-property` keys. */
+export type StyleDecls =
+  & { [K in StyleKeys]?: StyleValueFor<K> }
+  & { [key: `--${string}`]: string | number | null };
+
+/**
+ * Typed style object for `Style({...})` (inline styles):
+ * - camelCase keys are checked against `CSSStyleDeclaration` (typos are
+ *   compile errors via excess-property checking); common enum properties
+ *   get literal-union autocomplete
+ * - kebab-case and `--custom-property` keys are accepted as-is
+ * - numbers get `px` except for unitless properties (`opacity`, `zIndex`, …)
+ * - `null` removes the declaration
+ */
+export type StyleProps =
+  & StyleDecls
+  & { [key: `${string}-${string}`]: string | number | null }
+  // Bar functions from matching this all-optional object type (see TagProps).
+  & { call?: never; apply?: never };
+
+/**
+ * Nested style object for `Style.scope({...})`. In addition to declarations:
+ * - `'&...'` keys nest selectors; `&` is replaced by the generated class
+ *   (`'&:hover'`, `'& > li'`, `'&.active .child'`)
+ * - `'@...'` keys wrap in at-rules (`'@media (max-width: 600px)'`,
+ *   `'@layer utilities'`, `'@supports (display: grid)'`), nestable
+ */
+export type ScopedStyleProps =
+  & StyleDecls
+  & { [key: `${string}-${string}`]: string | number | null | ScopedStyleProps }
+  & { [key: `&${string}`]: ScopedStyleProps }
+  & { [key: `@${string}`]: ScopedStyleProps }
+  & { call?: never; apply?: never };
+
+/** Keyframe steps for `Style.keyframes`: `from`, `to`, or `'NN%'`. */
+export type KeyframesProps = { [K in 'from' | 'to' | `${number}%`]?: StyleDecls };
+
+/**
+ * The `Style` utility type: callable with one or more props objects (merged
+ * in order), property-accessed for a single curried declaration, plus
+ * `scope` (stylesheet rules behind a generated class) and `keyframes`.
+ */
+export type StyleSetters =
+  & ((...props: StyleProps[]) => ElementModifier<Styleable>)
+  & { [K in StyleKeys]: (value: StyleValueFor<K>) => ElementModifier<Styleable> }
+  & { [key: `--${string}`]: (value: string | number | null) => ElementModifier<Styleable> }
+  & {
+    /**
+     * Compiles nested rules into a shared stylesheet under a generated
+     * unique class and returns a modifier that adds the class. Supports
+     * `&` selector nesting, `@media`/`@supports`/`@layer` blocks, and
+     * custom properties. Injection happens lazily on first application
+     * (SSR-safe to create; requires a DOM to apply).
+     */
+    scope: (props: ScopedStyleProps) => ElementModifier<Element>;
+    /**
+     * Registers `@keyframes` in the shared stylesheet and returns the
+     * animation name (generated unless provided).
+     */
+    keyframes: (frames: KeyframesProps, name?: string) => string;
+  };
+
+const _kebabCase = (key: string): string => key.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
+
+/** Formats a declaration value: numbers get px unless the property is unitless. */
+const _styleValue = (key: string, value: string | number): string =>
+  typeof value === 'number' && value !== 0 && !UNITLESS_PROPS.has(key) && !key.startsWith('--')
+    ? `${value}px`
+    : String(value);
+
+const _applyStyle = (el: Styleable, key: string, value: string | number | null): void => {
+  // Kebab-case and custom properties go through setProperty; camelCase is a
+  // direct style-object assignment.
+  if (key.includes('-')) {
+    if (value == null) el.style.removeProperty(key);
+    else el.style.setProperty(key, _styleValue(key, value));
+  } else {
+    (el.style as any)[key] = value == null ? '' : _styleValue(key, value);
+  }
+};
+
+/** Serializes the flat declarations of a props object (ignores nested rules). */
+const _declsToCss = (props: Record<string, unknown>): string => {
+  let out = '';
+  for (const [k, v] of Object.entries(props)) {
+    if (v == null || typeof v === 'object') continue;
+    out += `${k.startsWith('--') ? k : _kebabCase(k)}:${_styleValue(k, v as string | number)};`;
+  }
+  return out;
+};
+
+/** Recursively serializes a scoped props object into CSS rules. */
+const _rulesToCss = (selector: string, props: Record<string, unknown>): string => {
+  const decls = _declsToCss(props);
+  let out = decls ? `${selector}{${decls}}` : '';
+  for (const [k, v] of Object.entries(props)) {
+    if (v == null || typeof v !== 'object') continue;
+    out += k.startsWith('@')
+      ? `${k}{${_rulesToCss(selector, v as Record<string, unknown>)}}`
+      : _rulesToCss(k.replace(/&/g, selector), v as Record<string, unknown>);
+  }
+  return out;
+};
+
+// Shared <style data-doeixd-dom> sheet. CSS is queued so `scope`/`keyframes`
+// can be *created* without a DOM; it flushes when a DOM is available.
+let _styleCounter = 0;
+let _pendingCss: string[] = [];
+let _styleEl: HTMLStyleElement | null = null;
+
+const _injectCss = (css: string): void => {
+  _pendingCss.push(css);
+  if (typeof document === 'undefined') return;
+  if (!_styleEl || !_styleEl.isConnected) {
+    _styleEl = document.createElement('style');
+    _styleEl.setAttribute('data-doeixd-dom', '');
+    document.head.appendChild(_styleEl);
+  }
+  _styleEl.appendChild(document.createTextNode(_pendingCss.join('')));
+  _pendingCss = [];
+};
+
+/**
+ * Curried, type-safe style modifiers for use with `Tag`.
+ *
+ * Inline styles:
+ * - `Style.color('red')` — property access returns a `(value) => modifier`
+ *   setter; names are checked against `CSSStyleDeclaration` (`Style.colr`
+ *   is a compile error) and common enum properties get value autocomplete.
+ * - `Style({ color: 'red' }, { opacity: 0.5 })` — callable with typed
+ *   objects, merged left-to-right (composition); camelCase keys are
+ *   property-checked, kebab-case and `--custom` keys pass through
+ *   `setProperty`.
+ * - Numbers get `px` (`Style.width(200)` → `'200px'`) except unitless
+ *   properties (`opacity`, `zIndex`, `flex`, …). JS variables compose
+ *   naturally: `Style({ width: size, color: theme.accent })`.
+ * - `null` removes a declaration.
+ *
+ * Scoped styles — `Style.scope({...})` compiles nested rules into a shared
+ * stylesheet under a generated class and returns a modifier adding that
+ * class. Supports `&` nesting, `@media` / `@supports` / `@layer`, and
+ * custom properties:
+ *
+ * @example
+ * const card = Style.scope({
+ *   padding: 16,
+ *   '--accent': '#f00',
+ *   '&:hover': { backgroundColor: 'var(--accent)' },
+ *   '& > h2': { margin: 0 },
+ *   '@media (max-width: 600px)': { padding: 8 },
+ *   '@layer utilities': { '&.raised': { boxShadow: '0 2px 8px #0003' } }
+ * });
+ * const spin = Style.keyframes({ from: { rotate: '0deg' }, to: { rotate: '360deg' } });
+ * Tag.div(card, Style.animationName(spin), Style.animationDuration('1s'))
+ */
+export const Style = /* @__PURE__ */ (() => {
+  const styleFn = (...propsList: StyleProps[]): ElementModifier<Styleable> => (el) => {
+    propsList.forEach(props =>
+      Object.entries(props).forEach(([k, v]) => _applyStyle(el, k, v as string | number | null)));
+  };
+
+  (styleFn as StyleSetters).scope = (props: ScopedStyleProps): ElementModifier<Element> => {
+    const cls = `dom-s${++_styleCounter}`;
+    let injected = false;
+    return (el) => {
+      if (!injected) {
+        _injectCss(_rulesToCss('.' + cls, props as Record<string, unknown>));
+        injected = true;
+      }
+      el.classList.add(cls);
+    };
+  };
+
+  (styleFn as StyleSetters).keyframes = (frames: KeyframesProps, name?: string): string => {
+    const kfName = name ?? `dom-kf${++_styleCounter}`;
+    let body = '';
+    for (const [frame, decls] of Object.entries(frames)) {
+      if (!decls) continue;
+      body += `${frame}{${_declsToCss(decls as Record<string, unknown>)}}`;
+    }
+    _injectCss(`@keyframes ${kfName}{${body}}`);
+    return kfName;
+  };
+
+  return new Proxy(styleFn as StyleSetters, {
+    get: (target, key) => {
+      if (typeof key !== 'string' || key in target) return Reflect.get(target, key);
+      return (value: string | number | null): ElementModifier<Styleable> => (el) => _applyStyle(el, key, value);
+    }
+  });
+})();
+
+/**
+ * Hyperscript element factory with a modifier-based calling convention.
+ * `Tag.div(...args)` creates a `<div>`; each argument is discriminated by type:
+ * - `Node` / string / number → appended as a child
+ * - a `ComponentHandle` → its rendered nodes are appended (component composition)
+ * - function → treated as an `ElementModifier` and called with the element (see `Attr`)
+ * - plain object → props (same semantics as `Attr`, key by key)
+ * - `null` / `undefined` / `false` / arrays → skipped / flattened
+ *
+ * Known tag names return their concrete element type (`Tag.input()` is an
+ * `HTMLInputElement`); unknown tags (custom elements) return `HTMLElement`.
+ *
+ * Complements `h` (props-first). Prefer `Tag` + `Attr` for the curried,
+ * composition-friendly style used by `component`.
+ *
+ * @example
+ * Tag.div(
+ *   Tag.button(Attr.onclick(inc), Attr.innerText('Inc')),
+ *   Tag.span({ className: 'count', innerText: count })
+ * )
+ */
+export const Tag = /* @__PURE__ */ new Proxy({} as TagFactories, {
+  get: (_target, tag: string) => {
+    if (!/^[a-z][a-z0-9-]*$/i.test(tag)) {
+      throw new Error(`Tag: Invalid tag name "${tag}"`);
+    }
+    return (...args: TagArg[]): HTMLElement => {
+      const el = document.createElement(tag);
+      const apply = (arg: TagArg): void => {
+        if (arg == null || arg === false) return;
+        if (Array.isArray(arg)) { arg.forEach(apply); return; }
+        if (arg instanceof Node) { el.append(arg); return; }
+        if (typeof arg === 'function') { arg(el); return; }
+        if (typeof arg === 'object') {
+          if (_isComponentHandle(arg)) { el.append(...arg.nodes); return; }
+          Object.entries(arg).forEach(([k, v]) => _applyProp(el, k, v));
+          return;
+        }
+        el.append(String(arg));
+      };
+      args.forEach(apply);
+      return el;
+    };
+  }
+});
+
+/**
+ * Event map for a component: event name → `CustomEvent` detail type.
+ * Declare it as the second generic of `component` to get a typed
+ * `ctx.dispatch` and a typed `handle.on`.
+ *
+ * @example
+ * type CartEvents = { add: { id: string }; clear: undefined };
+ * const Cart = component<void, CartEvents>((ctx) => {
+ *   ctx.dispatch('add', { id: 'x' }); // typed detail
+ *   return () => Tag.div();
+ * });
+ * Cart().on('add', e => e.detail.id); // e: CustomEvent<{ id: string }>
+ */
+export type ComponentEvents = Record<string, unknown>;
+
+/**
+ * Context passed to a `component` setup function.
+ */
+export type ComponentCtx<Events extends ComponentEvents = ComponentEvents> = {
+  /** The component's event bus. Dispatch/listen for component-level events. */
+  target: EventTarget;
+  /** Aborted when the component is destroyed. Pass to listeners/fetches for auto-cleanup. */
+  signal: AbortSignal;
+  /**
+   * Queue a re-render. Batched: multiple calls in the same task collapse into
+   * one render on the next microtask. No-op after destroy.
+   */
+  update: () => void;
+  /**
+   * Wraps a handler so it runs, then calls `update()` — sugar for the common
+   * "mutate state, re-render" pattern.
+   *
+   * @example Attr.onclick(ctx.event(() => count += 1))
+   */
+  event: <A extends any[], R>(fn: (...args: A) => R) => (...args: A) => R;
+  /**
+   * Dispatches a CustomEvent on the component's event bus. Typed by the
+   * component's event map: `dispatch('add', detail)` requires the declared
+   * detail type for `'add'`.
+   */
+  dispatch: <K extends keyof Events & string>(
+    type: K,
+    ...detail: undefined extends Events[K] ? [detail?: Events[K]] : [detail: Events[K]]
+  ) => boolean;
+  /**
+   * Listens on the component's event bus with a typed CustomEvent. The
+   * listener is removed automatically on destroy; the returned function
+   * removes it earlier.
+   */
+  on: <K extends keyof Events & string>(
+    type: K,
+    handler: (e: CustomEvent<Events[K]>) => void
+  ) => Unsubscribe;
+  /** The nodes currently rendered in the DOM (empty before first render). */
+  readonly last: Node[];
+};
+
+/**
+ * A mounted functional component instance. Implements the EventTarget
+ * interface (delegating to the component's event bus).
+ */
+export type ComponentHandle<Events extends ComponentEvents = ComponentEvents> = {
+  /** The rendered top-level nodes. */
+  readonly nodes: Node[];
+  /** The first rendered node (convenience for single-root components). */
+  readonly el: HTMLElement | null;
+  /** Appends the component's nodes to a parent. Returns the instance for chaining. */
+  mount: (parent: Element) => ComponentHandle<Events>;
+  /** Queue a re-render (batched, microtask). */
+  update: () => void;
+  /** Aborts the component's signal and removes its nodes from the DOM. */
+  destroy: () => void;
+  /**
+   * Listens for a component event with a typed CustomEvent detail.
+   * Removed automatically on destroy; the returned function removes it earlier.
+   */
+  on: <K extends keyof Events & string>(
+    type: K,
+    handler: (e: CustomEvent<Events[K]>) => void
+  ) => Unsubscribe;
+  addEventListener: EventTarget['addEventListener'];
+  removeEventListener: EventTarget['removeEventListener'];
+  dispatchEvent: EventTarget['dispatchEvent'];
+};
+
+/**
+ * Creates a functional component factory. The setup function runs once per
+ * instance — component state lives in plain closure variables. It returns a
+ * render function producing the component's DOM (a Node or array of Nodes).
+ *
+ * Re-rendering is explicit: call `ctx.update()` (or wrap handlers in
+ * `ctx.event(...)` to update automatically). Updates are batched per
+ * microtask, and each render replaces the previously rendered nodes in place.
+ *
+ * @example
+ * const Counter = component((ctx) => {
+ *   let count = 0;
+ *   return () => Tag.div(
+ *     Tag.button(Attr.onclick(ctx.event(() => count += 1)), Attr.innerText('Inc')),
+ *     Tag.div(Attr.innerText(count)),
+ *     Tag.button({ onclick: ctx.event(() => count -= 1), innerText: 'Dec' })
+ *   );
+ * });
+ *
+ * const counter = Counter();
+ * counter.mount(document.body);
+ * counter.addEventListener('change', e => console.log(e));
+ * counter.destroy(); // aborts ctx.signal, removes nodes
+ */
+export const component = <P = void, Events extends ComponentEvents = ComponentEvents>(
+  setup: (ctx: ComponentCtx<Events>, props: P) => () => Node | Node[]
+) => {
+  return (props: P): ComponentHandle<Events> => {
+    const bus = new EventTarget();
+    const controller = new AbortController();
+    let last: Node[] = [];
+    let queued = false;
+    let render: () => Node | Node[];
+
+    const doRender = (): void => {
+      const out = render();
+      const nodes = (Array.isArray(out) ? out : [out]).filter(Boolean);
+      const anchor = last.find(n => n.parentNode);
+      if (anchor?.parentNode) {
+        const parent = anchor.parentNode;
+        const keep = new Set(nodes);
+        nodes.forEach(n => parent.insertBefore(n, anchor));
+        last.forEach(n => { if (!keep.has(n)) (n as ChildNode).remove(); });
+      }
+      last = nodes;
+    };
+
+    const update = (): void => {
+      if (controller.signal.aborted || queued) return;
+      queued = true;
+      queueMicrotask(() => {
+        queued = false;
+        if (!controller.signal.aborted) doRender();
+      });
+    };
+
+    const on = <K extends keyof Events & string>(
+      type: K,
+      handler: (e: CustomEvent<Events[K]>) => void
+    ): Unsubscribe => {
+      bus.addEventListener(type, handler as EventListener, { signal: controller.signal });
+      return () => bus.removeEventListener(type, handler as EventListener);
+    };
+
+    const ctx: ComponentCtx<Events> = {
+      target: bus,
+      signal: controller.signal,
+      update,
+      event: (fn) => (...args) => {
+        const result = fn(...args);
+        update();
+        return result;
+      },
+      dispatch: (type, ...[detail]) => bus.dispatchEvent(new CustomEvent(type, { detail })),
+      on,
+      get last() { return [...last]; }
+    };
+
+    render = setup(ctx, props);
+    doRender(); // Initial render is synchronous so nodes exist immediately.
+
+    const instance: ComponentHandle<Events> = {
+      get nodes() { return [...last]; },
+      get el() { return (last[0] as HTMLElement) ?? null; },
+      mount: (parent) => { parent.append(...last); return instance; },
+      on,
+      update,
+      destroy: () => {
+        controller.abort();
+        last.forEach(n => (n as ChildNode).remove());
+      },
+      addEventListener: (...args: Parameters<EventTarget['addEventListener']>) => bus.addEventListener(...args),
+      removeEventListener: (...args: Parameters<EventTarget['removeEventListener']>) => bus.removeEventListener(...args),
+      dispatchEvent: (event: Event) => bus.dispatchEvent(event)
+    };
+
+    return instance;
+  };
+};
+
+// =============================================================================
+// 44. ROUTING — TYPED PATH PATTERNS & ROUTER
+// =============================================================================
+
+/**
+ * Extracts the named parameters of a path pattern as an object type.
+ * `:name` segments become `string` keys; `*` becomes a `wildcard` key.
+ *
+ * @example
+ * type P = PathParams<'/users/:id/posts/:postId'>; // { id: string; postId: string }
+ */
+export type PathParams<P extends string> =
+  P extends `${infer _Start}:${infer Param}/${infer Rest}`
+    ? (Param extends `${infer Name}` ? { [K in Name]: string } : {}) & PathParams<`/${Rest}`>
+    : P extends `${infer _Start}:${infer Param}`
+      ? { [K in Param]: string }
+      : P extends `${infer _Start}*${infer _Rest}`
+        ? { wildcard: string }
+        : {};
+
+/** Compiled matcher for a single path pattern. */
+interface CompiledRoute {
+  pattern: string;
+  regex: RegExp;
+  keys: string[];
+}
+
+const _compileRoute = (pattern: string): CompiledRoute => {
+  const keys: string[] = [];
+  // Escape regex specials, then replace :param and * with capture groups.
+  const source = pattern
+    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/:([A-Za-z0-9_]+)/g, (_m, name) => { keys.push(name); return '([^/]+)'; })
+    .replace(/\*/g, () => { keys.push('wildcard'); return '(.*)'; });
+  return { pattern, regex: new RegExp(`^${source}/?$`), keys };
+};
+
+/**
+ * Matches a concrete path against a pattern, returning typed params or `null`.
+ * Param values are URI-decoded.
+ *
+ * @example
+ * matchPath('/users/:id', '/users/42');       // { id: '42' }
+ * matchPath('/users/:id', '/posts/42');       // null
+ */
+export const matchPath = <P extends string>(pattern: P, path: string): PathParams<P> | null => {
+  const { regex, keys } = _compileRoute(pattern);
+  const m = regex.exec(path.split('?')[0]);
+  if (!m) return null;
+  const params: Record<string, string> = {};
+  keys.forEach((key, i) => { params[key] = decodeURIComponent(m[i + 1] ?? ''); });
+  return params as PathParams<P>;
+};
+
+/**
+ * Builds a concrete path from a pattern and its params. Every `:param` in the
+ * pattern is required and type-checked; values are URI-encoded. A missing or
+ * extra key is a compile error.
+ *
+ * @example
+ * buildPath('/users/:id/posts/:postId', { id: '42', postId: '7' }); // '/users/42/posts/7'
+ */
+export const buildPath = <P extends string>(
+  pattern: P,
+  ...args: keyof PathParams<P> extends never ? [] : [params: PathParams<P>]
+): string => {
+  const params = (args[0] ?? {}) as Record<string, string>;
+  return pattern
+    .replace(/:([A-Za-z0-9_]+)/g, (_m, name) => encodeURIComponent(params[name] ?? ''))
+    .replace(/\*/g, () => encodeURIComponent(params.wildcard ?? ''));
+};
+
+/** The context passed to a route handler when its pattern matches. */
+export interface RouteContext<P extends string> {
+  /** Typed path params extracted from the pattern (`:id` → `{ id: string }`). */
+  params: PathParams<P>;
+  /**
+   * Raw query params of the matched URL (last value per key). For typed,
+   * defaulted query values compose the codec layer:
+   * `parseQuery(schema, location.search)` or `History.readQuery(schema)`.
+   */
+  query: Record<string, string>;
+  /** The matched pathname. */
+  path: string;
+  /** Aborted when navigation moves away from this route (cancel in-flight loads). */
+  signal: AbortSignal;
+}
+
+/** A route handler: receives the match context, returns the view to mount. */
+export type RouteHandler<P extends string> =
+  (ctx: RouteContext<P>) => ComponentHandle | Node;
+
+/** A single `pattern → handler` route, produced by {@link route}. */
+export interface RouteEntry {
+  pattern: string;
+  handler: RouteHandler<any>;
+}
+
+/**
+ * Defines a single route, pairing a path pattern with a handler. The handler's
+ * `ctx.params` is typed from the pattern — `route('/users/:id', ({ params }) =>
+ * ...)` gives `params: { id: string }`. Use `'*'` as the catch-all pattern.
+ *
+ * @example
+ * route('/users/:id', ({ params, signal }) => UserPage({ id: params.id }))
+ */
+export const route = <const P extends string>(pattern: P, handler: RouteHandler<P>): RouteEntry =>
+  ({ pattern, handler });
+
+/** Options for `createRouter`. */
+export interface RouterOptions {
+  /**
+   * Intercept same-origin `<a>` clicks under this root and route them without
+   * a full page load. Pass `false` to disable, an element/selector to scope,
+   * or omit for `document`.
+   */
+  links?: boolean | Element | string;
+}
+
+/** A running router instance. Implements the EventTarget interface. */
+export interface Router {
+  /** Renders into `parent`, matching the current URL, and starts listening. */
+  mount: (parent: Element | string) => Router;
+  /** Navigates to a path (pushState) and re-matches. */
+  navigate: (path: string, mode?: 'push' | 'replace') => void;
+  /** Re-matches the current URL and re-renders (e.g. after external state change). */
+  resolve: () => void;
+  /** The currently matched pathname. */
+  readonly current: string;
+  /** Stops listening, destroys the active route, and cleans up. */
+  destroy: () => void;
+  /** Fires `'change'` (CustomEvent<{ path: string }>) after each navigation. */
+  addEventListener: EventTarget['addEventListener'];
+  removeEventListener: EventTarget['removeEventListener'];
+  dispatchEvent: EventTarget['dispatchEvent'];
+}
+
+/**
+ * Creates a client-side router over the primitives above: typed path matching
+ * (`matchPath`), the query codec layer (`Query`/`parseQuery`), History, and
+ * `component`/`ComponentHandle` lifecycle.
+ *
+ * Each route handler returns a view (a `ComponentHandle` or a `Node`). On
+ * navigation the router destroys the previous route's component, mounts the
+ * new one, and fires a `'change'` event. Same-origin link clicks are
+ * intercepted by default; `popstate` (back/forward) is handled automatically.
+ * Each handler gets an `AbortSignal` that fires when navigation moves on, so
+ * in-flight route loads can cancel themselves. Path params are typed per route
+ * via {@link route}; for typed query values, compose the `Query` codec layer
+ * inside a handler.
+ *
+ * @example
+ * const router = createRouter([
+ *   route('/',           () => Home()),
+ *   route('/users/:id',  ({ params }) => UserPage({ id: params.id })),
+ *   route('*',           () => NotFound())
+ * ]);
+ *
+ * router.mount('#app');
+ * router.navigate('/users/42');
+ * router.addEventListener('change', e => console.log((e as CustomEvent).detail.path));
+ */
+export const createRouter = (
+  routes: RouteEntry[],
+  options: RouterOptions = {}
+): Router => {
+  const bus = new EventTarget();
+  const compiled = routes
+    .filter(r => r.pattern !== '*')
+    .map(r => ({ route: _compileRoute(r.pattern), handler: r.handler }));
+  const fallback = routes.find(r => r.pattern === '*')?.handler;
+
+  let parentEl: Element | null = null;
+  let activeHandle: ComponentHandle | null = null;
+  let activeNodes: Node[] = [];
+  let navController: AbortController | null = null;
+  let currentPath = '';
+  let linkCleanup: Unsubscribe | null = null;
+  let popCleanup: Unsubscribe | null = null;
+
+  const clearActive = (): void => {
+    if (activeHandle) activeHandle.destroy();
+    else activeNodes.forEach(n => (n as ChildNode).remove());
+    activeHandle = null;
+    activeNodes = [];
+  };
+
+  const resolve = (): void => {
+    if (!parentEl) return;
+    const path = window.location.pathname;
+    currentPath = path;
+
+    // Abort the previous route's in-flight work.
+    navController?.abort();
+    navController = new AbortController();
+
+    let matched: { params: Record<string, string>; handler: RouteHandler<any> } | null = null;
+    for (const { route: compiledRoute, handler } of compiled) {
+      const m = compiledRoute.regex.exec(path);
+      if (m) {
+        const params: Record<string, string> = {};
+        compiledRoute.keys.forEach((key, i) => { params[key] = decodeURIComponent(m[i + 1] ?? ''); });
+        matched = { params, handler };
+        break;
+      }
+    }
+
+    const handler = matched?.handler ?? fallback;
+    if (!handler) { clearActive(); return; }
+
+    const query = Object.fromEntries(new URLSearchParams(window.location.search));
+
+    const view = handler({
+      params: (matched?.params ?? {}) as any,
+      query,
+      path,
+      signal: navController.signal
+    });
+
+    clearActive();
+    if (view && typeof (view as ComponentHandle).mount === 'function' && 'nodes' in (view as ComponentHandle)) {
+      activeHandle = view as ComponentHandle;
+      activeHandle.mount(parentEl);
+    } else {
+      activeNodes = [view as Node];
+      parentEl.append(view as Node);
+    }
+
+    bus.dispatchEvent(new CustomEvent('change', { detail: { path } }));
+  };
+
+  const navigate = (path: string, mode: 'push' | 'replace' = 'push'): void => {
+    History[mode](path);
+    resolve();
+  };
+
+  const router: Router = {
+    mount: (parent) => {
+      parentEl = typeof parent === 'string' ? find(document)(parent) : parent;
+
+      // Intercept same-origin link clicks.
+      if (options.links !== false) {
+        const root = typeof options.links === 'string'
+          ? find(document)(options.links)
+          : options.links instanceof Element ? options.links : document;
+        if (root) {
+          linkCleanup = onDelegated(root as ParentNode, 'a[href]', 'click', (e, a) => {
+            const href = a.getAttribute('href') || '';
+            // Skip modified clicks, new tabs, external/hash links.
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            const targetAttr = a.getAttribute('target');
+            if (targetAttr && targetAttr !== '_self') return;
+            if (/^([a-z]+:)?\/\//i.test(href) || href.startsWith('#') || href.startsWith('mailto:')) return;
+            e.preventDefault();
+            navigate(href);
+          });
+        }
+      }
+
+      popCleanup = History.onPop(() => resolve());
+      resolve();
+      return router;
+    },
+    navigate,
+    resolve,
+    get current() { return currentPath; },
+    destroy: () => {
+      navController?.abort();
+      linkCleanup?.();
+      popCleanup?.();
+      clearActive();
+      parentEl = null;
+    },
+    addEventListener: (...args: Parameters<EventTarget['addEventListener']>) => bus.addEventListener(...args),
+    removeEventListener: (...args: Parameters<EventTarget['removeEventListener']>) => bus.removeEventListener(...args),
+    dispatchEvent: (event: Event) => bus.dispatchEvent(event)
+  };
+
+  return router;
+};

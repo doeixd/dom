@@ -79,7 +79,7 @@ if (btn) {
 
 ### Advanced & Utilities
 - [Fluent Wrapper ($)](28-fluent.md): `$`
-- [Components](29-components.md): `component`, `$$`, `defineComponent`, `mountComponent`
+- [Components](29-components.md): `refsOf`, `$$`, `enhance`, `spawn`
 - [Store](30-store.md): `store`
 - [Forms](31-forms.md): `Input`, `form`
 - [Event Helpers](32-event-helpers.md): `Evt`
@@ -88,10 +88,12 @@ if (btn) {
 - [View Transitions](35-view-transitions.md): `ViewTransitions`
 - [Async](36-async.md): `Async`
 - [Queue](37-queue.md): `createQueue`
-- [History](38-history.md): `History`
+- [History & URL State](38-history.md): `History`, `Query`, `parseQuery`, `serializeQuery`, `encodeQueryParams`
 - [Error Handling](39-error-handling.md): `Result`
 - [Option](40-option.md): `Option`
 - [Reactive](41-reactive.md): `bind`, `createStore`
 - [View](42-view.md): `view`, `binder`, `bindEvents`, `apply`
 - [Functional](43-functional.md): `Fn`, `chain`, `exec`
 - [Signals Update](44-signals-update.md): `createUpdateAfter`
+- [Functional Components](49-component.md): `component`, `Tag`, `Attr`, `Style`
+- [Routing](50-routing.md): `createRouter`, `route`, `matchPath`, `buildPath`, `PathParams`
