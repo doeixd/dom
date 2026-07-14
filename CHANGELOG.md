@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.8](https://github.com/doeixd/dom/compare/v0.0.7...v0.0.8) (2026-07-14)
+
+
+### Features
+
+* add priority and cancellation support to createQueue ([1a31743](https://github.com/doeixd/dom/commit/1a317436ed54d362cc47d291a269fe4c38c3cb4f))
+* add watch helpers and cls aliases ([b18de2f](https://github.com/doeixd/dom/commit/b18de2f06c3d5683006550484035bc7a0f3c2ff2))
+
+
+### Bug Fixes
+
+* stabilize signals module exports ([648e615](https://github.com/doeixd/dom/commit/648e615d65230096c3e7e58c09c484228ea6bea8))
+
 ### [0.0.7](https://github.com/doeixd/dom/compare/v0.0.6...v0.0.7) (2026-01-14)
 
 
