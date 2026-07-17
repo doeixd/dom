@@ -16564,15 +16564,48 @@ export type Reconciler = (from: Element, to: Element) => void;
 const _morphKey = (n: Node): string | null =>
   n instanceof Element ? (n.getAttribute('data-key') ?? (n.id ? `#${n.id}` : null)) : null;
 
+/**
+ * Indices of a longest increasing subsequence of `arr` (O(n log n), patience
+ * sorting with predecessor links). Negative entries never participate.
+ */
+const _lisIndices = (arr: number[]): Set<number> => {
+  const tails: number[] = []; // indices into arr; arr[tails[j]] is the smallest tail of an IS of length j+1
+  const prev = new Array<number>(arr.length).fill(-1);
+  for (let i = 0; i < arr.length; i++) {
+    const v = arr[i];
+    if (v < 0) continue;
+    let lo = 0, hi = tails.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (arr[tails[mid]] < v) lo = mid + 1;
+      else hi = mid;
+    }
+    if (lo > 0) prev[i] = tails[lo - 1];
+    tails[lo] = i;
+  }
+  const result = new Set<number>();
+  let k = tails.length > 0 ? tails[tails.length - 1] : -1;
+  while (k >= 0) {
+    result.add(k);
+    k = prev[k];
+  }
+  return result;
+};
+
 const _morphChildren = (from: Element, to: Element): void => {
+  const oldChildren = Array.from(from.childNodes);
+  const oldIndexOf = new Map<Node, number>();
+  oldChildren.forEach((n, i) => oldIndexOf.set(n, i));
   const fromKeyed = new Map<string, Element>();
   for (const c of Array.from(from.children)) {
     const k = _morphKey(c);
     if (k) fromKeyed.set(k, c);
   }
-  const unmatched = new Set<Node>(Array.from(from.childNodes));
-  let cursor: Node | null = from.firstChild;
+  const unmatched = new Set<Node>(oldChildren);
 
+  // Match phase: resolve each new child to the node that will represent it —
+  // a morphed old node (with its old position) or an adopted fresh node.
+  const resolved: { node: Node; oldIndex: number }[] = [];
   for (const tc of Array.from(to.childNodes)) {
     // Find the old node this new node corresponds to: by key, else the first
     // unmatched old node of the same kind (and not reserved by another key).
@@ -16593,7 +16626,6 @@ const _morphChildren = (from: Element, to: Element): void => {
       }
     }
 
-    let node: Node;
     if (match) {
       unmatched.delete(match);
       if (tc instanceof Element) {
@@ -16601,19 +16633,27 @@ const _morphChildren = (from: Element, to: Element): void => {
       } else if (match.nodeValue !== tc.nodeValue) {
         match.nodeValue = tc.nodeValue;
       }
-      node = match;
+      resolved.push({ node: match, oldIndex: oldIndexOf.get(match)! });
     } else {
-      node = tc; // adopt the fresh node (also covers kept-alive child nodes)
-    }
-
-    if (node === cursor) {
-      cursor = cursor.nextSibling;
-    } else {
-      from.insertBefore(node, cursor);
+      // Adopt the fresh node (also covers kept-alive child nodes).
+      resolved.push({ node: tc, oldIndex: -1 });
     }
   }
 
+  // Remove dropped nodes first so they can't sit between positioned ones.
   unmatched.forEach(n => (n as ChildNode).remove());
+
+  // Position phase, minimal moves: matched nodes whose old indices form a
+  // longest increasing subsequence are already in the right relative order
+  // and stay put; everything else (including adopted nodes) is inserted
+  // before the previously placed node, walking right to left.
+  const stable = _lisIndices(resolved.map(r => r.oldIndex));
+  let anchor: Node | null = null;
+  for (let i = resolved.length - 1; i >= 0; i--) {
+    const { node } = resolved[i];
+    if (!stable.has(i)) from.insertBefore(node, anchor);
+    anchor = node;
+  }
 };
 
 /**
@@ -16628,6 +16668,9 @@ const _morphChildren = (from: Element, to: Element): void => {
  * - children match by `data-key` (or `id`) when present, else pairwise by
  *   node type and tag; matched elements recurse, everything else is
  *   adopted/removed. Give list items a `data-key` to survive reordering.
+ * - reordering performs the minimal number of DOM moves: nodes on the
+ *   longest increasing subsequence of old positions stay put (so moving one
+ *   item to the front of an n-item list is one move, not n).
  *
  * Unmatched new nodes are adopted as-is, which is what keeps `ctx.child`
  * subtrees untouched. For fancier diffing (e.g. idiomorph), supply your own

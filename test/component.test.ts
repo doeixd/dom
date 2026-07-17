@@ -912,3 +912,99 @@ describe('type inference', () => {
     expect(true).toBe(true);
   });
 });
+
+describe('morph minimal moves (LIS)', () => {
+  const makeList = (ids: () => number[]) =>
+    component(() => {
+      return () => Tag.ul(ids().map(id => Tag.li({ 'data-key': id, innerText: `item-${id}` })));
+    }, { reconcile: morph });
+
+  const idsAfter = () =>
+    Array.from(document.body.querySelectorAll('li')).map(l => Number(l.getAttribute('data-key')));
+
+  it('moving one item to the front is a single DOM move', async () => {
+    let ids = [1, 2, 3, 4, 5];
+    const c = makeList(() => ids)().mount(document.body);
+    const ul = c.el as HTMLUListElement;
+    const nodesBefore = new Map(idsAfter().map((id, i) => [id, ul.children[i]]));
+
+    const moves = vi.spyOn(ul, 'insertBefore');
+    ids = [5, 1, 2, 3, 4];
+    c.update();
+    await flush();
+
+    expect(idsAfter()).toEqual([5, 1, 2, 3, 4]);
+    expect(moves).toHaveBeenCalledTimes(1);          // only item 5 moved
+    expect(moves.mock.calls[0][0]).toBe(nodesBefore.get(5)); // and it was item 5
+    ids.forEach((id, i) => expect(ul.children[i]).toBe(nodesBefore.get(id))); // identity kept
+    c.destroy();
+    moves.mockRestore();
+  });
+
+  it('swapping adjacent items is a single move', async () => {
+    let ids = [1, 2, 3];
+    const c = makeList(() => ids)().mount(document.body);
+    const ul = c.el as HTMLUListElement;
+
+    const moves = vi.spyOn(ul, 'insertBefore');
+    ids = [2, 1, 3];
+    c.update();
+    await flush();
+
+    expect(idsAfter()).toEqual([2, 1, 3]);
+    expect(moves).toHaveBeenCalledTimes(1);
+    c.destroy();
+    moves.mockRestore();
+  });
+
+  it('an unchanged list performs zero moves', async () => {
+    const ids = [1, 2, 3, 4];
+    const c = makeList(() => ids)().mount(document.body);
+    const ul = c.el as HTMLUListElement;
+
+    const moves = vi.spyOn(ul, 'insertBefore');
+    c.update();
+    await flush();
+
+    expect(idsAfter()).toEqual([1, 2, 3, 4]);
+    expect(moves).not.toHaveBeenCalled();
+    c.destroy();
+    moves.mockRestore();
+  });
+
+  it('reversal still reorders correctly with n-1 moves', async () => {
+    let ids = [1, 2, 3, 4, 5];
+    const c = makeList(() => ids)().mount(document.body);
+    const ul = c.el as HTMLUListElement;
+    const nodesBefore = new Map(idsAfter().map((id, i) => [id, ul.children[i]]));
+
+    const moves = vi.spyOn(ul, 'insertBefore');
+    ids = [5, 4, 3, 2, 1];
+    c.update();
+    await flush();
+
+    expect(idsAfter()).toEqual([5, 4, 3, 2, 1]);
+    expect(moves).toHaveBeenCalledTimes(4);          // minimal for a full reverse
+    ids.forEach((id, i) => expect(ul.children[i]).toBe(nodesBefore.get(id)));
+    c.destroy();
+    moves.mockRestore();
+  });
+
+  it('mixed insert + remove + reorder settles correctly', async () => {
+    let ids = [1, 2, 3, 4];
+    const c = makeList(() => ids)().mount(document.body);
+    const ul = c.el as HTMLUListElement;
+    const nodesBefore = new Map(idsAfter().map((id, i) => [id, ul.children[i]]));
+
+    ids = [4, 6, 2, 5, 1]; // drop 3, add 5+6, shuffle the rest
+    c.update();
+    await flush();
+
+    expect(idsAfter()).toEqual([4, 6, 2, 5, 1]);
+    for (const kept of [1, 2, 4]) {
+      const el = ul.querySelector(`[data-key="${kept}"]`);
+      expect(el).toBe(nodesBefore.get(kept));        // survivors keep identity
+    }
+    c.destroy();
+  });
+});
