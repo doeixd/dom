@@ -491,6 +491,12 @@ export interface BindPrimitives {
  * 
  * @internal
  */
+/**
+ * A renderable child for `el`/`h`: nodes and strings render; `null`,
+ * `undefined`, and `false` are skipped (conditional rendering).
+ */
+export type HChild = string | Node | null | undefined | false;
+
 const _nodes = (args: any[]): Node[] =>
   args.flat()
     .filter(x => x != null && x !== false)
@@ -1896,17 +1902,17 @@ export function createWebComponent(
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   props: ElementProps,
-  children: (string | Node)[]
+  children: HChild[]
 ): HTMLElementTagNameMap[K];
 
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K
-): (props?: ElementProps) => (children?: (string | Node)[]) => HTMLElementTagNameMap[K];
+): (props?: ElementProps) => (children?: HChild[]) => HTMLElementTagNameMap[K];
 
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   props?: ElementProps,
-  children?: (string | Node)[]
+  children?: HChild[]
 ): any {
   // Hyperscript-style: el(tag, props, children)
   if (props !== undefined && children !== undefined) {
@@ -1918,7 +1924,7 @@ export function el<K extends keyof HTMLElementTagNameMap>(
 
   // Curried syntax: el(tag)(props)(children)
   return (propsArg: ElementProps = {}) => {
-    return (childrenArg: (string | Node)[] = []): HTMLElementTagNameMap[K] => {
+    return (childrenArg: HChild[] = []): HTMLElementTagNameMap[K] => {
       const node = document.createElement(tag);
       modify(node)(propsArg);
       node.append(..._nodes(childrenArg));
@@ -2115,7 +2121,7 @@ const svgElementTags = new Set<string>([
  * console.log(formRefs.name, formRefs.email, formRefs.submit);
  * ```
  */
-export const h = /* @__PURE__ */ new Proxy({} as Record<string, (props?: HElementProps, children?: (string | Node)[]) => HTMLElement>, {
+export const h = /* @__PURE__ */ new Proxy({} as Record<string, (props?: HElementProps, children?: HChild[]) => HTMLElement>, {
   get(_target, tag: string) {
     if (typeof tag !== 'string') return undefined;
 
@@ -5380,7 +5386,7 @@ export const groupRefs = (root: ParentNode | null): Record<string, HTMLElement[]
  * });
  * ```
  */
-export function viewRefs<R extends Record<string, HTMLElement>>(
+export function viewRefs<R extends { [K in keyof R]: HTMLElement }>(
   templateFactory: (ctx: ViewRefsContext<R>) => HTMLElement
 ) {
   return (options?: ViewRefsOptions): ViewRefsInstance<R> => {
@@ -11798,16 +11804,18 @@ export const bind = {
   },
 
   /**
-   * Binds to an element property.
+   * Binds to an element property. Accepts any property that exists on some
+   * HTML element (`disabled`, `checked`, `readOnly`, `value`, …), typed by
+   * that property's type.
    * @example bind.prop('disabled')(button)
    */
-  prop: <K extends keyof HTMLElement>(propName: K, el?: HTMLElement | null) => {
-    const createSetter = (target: HTMLElement | null): Setter<HTMLElement[K]> => {
+  prop: <K extends KeysOfUnion<AnyHTMLElement>>(propName: K, el?: HTMLElement | null) => {
+    const createSetter = (target: HTMLElement | null): Setter<ElementsWithProp<K>[K]> => {
       let current: any;
-      return (value: HTMLElement[K]) => {
+      return (value: ElementsWithProp<K>[K]) => {
         if (!target || current === value) return;
         current = value;
-        target[propName] = value;
+        (target as any)[propName] = value;
       };
     };
     return el !== undefined ? createSetter(el) : createSetter;
@@ -11937,7 +11945,9 @@ export const bind = {
  * ui({ submitBtn: true }); // Only updates submit button
  * ```
  */
-export function createBinder<R extends Record<string, HTMLElement>>(
+// Mapped constraint (not Record<string, ...>) so interfaces without index
+// signatures are accepted.
+export function createBinder<R extends { [K in keyof R]: HTMLElement }>(
   refsObj: R,
   schema?: Partial<BinderSchema<R>>
 ): EnhancedBinder<R> {
