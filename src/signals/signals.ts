@@ -691,28 +691,27 @@ export function effect(
   
   let cleanup: Unsubscribe | void;
   let deps = new Set<SignalImpl<any>>();
-  let cleanups: Unsubscribe[] = [];
   let disposed = false;
 
   const run = () => {
     if (disposed) return;
-    
-    // Cleanup previous run
+
+    // Cleanup previous run (user cleanup only — dep subscriptions persist
+    // across runs and are diffed below; tearing them down here would leave
+    // the effect unsubscribed whenever the dependency set is unchanged).
     cleanup?.();
-    cleanups.forEach(fn => fn());
-    cleanups = [];
-    
+
     // Track new dependencies
     const prevEffect = activeEffect;
     const newDeps = new Set<SignalImpl<any>>();
     activeEffect = newDeps;
-    
+
     try {
       cleanup = fn();
     } finally {
       activeEffect = prevEffect;
     }
-    
+
     // Update subscriptions if dependencies changed
     if (!setsEqual(deps, newDeps)) {
       // Unsubscribe from old deps
@@ -721,15 +720,14 @@ export function effect(
           dep.removeEventListener('change', run);
         }
       });
-      
+
       // Subscribe to new deps
       newDeps.forEach(dep => {
         if (!deps.has(dep)) {
           dep.addEventListener('change', run);
-          cleanups.push(() => dep.removeEventListener('change', run));
         }
       });
-      
+
       deps = newDeps;
     }
   };
@@ -741,7 +739,6 @@ export function effect(
   return () => {
     disposed = true;
     cleanup?.();
-    cleanups.forEach(fn => fn());
     deps.forEach(dep => dep.removeEventListener('change', run));
     deps.clear();
   };
