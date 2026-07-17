@@ -7653,14 +7653,40 @@ var _morphKey = (n) => {
   var _a;
   return n instanceof Element ? (_a = n.getAttribute("data-key")) != null ? _a : n.id ? `#${n.id}` : null : null;
 };
+var _lisIndices = (arr) => {
+  const tails = [];
+  const prev = new Array(arr.length).fill(-1);
+  for (let i = 0; i < arr.length; i++) {
+    const v = arr[i];
+    if (v < 0) continue;
+    let lo = 0, hi = tails.length;
+    while (lo < hi) {
+      const mid = lo + hi >> 1;
+      if (arr[tails[mid]] < v) lo = mid + 1;
+      else hi = mid;
+    }
+    if (lo > 0) prev[i] = tails[lo - 1];
+    tails[lo] = i;
+  }
+  const result = /* @__PURE__ */ new Set();
+  let k = tails.length > 0 ? tails[tails.length - 1] : -1;
+  while (k >= 0) {
+    result.add(k);
+    k = prev[k];
+  }
+  return result;
+};
 var _morphChildren = (from, to) => {
+  const oldChildren = Array.from(from.childNodes);
+  const oldIndexOf = /* @__PURE__ */ new Map();
+  oldChildren.forEach((n, i) => oldIndexOf.set(n, i));
   const fromKeyed = /* @__PURE__ */ new Map();
   for (const c of Array.from(from.children)) {
     const k = _morphKey(c);
     if (k) fromKeyed.set(k, c);
   }
-  const unmatched = new Set(Array.from(from.childNodes));
-  let cursor = from.firstChild;
+  const unmatched = new Set(oldChildren);
+  const resolved = [];
   for (const tc of Array.from(to.childNodes)) {
     let match = null;
     const k = tc[_COMPONENT_NODE] ? null : _morphKey(tc);
@@ -7677,7 +7703,6 @@ var _morphChildren = (from, to) => {
         }
       }
     }
-    let node;
     if (match) {
       unmatched.delete(match);
       if (tc instanceof Element) {
@@ -7685,17 +7710,19 @@ var _morphChildren = (from, to) => {
       } else if (match.nodeValue !== tc.nodeValue) {
         match.nodeValue = tc.nodeValue;
       }
-      node = match;
+      resolved.push({ node: match, oldIndex: oldIndexOf.get(match) });
     } else {
-      node = tc;
-    }
-    if (node === cursor) {
-      cursor = cursor.nextSibling;
-    } else {
-      from.insertBefore(node, cursor);
+      resolved.push({ node: tc, oldIndex: -1 });
     }
   }
   unmatched.forEach((n) => n.remove());
+  const stable = _lisIndices(resolved.map((r) => r.oldIndex));
+  let anchor = null;
+  for (let i = resolved.length - 1; i >= 0; i--) {
+    const { node } = resolved[i];
+    if (!stable.has(i)) from.insertBefore(node, anchor);
+    anchor = node;
+  }
 };
 var morph = (from, to) => {
   if (from === to) return;

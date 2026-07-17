@@ -10568,6 +10568,9 @@ export type Reconciler = (from: Element, to: Element) => void;
  * - children match by `data-key` (or `id`) when present, else pairwise by
  *   node type and tag; matched elements recurse, everything else is
  *   adopted/removed. Give list items a `data-key` to survive reordering.
+ * - reordering performs the minimal number of DOM moves: nodes on the
+ *   longest increasing subsequence of old positions stay put (so moving one
+ *   item to the front of an n-item list is one move, not n).
  *
  * Unmatched new nodes are adopted as-is, which is what keeps `ctx.child`
  * subtrees untouched. For fancier diffing (e.g. idiomorph), supply your own
