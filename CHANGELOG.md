@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.10](https://github.com/doeixd/dom/compare/v0.0.9...v0.0.10) (2026-07-17)
+
+
+### Features
+
+* **component:** keep-alive children, morphing updates, render lifecycle ([8192f15](https://github.com/doeixd/dom/commit/8192f151d188eaba651ae9420d7f1a60e3f99f90))
+
+
+### Bug Fixes
+
+* **css:** prevent NaN safety timeout in waitTransition ([7cd36cd](https://github.com/doeixd/dom/commit/7cd36cdd52feaa1709c6a5052856afe96857040e))
+* **types:** widen bind.prop, ref constraints, and h/el children ([811fcb5](https://github.com/doeixd/dom/commit/811fcb5a0fdb73c20b6d8af3bb8e421dd1b40614))
+
 ### [0.0.9](https://github.com/doeixd/dom/compare/v0.0.8...v0.0.9) (2026-07-14)
 
 
