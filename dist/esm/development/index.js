@@ -1529,8 +1529,8 @@ var waitTransition = (el2) => new Promise((resolve) => {
   el2.addEventListener("animationend", onEnd);
   requestAnimationFrame(() => {
     const s = getComputedStyle(el2);
-    const transitionDuration = parseFloat(s.transitionDuration) * 1e3;
-    const animationDuration = parseFloat(s.animationDuration) * 1e3;
+    const transitionDuration = (parseFloat(s.transitionDuration) || 0) * 1e3;
+    const animationDuration = (parseFloat(s.animationDuration) || 0) * 1e3;
     const maxDuration = Math.max(transitionDuration, animationDuration);
     if (maxDuration === 0) {
       onEnd();
@@ -6047,7 +6047,9 @@ var bind = {
     };
   },
   /**
-   * Binds to an element property.
+   * Binds to an element property. Accepts any property that exists on some
+   * HTML element (`disabled`, `checked`, `readOnly`, `value`, …), typed by
+   * that property's type.
    * @example bind.prop('disabled')(button)
    */
   prop: (propName, el2) => {
@@ -7487,9 +7489,24 @@ function isObject(value) {
   return typeof value === "object" && value !== null;
 }
 var _isComponentHandle = (value) => "nodes" in value && "update" in value && typeof value.mount === "function";
+var _COMPONENT_NODE = Symbol.for("doeixd.dom.componentNode");
+var LISTENERS = Symbol.for("doeixd.dom.listeners");
+var getTrackedListeners = (el2) => {
+  var _a;
+  return (_a = el2[LISTENERS]) != null ? _a : [];
+};
+var syncListeners = (target, source) => {
+  const previous = target[LISTENERS];
+  previous == null ? void 0 : previous.forEach(({ type, handler }) => target.removeEventListener(type, handler));
+  const next = getTrackedListeners(source).map((l) => ({ ...l }));
+  next.forEach(({ type, handler }) => target.addEventListener(type, handler));
+  target[LISTENERS] = next;
+};
 var _applyProp = (el2, key, value) => {
   if (/^on[a-z]/.test(key) && typeof value === "function") {
-    el2.addEventListener(key.slice(2).toLowerCase(), value);
+    const type = key.slice(2).toLowerCase();
+    el2.addEventListener(type, value);
+    (el2[LISTENERS] || (el2[LISTENERS] = [])).push({ type, handler: value });
   } else if (key in el2) {
     el2[key] = value;
   } else if (value === true) {
@@ -7616,7 +7633,10 @@ var Tag = /* @__PURE__ */ new Proxy({}, {
         }
         if (typeof arg === "object") {
           if (_isComponentHandle(arg)) {
-            el2.append(...arg.nodes);
+            arg.nodes.forEach((n) => {
+              n[_COMPONENT_NODE] = true;
+              el2.append(n);
+            });
             return;
           }
           Object.entries(arg).forEach(([k, v]) => _applyProp(el2, k, v));
@@ -7629,26 +7649,165 @@ var Tag = /* @__PURE__ */ new Proxy({}, {
     };
   }
 });
-var component = (setup) => {
+var _morphKey = (n) => {
+  var _a;
+  return n instanceof Element ? (_a = n.getAttribute("data-key")) != null ? _a : n.id ? `#${n.id}` : null : null;
+};
+var _morphChildren = (from, to) => {
+  const fromKeyed = /* @__PURE__ */ new Map();
+  for (const c of Array.from(from.children)) {
+    const k = _morphKey(c);
+    if (k) fromKeyed.set(k, c);
+  }
+  const unmatched = new Set(Array.from(from.childNodes));
+  let cursor = from.firstChild;
+  for (const tc of Array.from(to.childNodes)) {
+    let match = null;
+    const k = tc[_COMPONENT_NODE] ? null : _morphKey(tc);
+    if (!tc[_COMPONENT_NODE]) {
+      if (k !== null) {
+        const keyed = fromKeyed.get(k);
+        if (keyed && unmatched.has(keyed)) match = keyed;
+      } else {
+        for (const fc of unmatched) {
+          if (fc.nodeType === tc.nodeType && fc.nodeName === tc.nodeName && _morphKey(fc) === null) {
+            match = fc;
+            break;
+          }
+        }
+      }
+    }
+    let node;
+    if (match) {
+      unmatched.delete(match);
+      if (tc instanceof Element) {
+        morph(match, tc);
+      } else if (match.nodeValue !== tc.nodeValue) {
+        match.nodeValue = tc.nodeValue;
+      }
+      node = match;
+    } else {
+      node = tc;
+    }
+    if (node === cursor) {
+      cursor = cursor.nextSibling;
+    } else {
+      from.insertBefore(node, cursor);
+    }
+  }
+  unmatched.forEach((n) => n.remove());
+};
+var morph = (from, to) => {
+  if (from === to) return;
+  for (const a of Array.from(from.attributes)) {
+    if (!to.hasAttribute(a.name)) from.removeAttribute(a.name);
+  }
+  for (const a of Array.from(to.attributes)) {
+    if (from.getAttribute(a.name) !== a.value) from.setAttribute(a.name, a.value);
+  }
+  syncListeners(from, to);
+  for (const p of ["value", "checked", "selected"]) {
+    if (p in to && from[p] !== to[p]) from[p] = to[p];
+  }
+  _morphChildren(from, to);
+};
+var _DEV = typeof process === "undefined" || true;
+var _renderDepth = 0;
+var _childCreateDepth = 0;
+var _warnedSetups = _DEV ? /* @__PURE__ */ new WeakSet() : null;
+var component = (setup, options) => {
   return (props) => {
+    if (_DEV && _renderDepth > 0 && _childCreateDepth === 0 && !_warnedSetups.has(setup)) {
+      _warnedSetups.add(setup);
+      console.warn(
+        "[component] A component instance was created inside another component’s render function. It will be re-created from scratch on every parent render (state reset) and the previous instance is never destroyed — its ctx.signal never aborts, so intervals, fetches, and listeners leak. Keep it alive with ctx.child(key, () => MyComponent(...)) instead, or create it once in setup scope."
+      );
+    }
     const bus = new EventTarget();
     const controller = new AbortController();
     let last = [];
     let queued = false;
     let render;
+    const afterRenderFns = [];
+    const childCache = /* @__PURE__ */ new Map();
+    const pinnedChildren = /* @__PURE__ */ new Set();
+    let requestedChildren = null;
+    const child = (key, createOrFactory, ...rest) => {
+      const hasProps = rest.length > 0;
+      let entry = childCache.get(key);
+      if (!entry) {
+        _childCreateDepth++;
+        try {
+          entry = hasProps ? { handle: createOrFactory(rest[0]), props: rest[0] } : { handle: createOrFactory() };
+        } finally {
+          _childCreateDepth--;
+        }
+        childCache.set(key, entry);
+        if (!requestedChildren) pinnedChildren.add(key);
+      } else if (hasProps) {
+        const [nextProps, updateChild] = rest;
+        if (updateChild) {
+          updateChild(entry.handle, nextProps);
+        } else if (isObject(entry.props) && isObject(nextProps)) {
+          Object.assign(entry.props, nextProps);
+          entry.handle.update();
+        }
+      }
+      requestedChildren == null ? void 0 : requestedChildren.add(key);
+      return entry.handle;
+    };
     const doRender = () => {
-      const out = render();
+      var _a;
+      const requested = /* @__PURE__ */ new Set();
+      requestedChildren = requested;
+      const outerChildCreateDepth = _childCreateDepth;
+      _childCreateDepth = 0;
+      _renderDepth++;
+      let out;
+      try {
+        out = render();
+      } catch (err) {
+        if (options == null ? void 0 : options.onError) {
+          options.onError(err);
+          return;
+        }
+        throw err;
+      } finally {
+        _renderDepth--;
+        _childCreateDepth = outerChildCreateDepth;
+        requestedChildren = null;
+      }
+      for (const [key, entry] of childCache) {
+        if (!requested.has(key) && !pinnedChildren.has(key)) {
+          childCache.delete(key);
+          entry.handle.destroy();
+        }
+      }
       const nodes = (Array.isArray(out) ? out : [out]).filter(Boolean);
-      const anchor = last.find((n) => n.parentNode);
-      if (anchor == null ? void 0 : anchor.parentNode) {
-        const parent = anchor.parentNode;
-        const keep = new Set(nodes);
-        nodes.forEach((n) => parent.insertBefore(n, anchor));
+      const anchored = last.filter((n) => n.parentNode);
+      const parent = (_a = anchored[0]) == null ? void 0 : _a.parentNode;
+      if (parent) {
+        const reconcile = options == null ? void 0 : options.reconcile;
+        const final = !reconcile ? nodes : nodes.map((n, i) => {
+          const o = last[i];
+          if (o && o !== n && o.parentNode === parent && o instanceof Element && n instanceof Element && o.tagName === n.tagName && !nodes.includes(o)) {
+            reconcile(o, n);
+            return o;
+          }
+          return n;
+        });
+        const end = anchored[anchored.length - 1].nextSibling;
+        const keep = new Set(final);
+        final.forEach((n) => parent.insertBefore(n, end));
         last.forEach((n) => {
           if (!keep.has(n)) n.remove();
         });
+        last = final;
+      } else {
+        last = nodes;
       }
-      last = nodes;
+      afterRenderFns.forEach((fn) => fn([...last]));
+      bus.dispatchEvent(new CustomEvent("render"));
     };
     const update = () => {
       if (controller.signal.aborted || queued) return;
@@ -7673,6 +7832,14 @@ var component = (setup) => {
       },
       dispatch: (type, ...[detail]) => bus.dispatchEvent(new CustomEvent(type, { detail })),
       on: on2,
+      child,
+      afterRender: (fn) => {
+        afterRenderFns.push(fn);
+        return () => {
+          const i = afterRenderFns.indexOf(fn);
+          if (i >= 0) afterRenderFns.splice(i, 1);
+        };
+      },
       get last() {
         return [...last];
       }
@@ -7688,13 +7855,17 @@ var component = (setup) => {
         return (_a = last[0]) != null ? _a : null;
       },
       mount: (parent) => {
-        parent.append(...last);
+        const target = typeof parent === "string" ? document.querySelector(parent) : parent;
+        if (!target) throw new Error(`component.mount: target not found: ${parent}`);
+        target.append(...last);
         return instance;
       },
       on: on2,
       update,
       destroy: () => {
         controller.abort();
+        childCache.forEach((e) => e.handle.destroy());
+        childCache.clear();
         last.forEach((n) => n.remove());
       },
       addEventListener: (...args) => bus.addEventListener(...args),
@@ -7925,6 +8096,7 @@ export {
   findAll,
   focus,
   form,
+  getTrackedListeners,
   groupBy,
   groupRefs,
   h,
@@ -7940,6 +8112,7 @@ export {
   isVisible,
   matchPath,
   modify,
+  morph,
   mount,
   mountComponent,
   nextFrame,
@@ -7968,6 +8141,7 @@ export {
   spawn,
   store,
   stripListeners,
+  syncListeners,
   tags,
   tempStyle,
   throttle,

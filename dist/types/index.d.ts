@@ -404,6 +404,22 @@ export interface BindPrimitives {
     show(el: HTMLElement | null): Setter<boolean>;
 }
 /**
+ * Internal: Normalizes content into an array of Nodes.
+ *
+ * Handles:
+ * - Flattening nested arrays
+ * - Filtering out null/undefined/false
+ * - Converting strings to text nodes
+ * - Preserving existing Node instances
+ *
+ * @internal
+ */
+/**
+ * A renderable child for `el`/`h`: nodes and strings render; `null`,
+ * `undefined`, and `false` are skipped (conditional rendering).
+ */
+export type HChild = string | Node | null | undefined | false;
+/**
  * Hybrid Function Builder.
  * Creates a function that supports both Curried and Imperative usage.
  *
@@ -1251,8 +1267,8 @@ export declare function createWebComponent(options?: CreateWebComponentOptions):
  * const secondaryBtn = createButton({ class: { secondary: true } })(['Cancel']);
  * ```
  */
-export declare function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: ElementProps, children: (string | Node)[]): HTMLElementTagNameMap[K];
-export declare function el<K extends keyof HTMLElementTagNameMap>(tag: K): (props?: ElementProps) => (children?: (string | Node)[]) => HTMLElementTagNameMap[K];
+export declare function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: ElementProps, children: HChild[]): HTMLElementTagNameMap[K];
+export declare function el<K extends keyof HTMLElementTagNameMap>(tag: K): (props?: ElementProps) => (children?: HChild[]) => HTMLElementTagNameMap[K];
 /**
  * Creates an element from an HTML template string.
  *
@@ -1410,7 +1426,7 @@ export declare const clone: <T extends Node>(node: T | null) => (deep?: boolean)
  * console.log(formRefs.name, formRefs.email, formRefs.submit);
  * ```
  */
-export declare const h: Record<string, (props?: HElementProps, children?: (string | Node)[]) => HTMLElement>;
+export declare const h: Record<string, (props?: HElementProps, children?: HChild[]) => HTMLElement>;
 /**
  * Alias for `h` proxy. Provides alternative naming for hyperscript-style element creation.
  *
@@ -1428,7 +1444,7 @@ export declare const h: Record<string, (props?: HElementProps, children?: (strin
  * ]);
  * ```
  */
-export declare const tags: Record<string, (props?: HElementProps, children?: (string | Node)[]) => HTMLElement>;
+export declare const tags: Record<string, (props?: HElementProps, children?: HChild[]) => HTMLElement>;
 /**
  * Utilities for manipulating CSS classes on elements.
  *
@@ -3697,7 +3713,9 @@ export declare const groupRefs: (root: ParentNode | null) => Record<string, HTML
  * });
  * ```
  */
-export declare function viewRefs<R extends Record<string, HTMLElement>>(templateFactory: (ctx: ViewRefsContext<R>) => HTMLElement): (options?: ViewRefsOptions) => ViewRefsInstance<R>;
+export declare function viewRefs<R extends {
+    [K in keyof R]: HTMLElement;
+}>(templateFactory: (ctx: ViewRefsContext<R>) => HTMLElement): (options?: ViewRefsOptions) => ViewRefsInstance<R>;
 /**
  * Converts a color to a specific color space.
  *
@@ -7844,10 +7862,12 @@ export declare const bind: {
      */
     cssVar: (el: HTMLElement | null, varName: string) => (value: string | number) => void;
     /**
-     * Binds to an element property.
+     * Binds to an element property. Accepts any property that exists on some
+     * HTML element (`disabled`, `checked`, `readOnly`, `value`, …), typed by
+     * that property's type.
      * @example bind.prop('disabled')(button)
      */
-    prop: <K extends keyof HTMLElement>(propName: K, el?: HTMLElement | null) => ((target: HTMLElement | null) => Setter<HTMLElement[K]>) | Setter<HTMLElement[K]>;
+    prop: <K extends KeysOfUnion<AnyHTMLElement>>(propName: K, el?: HTMLElement | null) => ((target: HTMLElement | null) => Setter<ElementsWithProp<K>[K]>) | Setter<ElementsWithProp<K>[K]>;
     /**
      * Binds to multiple CSS classes with boolean toggles.
      * @example bind.classes(el)({ active: true, disabled: false })
@@ -7936,7 +7956,9 @@ export declare const bind: {
  * ui({ submitBtn: true }); // Only updates submit button
  * ```
  */
-export declare function createBinder<R extends Record<string, HTMLElement>>(refsObj: R, schema?: Partial<BinderSchema<R>>): EnhancedBinder<R>;
+export declare function createBinder<R extends {
+    [K in keyof R]: HTMLElement;
+}>(refsObj: R, schema?: Partial<BinderSchema<R>>): EnhancedBinder<R>;
 /**
  * Creates a lightweight, pure JavaScript observable store.
  * Unlike `store()`, this does NOT write to the DOM.
@@ -10214,6 +10236,30 @@ export type TagFactories = {
     [K in keyof HTMLElementTagNameMap]: (...args: TagArg<HTMLElementTagNameMap[K]>[]) => HTMLElementTagNameMap[K];
 } & Record<string, (...args: TagArg[]) => HTMLElement>;
 /**
+ * Listeners attached to an element via `Tag`/`Attr` (props objects and
+ * `Attr.on*` modifiers). Listeners added directly with `addEventListener`
+ * are not tracked. Intended for reconcilers — see {@link syncListeners}.
+ */
+export declare const getTrackedListeners: (el: Element) => ReadonlyArray<{
+    type: string;
+    handler: EventListener;
+}>;
+/**
+ * Makes `target`'s tracked listeners match `source`'s: removes every listener
+ * previously attached to `target` via `Tag`/`Attr`, then attaches `source`'s
+ * tracked listeners to `target`.
+ *
+ * This is the missing piece when morphing: a morph library keeps the *old*
+ * element (so focus/selection survive) and copies attributes from the new
+ * render — but listeners aren't attributes, so without this the old element
+ * keeps stale handlers and never receives conditionally-added ones. Call it
+ * from the morph hook (idiomorph `beforeNodeMorphed`, morphdom
+ * `onBeforeElUpdated`) or from a `reconcile` implementation.
+ *
+ * Untracked listeners (added directly with `addEventListener`) are left alone.
+ */
+export declare const syncListeners: (target: Element, source: Element) => void;
+/**
  * Curried attribute/property/listener modifiers for use with `Tag`.
  * Any property access returns a `(value) => (el) => void` setter:
  * - `on*` keys with a function value attach a listener (`Attr.onclick(fn)`)
@@ -10430,20 +10476,58 @@ export type ComponentCtx<Events extends ComponentEvents = ComponentEvents> = {
      * removes it earlier.
      */
     on: <K extends keyof Events & string>(type: K, handler: (e: CustomEvent<Events[K]>) => void) => Unsubscribe;
+    /**
+     * Keeps a child component instance alive across re-renders. `create` runs
+     * once per key; later renders return the cached handle, so the child's
+     * state and DOM survive parent updates (its nodes are simply re-appended).
+     *
+     * Lifecycle: a cached child whose key is not requested during a render is
+     * destroyed and evicted after that render. Children created outside a
+     * render pass (i.e. during setup) are pinned and never auto-evicted. All
+     * cached children are destroyed when the parent is destroyed.
+     *
+     * The factory form takes props and keeps them updatable: on a cache hit the
+     * `update` callback runs with the cached handle and the new props. When
+     * `update` is omitted and both old and new props are objects, the default
+     * shallow-assigns the new props into the object the child's setup received
+     * (setup closures read through it) and calls `handle.update()`.
+     *
+     * @example
+     * return () => Tag.ul(
+     *   todos.map(t => ctx.child(t.id, TodoItem, { todo: t }))
+     * );
+     */
+    child: {
+        <T extends ComponentHandle<any>>(key: string | number, create: () => T): T;
+        <T extends ComponentHandle<any>, P>(key: string | number, factory: (props: P) => T, props: NoInfer<P>, update?: (handle: T, props: NoInfer<P>) => void): T;
+    };
+    /**
+     * Registers a callback that runs after every render (including the initial
+     * one) with the freshly rendered nodes — for focus management, measuring,
+     * third-party init. Returns a function that unregisters it.
+     */
+    afterRender: (fn: (nodes: Node[]) => void) => Unsubscribe;
     /** The nodes currently rendered in the DOM (empty before first render). */
     readonly last: Node[];
 };
 /**
  * A mounted functional component instance. Implements the EventTarget
  * interface (delegating to the component's event bus).
+ *
+ * After every render the bus fires a `'render'` event (via
+ * `addEventListener('render', ...)`) — integrations can react to `nodes`
+ * changing in replace mode.
  */
 export type ComponentHandle<Events extends ComponentEvents = ComponentEvents> = {
     /** The rendered top-level nodes. */
     readonly nodes: Node[];
     /** The first rendered node (convenience for single-root components). */
     readonly el: HTMLElement | null;
-    /** Appends the component's nodes to a parent. Returns the instance for chaining. */
-    mount: (parent: Element) => ComponentHandle<Events>;
+    /**
+     * Appends the component's nodes to a parent (element or selector).
+     * Returns the instance for chaining. Throws if a selector matches nothing.
+     */
+    mount: (parent: Element | string) => ComponentHandle<Events>;
     /** Queue a re-render (batched, microtask). */
     update: () => void;
     /** Aborts the component's signal and removes its nodes from the DOM. */
@@ -10458,13 +10542,71 @@ export type ComponentHandle<Events extends ComponentEvents = ComponentEvents> = 
     dispatchEvent: EventTarget['dispatchEvent'];
 };
 /**
+ * Reconciles a re-render: morphs `from` (the element currently in the DOM)
+ * to match `to` (the freshly rendered element), preserving `from`'s identity
+ * so focus, selection, and scroll state survive. Adapt a morphing library:
+ *
+ * @example
+ * // idiomorph
+ * const reconcile: Reconciler = (from, to) => Idiomorph.morph(from, to, {
+ *   callbacks: { beforeNodeMorphed: (oldNode, newNode) => {
+ *     if (oldNode instanceof Element && newNode instanceof Element) syncListeners(oldNode, newNode);
+ *     return true;
+ *   }}
+ * });
+ */
+export type Reconciler = (from: Element, to: Element) => void;
+/**
+ * Built-in zero-dependency reconciler for `component({ reconcile: morph })`.
+ * Mutates `from` (the element in the DOM) to match `to` (the fresh render)
+ * while preserving node identity, so focus, selection, and scroll survive:
+ *
+ * - attributes are added/updated/removed to match `to`
+ * - listeners attached via `Tag`/`Attr` are synced ({@link syncListeners})
+ * - live form state (`value`, `checked`, `selected`) follows `to` — render
+ *   inputs controlled (set `value` every render) or they reset on morph
+ * - children match by `data-key` (or `id`) when present, else pairwise by
+ *   node type and tag; matched elements recurse, everything else is
+ *   adopted/removed. Give list items a `data-key` to survive reordering.
+ *
+ * Unmatched new nodes are adopted as-is, which is what keeps `ctx.child`
+ * subtrees untouched. For fancier diffing (e.g. idiomorph), supply your own
+ * {@link Reconciler} instead.
+ */
+export declare const morph: Reconciler;
+/** Options for {@link component}. */
+export interface ComponentOptions {
+    /**
+     * When provided, updates morph the existing DOM instead of replacing it:
+     * each previously rendered top-level element whose tag matches the new
+     * render at the same position is kept and passed to `reconcile(from, to)`.
+     * Non-matching nodes fall back to replacement. Remember to sync listeners —
+     * see {@link syncListeners}. The built-in {@link morph} works out of the box.
+     */
+    reconcile?: Reconciler;
+    /**
+     * Called when a render function throws. The previous DOM is kept and the
+     * component stays usable (a later `update()` re-renders normally). Without
+     * it, the error propagates — from an unhandled microtask on batched updates.
+     */
+    onError?: (error: unknown) => void;
+}
+/**
  * Creates a functional component factory. The setup function runs once per
  * instance — component state lives in plain closure variables. It returns a
  * render function producing the component's DOM (a Node or array of Nodes).
  *
  * Re-rendering is explicit: call `ctx.update()` (or wrap handlers in
  * `ctx.event(...)` to update automatically). Updates are batched per
- * microtask, and each render replaces the previously rendered nodes in place.
+ * microtask. By default each render replaces the previously rendered nodes in
+ * place; pass `{ reconcile: morph }` (or a custom {@link Reconciler}) to
+ * morph the existing DOM instead, preserving focus/selection/scroll.
+ *
+ * Compose child components with `ctx.child` (keeps them alive across parent
+ * renders), run post-render logic with `ctx.afterRender`, and make render
+ * failures recoverable with the `onError` option. In development,
+ * instantiating a component factory inside a render function logs a warning
+ * (it resets child state every render and leaks the old instance).
  *
  * @example
  * const Counter = component((ctx) => {
@@ -10474,14 +10616,14 @@ export type ComponentHandle<Events extends ComponentEvents = ComponentEvents> = 
  *     Tag.div(Attr.innerText(count)),
  *     Tag.button({ onclick: ctx.event(() => count -= 1), innerText: 'Dec' })
  *   );
- * });
+ * }, { reconcile: morph });
  *
  * const counter = Counter();
- * counter.mount(document.body);
- * counter.addEventListener('change', e => console.log(e));
- * counter.destroy(); // aborts ctx.signal, removes nodes
+ * counter.mount('#app');       // element or selector
+ * counter.addEventListener('render', () => {}); // fires after every render
+ * counter.destroy();           // aborts ctx.signal, removes nodes, destroys children
  */
-export declare const component: <P = void, Events extends ComponentEvents = ComponentEvents>(setup: (ctx: ComponentCtx<Events>, props: P) => () => Node | Node[]) => (props: P) => ComponentHandle<Events>;
+export declare const component: <P = void, Events extends ComponentEvents = ComponentEvents>(setup: (ctx: ComponentCtx<Events>, props: P) => () => Node | Node[], options?: ComponentOptions) => (props: P) => ComponentHandle<Events>;
 /**
  * Extracts the named parameters of a path pattern as an object type.
  * `:name` segments become `string` keys; `*` becomes a `wildcard` key.
