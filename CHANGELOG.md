@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.11](https://github.com/doeixd/dom/compare/v0.0.10...v0.0.11) (2026-07-17)
+
+
+### Features
+
+* **signals:** ship the signals view system as @doeixd/dom/signals ([155ba92](https://github.com/doeixd/dom/commit/155ba9252e8b7cd9fcc2a6316550676f4e0d1915))
+
+
+### Bug Fixes
+
+* **signals:** effect dies after second trigger when deps are unchanged ([decae1a](https://github.com/doeixd/dom/commit/decae1a04fafce8d54f8db3539c1b9f140e4a000))
+
 ### [0.0.10](https://github.com/doeixd/dom/compare/v0.0.9...v0.0.10) (2026-07-17)
 
 
