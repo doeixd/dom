@@ -11,6 +11,7 @@ describe('waitTransition safety timeout fix', () => {
 
   afterEach(() => {
     testElement.remove();
+    vi.restoreAllMocks();
   });
 
   it('should resolve immediately when no transition is active', async () => {
@@ -22,9 +23,16 @@ describe('waitTransition safety timeout fix', () => {
     expect(duration).toBeLessThan(100);
   });
 
+  // happy-dom's getComputedStyle doesn't compute transition durations (returns
+  // ''), so stub it to exercise the real safety-timeout branch.
+  const stubDuration = (transitionDuration: string) =>
+    vi.spyOn(window, 'getComputedStyle').mockReturnValue(
+      { transitionDuration, animationDuration: '0s' } as CSSStyleDeclaration
+    );
+
   it('should resolve with safety timeout when element has transition duration', async () => {
-    // Set a 100ms transition
-    testElement.style.transition = 'opacity 0.1s';
+    // Computed 100ms transition, but no transitionend will ever fire.
+    stubDuration('0.1s');
     testElement.style.opacity = '0';
 
     const start = Date.now();
@@ -44,8 +52,8 @@ describe('waitTransition safety timeout fix', () => {
   });
 
   it('should resolve with safety timeout when element is detached', async () => {
-    // Set a 100ms transition
-    testElement.style.transition = 'opacity 0.1s';
+    // Computed 100ms transition, but no transitionend will ever fire.
+    stubDuration('0.1s');
     testElement.style.opacity = '0';
 
     const start = Date.now();

@@ -88,6 +88,7 @@
     "prepublishOnly": "pridepack clean && pridepack build",
     "build": "pridepack build",
     "type-check": "pridepack check",
+    "typecheck:test": "tsc -p tsconfig.test.json",
     "clean": "pridepack clean",
     "watch": "pridepack watch",
     "start": "pridepack start",

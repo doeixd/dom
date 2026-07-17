@@ -26,11 +26,10 @@ describe('sanitizeHTMLSimple', () => {
     expect(output).toBe('<div class="foo" id="bar">Content</div>');
   });
 
-  // Documenting current behavior (limitations)
-  it('does NOT remove inline handlers (security limitation)', () => {
+  it('removes inline event handlers', () => {
     const input = '<div onclick="alert(1)">Click me</div>';
     const output = sanitizeHTMLSimple(input);
-    expect(output).toBe('<div onclick="alert(1)">Click me</div>');
+    expect(output).toBe('<div>Click me</div>');
   });
 });
 

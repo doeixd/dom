@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { h, tags, refs, modify } from '../src';
 
 describe('h() hyperscript proxy', () => {
@@ -141,7 +141,7 @@ describe('h() hyperscript proxy', () => {
 
       expect(el.childNodes.length).toBe(3);
       expect(el.childNodes[0].textContent).toBe('Text before');
-      expect(el.childNodes[1].tagName).toBe('STRONG');
+      expect((el.childNodes[1] as HTMLElement).tagName).toBe('STRONG');
       expect(el.childNodes[2].textContent).toBe('Text after');
     });
 

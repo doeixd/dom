@@ -50,8 +50,8 @@ describe('store', () => {
     expect(listener).toHaveBeenCalledTimes(2); // One for 'change', one for 'count'
 
     // Check event details
-    const changeEvent = listener.mock.calls[0][0]; // First call might be 'count' or 'change' depending on dispatch order
-    // Actually dispatch order is specific property first, then 'change'
+    // Dispatch order: specific property event first, then 'change'.
+
 
     const propEvent = listener.mock.calls[0][0];
     expect(propEvent.type).toBe('count');

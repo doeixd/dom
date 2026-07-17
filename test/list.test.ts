@@ -339,7 +339,7 @@ describe('List() reactive array binding', () => {
 
       const list = List<string>(container, {
         render: (item) => h.li({}, [item]),
-        reconcile: (oldItems, newItems, container, renderFn) => {
+        reconcile: (_oldItems, newItems, container, renderFn) => {
           reconcileCalls++;
           container.replaceChildren(...newItems.map((item, i) => renderFn(item, i)));
         }

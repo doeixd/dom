@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { viewRefs, h, List } from '../src';
 
 describe('viewRefs() typed template factory', () => {
   describe('Basic template creation', () => {
     it('creates element from template factory', () => {
-      const Template = viewRefs<{ title: HTMLElement }>(({ refs }) =>
+      const Template = viewRefs<{ title: HTMLElement }>(({ refs: _refs }) =>
         h.div({}, [
           h.h2({ dataRef: 'title' }, ['Hello'])
         ])
@@ -17,7 +17,7 @@ describe('viewRefs() typed template factory', () => {
     });
 
     it('extracts refs correctly', () => {
-      const Template = viewRefs<{ title: HTMLElement; content: HTMLElement }>(({ refs }) =>
+      const Template = viewRefs<{ title: HTMLElement; content: HTMLElement }>(({ refs: _refs }) =>
         h.div({}, [
           h.h2({ dataRef: 'title' }, ['Title']),
           h.p({ dataRef: 'content' }, ['Content'])
@@ -51,7 +51,7 @@ describe('viewRefs() typed template factory', () => {
 
   describe('Options handling', () => {
     it('applies className option', () => {
-      const Template = viewRefs<{}>(({ refs }) =>
+      const Template = viewRefs<{}>(({ refs: _refs }) =>
         h.div({}, ['Content'])
       );
 
@@ -61,7 +61,7 @@ describe('viewRefs() typed template factory', () => {
     });
 
     it('applies multiple classNames', () => {
-      const Template = viewRefs<{}>(({ refs }) =>
+      const Template = viewRefs<{}>(({ refs: _refs }) =>
         h.div({}, ['Content'])
       );
 
@@ -72,7 +72,7 @@ describe('viewRefs() typed template factory', () => {
     });
 
     it('applies id option', () => {
-      const Template = viewRefs<{}>(({ refs }) =>
+      const Template = viewRefs<{}>(({ refs: _refs }) =>
         h.div({}, ['Content'])
       );
 
@@ -82,7 +82,7 @@ describe('viewRefs() typed template factory', () => {
     });
 
     it('applies props option', () => {
-      const Template = viewRefs<{}>(({ refs }) =>
+      const Template = viewRefs<{}>(({ refs: _refs }) =>
         h.div({}, ['Content'])
       );
 
@@ -98,7 +98,7 @@ describe('viewRefs() typed template factory', () => {
     });
 
     it('applies multiple options together', () => {
-      const Template = viewRefs<{}>(({ refs }) =>
+      const Template = viewRefs<{}>(({ refs: _refs }) =>
         h.div({}, ['Content'])
       );
 
@@ -120,7 +120,7 @@ describe('viewRefs() typed template factory', () => {
 
   describe('update() method', () => {
     it('updates element props', () => {
-      const Template = viewRefs<{}>(({ refs }) =>
+      const Template = viewRefs<{}>(({ refs: _refs }) =>
         h.div({}, ['Content'])
       );
 
@@ -132,7 +132,7 @@ describe('viewRefs() typed template factory', () => {
     });
 
     it('updates multiple times', () => {
-      const Template = viewRefs<{}>(({ refs }) =>
+      const Template = viewRefs<{}>(({ refs: _refs }) =>
         h.div({}, ['Content'])
       );
 
@@ -147,7 +147,7 @@ describe('viewRefs() typed template factory', () => {
     });
 
     it('updates style and attributes', () => {
-      const Template = viewRefs<{}>(({ refs }) =>
+      const Template = viewRefs<{}>(({ refs: _refs }) =>
         h.div({}, ['Content'])
       );
 
@@ -165,7 +165,7 @@ describe('viewRefs() typed template factory', () => {
 
   describe('updateRefs() method', () => {
     it('updates refs with string values', () => {
-      const Template = viewRefs<{ title: HTMLElement; content: HTMLElement }>(({ refs }) =>
+      const Template = viewRefs<{ title: HTMLElement; content: HTMLElement }>(({ refs: _refs }) =>
         h.div({}, [
           h.h2({ dataRef: 'title' }),
           h.p({ dataRef: 'content' })
@@ -184,7 +184,7 @@ describe('viewRefs() typed template factory', () => {
     });
 
     it('updates refs with number values', () => {
-      const Template = viewRefs<{ count: HTMLElement }>(({ refs }) =>
+      const Template = viewRefs<{ count: HTMLElement }>(({ refs: _refs }) =>
         h.div({}, [
           h.span({ dataRef: 'count' })
         ])
@@ -198,7 +198,7 @@ describe('viewRefs() typed template factory', () => {
     });
 
     it('updates refs with ElementProps objects', () => {
-      const Template = viewRefs<{ box: HTMLElement }>(({ refs }) =>
+      const Template = viewRefs<{ box: HTMLElement }>(({ refs: _refs }) =>
         h.div({}, [
           h.div({ dataRef: 'box' })
         ])
@@ -220,7 +220,7 @@ describe('viewRefs() typed template factory', () => {
     });
 
     it('handles partial updates', () => {
-      const Template = viewRefs<{ title: HTMLElement; content: HTMLElement }>(({ refs }) =>
+      const Template = viewRefs<{ title: HTMLElement; content: HTMLElement }>(({ refs: _refs }) =>
         h.div({}, [
           h.h2({ dataRef: 'title' }, ['Initial Title']),
           h.p({ dataRef: 'content' }, ['Initial Content'])
@@ -236,7 +236,7 @@ describe('viewRefs() typed template factory', () => {
     });
 
     it('ignores null and undefined values', () => {
-      const Template = viewRefs<{ title: HTMLElement }>(({ refs }) =>
+      const Template = viewRefs<{ title: HTMLElement }>(({ refs: _refs }) =>
         h.div({}, [
           h.h2({ dataRef: 'title' }, ['Initial'])
         ])
@@ -254,7 +254,7 @@ describe('viewRefs() typed template factory', () => {
 
   describe('bind() method', () => {
     it('returns a setter function for a ref', () => {
-      const Template = viewRefs<{ message: HTMLElement }>(({ refs }) =>
+      const Template = viewRefs<{ message: HTMLElement }>(({ refs: _refs }) =>
         h.div({}, [
           h.span({ dataRef: 'message' })
         ])
@@ -271,7 +271,7 @@ describe('viewRefs() typed template factory', () => {
     });
 
     it('works with ElementProps objects', () => {
-      const Template = viewRefs<{ box: HTMLElement }>(({ refs }) =>
+      const Template = viewRefs<{ box: HTMLElement }>(({ refs: _refs }) =>
         h.div({}, [
           h.div({ dataRef: 'box' })
         ])
@@ -290,7 +290,7 @@ describe('viewRefs() typed template factory', () => {
     });
 
     it('can be used as a callback', () => {
-      const Template = viewRefs<{ status: HTMLElement }>(({ refs }) =>
+      const Template = viewRefs<{ status: HTMLElement }>(({ refs: _refs }) =>
         h.div({}, [
           h.span({ dataRef: 'status' })
         ])
@@ -305,7 +305,7 @@ describe('viewRefs() typed template factory', () => {
     });
 
     it('handles multiple refs independently', () => {
-      const Template = viewRefs<{ first: HTMLElement; second: HTMLElement }>(({ refs }) =>
+      const Template = viewRefs<{ first: HTMLElement; second: HTMLElement }>(({ refs: _refs }) =>
         h.div({}, [
           h.span({ dataRef: 'first' }),
           h.span({ dataRef: 'second' })
@@ -327,7 +327,7 @@ describe('viewRefs() typed template factory', () => {
   describe('destroy() method', () => {
     it('removes element from DOM', () => {
       const container = document.createElement('div');
-      const Template = viewRefs<{}>(({ refs }) =>
+      const Template = viewRefs<{}>(({ refs: _refs }) =>
         h.div({}, ['Content'])
       );
 
@@ -342,7 +342,7 @@ describe('viewRefs() typed template factory', () => {
     });
 
     it('can be called multiple times safely', () => {
-      const Template = viewRefs<{}>(({ refs }) =>
+      const Template = viewRefs<{}>(({ refs: _refs }) =>
         h.div({}, ['Content'])
       );
 
@@ -358,7 +358,7 @@ describe('viewRefs() typed template factory', () => {
 
   describe('Multiple instances', () => {
     it('creates independent instances', () => {
-      const Template = viewRefs<{ label: HTMLElement }>(({ refs }) =>
+      const Template = viewRefs<{ label: HTMLElement }>(({ refs: _refs }) =>
         h.div({}, [
           h.span({ dataRef: 'label' }, ['Initial'])
         ])
@@ -372,7 +372,7 @@ describe('viewRefs() typed template factory', () => {
     });
 
     it('allows independent updates', () => {
-      const Template = viewRefs<{ label: HTMLElement }>(({ refs }) =>
+      const Template = viewRefs<{ label: HTMLElement }>(({ refs: _refs }) =>
         h.div({}, [
           h.span({ dataRef: 'label' }, ['Initial'])
         ])
@@ -391,7 +391,7 @@ describe('viewRefs() typed template factory', () => {
 
   describe('Integration with h()', () => {
     it('works with h() created elements', () => {
-      const Template = viewRefs<{ title: HTMLElement; icon: HTMLElement }>(({ refs }) =>
+      const Template = viewRefs<{ title: HTMLElement; icon: HTMLElement }>(({ refs: _refs }) =>
         h.div({ class: { card: true } }, [
           h.div({ class: { 'card-header': true } }, [
             h.span({ dataRef: 'icon', class: { icon: true } }),
@@ -408,7 +408,7 @@ describe('viewRefs() typed template factory', () => {
     });
 
     it('works with nested structures', () => {
-      const Template = viewRefs<{ input: HTMLElement; button: HTMLElement }>(({ refs }) =>
+      const Template = viewRefs<{ input: HTMLElement; button: HTMLElement }>(({ refs: _refs }) =>
         h.form({}, [
           h.div({ class: { 'form-group': true } }, [
             h.input({ dataRef: 'input', attr: { type: 'text' } })
@@ -429,7 +429,7 @@ describe('viewRefs() typed template factory', () => {
     it('can be used as List render function', () => {
       const container = document.createElement('div');
 
-      const ItemTemplate = viewRefs<{ label: HTMLElement }>(({ refs }) =>
+      const ItemTemplate = viewRefs<{ label: HTMLElement }>(({ refs: _refs }) =>
         h.li({ class: { item: true } }, [
           h.span({ dataRef: 'label' })
         ])
@@ -458,7 +458,7 @@ describe('viewRefs() typed template factory', () => {
         name: string;
       }
 
-      const ItemTemplate = viewRefs<{ name: HTMLElement }>(({ refs }) =>
+      const ItemTemplate = viewRefs<{ name: HTMLElement }>(({ refs: _refs }) =>
         h.li({}, [
           h.span({ dataRef: 'name' })
         ])
@@ -502,7 +502,7 @@ describe('viewRefs() typed template factory', () => {
         footer: HTMLElement;
       }
 
-      const Card = viewRefs<CardRefs>(({ refs }) =>
+      const Card = viewRefs<CardRefs>(({ refs: _refs }) =>
         h.div({ class: { card: true } }, [
           h.div({ class: { 'card-header': true } }, [
             h.h2({ dataRef: 'title', class: { 'card-title': true } }),
@@ -537,7 +537,7 @@ describe('viewRefs() typed template factory', () => {
         errorMsg: HTMLElement;
       }
 
-      const LoginForm = viewRefs<FormRefs>(({ refs }) =>
+      const LoginForm = viewRefs<FormRefs>(({ refs: _refs }) =>
         h.form({ class: { 'login-form': true } }, [
           h.div({ class: { 'form-group': true } }, [
             h.label({}, ['Name:']),
@@ -569,7 +569,7 @@ describe('viewRefs() typed template factory', () => {
         deleteBtn: HTMLElement;
       }
 
-      const TodoItem = viewRefs<TodoRefs>(({ refs }) =>
+      const TodoItem = viewRefs<TodoRefs>(({ refs: _refs }) =>
         h.li({ class: { 'todo-item': true } }, [
           h.input({ dataRef: 'checkbox', attr: { type: 'checkbox' } }),
           h.span({ dataRef: 'label' }),
@@ -608,7 +608,7 @@ describe('viewRefs() typed template factory', () => {
 
   describe('Edge cases', () => {
     it('handles empty refs', () => {
-      const Template = viewRefs<{}>(({ refs }) =>
+      const Template = viewRefs<{}>(({ refs: _refs }) =>
         h.div({}, ['No refs here'])
       );
 
@@ -619,7 +619,7 @@ describe('viewRefs() typed template factory', () => {
     });
 
     it('handles single ref', () => {
-      const Template = viewRefs<{ single: HTMLElement }>(({ refs }) =>
+      const Template = viewRefs<{ single: HTMLElement }>(({ refs: _refs }) =>
         h.div({}, [
           h.span({ dataRef: 'single' })
         ])
@@ -632,7 +632,7 @@ describe('viewRefs() typed template factory', () => {
     });
 
     it('handles deeply nested refs', () => {
-      const Template = viewRefs<{ deep: HTMLElement }>(({ refs }) =>
+      const Template = viewRefs<{ deep: HTMLElement }>(({ refs: _refs }) =>
         h.div({}, [
           h.div({}, [
             h.div({}, [

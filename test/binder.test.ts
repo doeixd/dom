@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { createBinder, bind, viewRefs, h, refs } from '../src';
 
 describe('createBinder() data binding system', () => {
@@ -466,7 +466,7 @@ describe('createBinder() data binding system', () => {
         errorMsg: HTMLElement;
       }
 
-      const Form = viewRefs<FormRefs>(({ refs }) =>
+      const Form = viewRefs<FormRefs>(({ refs: _refs }) =>
         h.form({}, [
           h.input({ dataRef: 'nameInput', attr: { type: 'text' } }),
           h.input({ dataRef: 'emailInput', attr: { type: 'email' } }),
@@ -475,7 +475,7 @@ describe('createBinder() data binding system', () => {
         ])
       );
 
-      const { element, refs: formRefs } = Form();
+      const { element: _element, refs: formRefs } = Form();
       const ui = createBinder(formRefs, {
         nameInput: bind.value,
         emailInput: bind.value,
@@ -503,7 +503,7 @@ describe('createBinder() data binding system', () => {
         errorMsg: HTMLElement;
       }
 
-      const Form = viewRefs<FormRefs>(({ refs }) =>
+      const Form = viewRefs<FormRefs>(({ refs: _refs }) =>
         h.form({}, [
           h.input({ dataRef: 'input', attr: { type: 'text' } }),
           h.button({ dataRef: 'submitBtn', attr: { type: 'submit' } }, ['Submit']),
@@ -550,7 +550,7 @@ describe('createBinder() data binding system', () => {
         loadingSpinner: HTMLElement;
       }
 
-      const LoginForm = viewRefs<LoginFormRefs>(({ refs }) =>
+      const LoginForm = viewRefs<LoginFormRefs>(({ refs: _refs }) =>
         h.form({ class: { 'login-form': true } }, [
           h.input({ dataRef: 'usernameInput', attr: { type: 'text', placeholder: 'Username' } }),
           h.input({ dataRef: 'passwordInput', attr: { type: 'password', placeholder: 'Password' } }),

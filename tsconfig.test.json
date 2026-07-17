@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["src", "test"],
+  "exclude": ["node_modules", "src/versionb.ts"],
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "rootDir": ".",
+    "skipLibCheck": true,
+    "types": ["vitest/globals"]
+  }
+}
