@@ -95,5 +95,5 @@ if (btn) {
 - [View](42-view.md): `view`, `binder`, `bindEvents`, `apply`
 - [Functional](43-functional.md): `Fn`, `chain`, `exec`
 - [Signals Update](44-signals-update.md): `createUpdateAfter`
-- [Functional Components](49-component.md): `component`, `Tag`, `Attr`, `Style`
+- [Functional Components](49-component.md): `component`, `Tag`, `Attr`, `Style`, `morph`, `syncListeners`, `getTrackedListeners`
 - [Routing](50-routing.md): `createRouter`, `route`, `matchPath`, `buildPath`, `PathParams`

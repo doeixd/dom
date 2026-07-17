@@ -602,7 +602,7 @@ For more complex UI, the `refsOf` helper collects elements with `data-ref` attri
 ```
 **TypeScript:**
 ```typescript
-import { component, on, modify } from '@doeixd/dom';
+import { refsOf, on, modify } from '@doeixd/dom';
 
 const profile = refsOf<{
   name: HTMLHeadingElement;
@@ -620,6 +620,30 @@ on(profile.editBtn)('click', () => openEditModal());
 ## Advanced Features
 
 The library includes powerful features for building modern, reactive UIs without a framework.
+
+### component/Tag/Attr - Functional Components
+
+JS-first components: state lives in closure variables, re-rendering is explicit
+and batched, and updates can morph the DOM in place (preserving focus and
+selection) with the built-in `morph` reconciler. Child components stay alive
+across parent renders via `ctx.child`.
+
+```typescript
+import { component, morph, Tag, Attr } from '@doeixd/dom';
+
+const Counter = component((ctx) => {
+  let count = 0;
+  return () => Tag.div(
+    Tag.button(Attr.onclick(ctx.event(() => count += 1)), Attr.innerText('+')),
+    Tag.span(Attr.innerText(String(count)))
+  );
+}, { reconcile: morph });
+
+Counter().mount('#app');
+```
+
+📖 [Full Documentation](./docs/49-component.md) — typed props and events,
+keep-alive children, morphing/reconcilers, listener syncing, lifecycle hooks.
 
 ### h/tags - Hyperscript Element Creation
 

@@ -16045,9 +16045,56 @@ export type TagFactories =
 const _isComponentHandle = (value: object): value is ComponentHandle<any> =>
   'nodes' in value && 'update' in value && typeof (value as any).mount === 'function';
 
+/**
+ * Brand for top-level nodes owned by a component instance. `morph` treats
+ * branded nodes as opaque: they are adopted wholesale, never matched against
+ * (and morphed into) other nodes — that would orphan the live child DOM.
+ */
+const _COMPONENT_NODE = Symbol.for('doeixd.dom.componentNode');
+
+/** Per-element record of listeners attached via `Tag`/`Attr`, for reconcilers. */
+const LISTENERS = Symbol.for('doeixd.dom.listeners');
+
+interface TrackedListener {
+  type: string;
+  handler: EventListener;
+}
+
+/**
+ * Listeners attached to an element via `Tag`/`Attr` (props objects and
+ * `Attr.on*` modifiers). Listeners added directly with `addEventListener`
+ * are not tracked. Intended for reconcilers — see {@link syncListeners}.
+ */
+export const getTrackedListeners = (el: Element): ReadonlyArray<{ type: string; handler: EventListener }> =>
+  ((el as any)[LISTENERS] as TrackedListener[] | undefined) ?? [];
+
+/**
+ * Makes `target`'s tracked listeners match `source`'s: removes every listener
+ * previously attached to `target` via `Tag`/`Attr`, then attaches `source`'s
+ * tracked listeners to `target`.
+ *
+ * This is the missing piece when morphing: a morph library keeps the *old*
+ * element (so focus/selection survive) and copies attributes from the new
+ * render — but listeners aren't attributes, so without this the old element
+ * keeps stale handlers and never receives conditionally-added ones. Call it
+ * from the morph hook (idiomorph `beforeNodeMorphed`, morphdom
+ * `onBeforeElUpdated`) or from a `reconcile` implementation.
+ *
+ * Untracked listeners (added directly with `addEventListener`) are left alone.
+ */
+export const syncListeners = (target: Element, source: Element): void => {
+  const previous = (target as any)[LISTENERS] as TrackedListener[] | undefined;
+  previous?.forEach(({ type, handler }) => target.removeEventListener(type, handler));
+  const next = getTrackedListeners(source).map(l => ({ ...l }));
+  next.forEach(({ type, handler }) => target.addEventListener(type, handler));
+  (target as any)[LISTENERS] = next;
+};
+
 const _applyProp = (el: any, key: string, value: unknown): void => {
   if (/^on[a-z]/.test(key) && typeof value === 'function') {
-    el.addEventListener(key.slice(2).toLowerCase(), value as EventListener);
+    const type = key.slice(2).toLowerCase();
+    el.addEventListener(type, value as EventListener);
+    ((el[LISTENERS] ||= []) as TrackedListener[]).push({ type, handler: value as EventListener });
   } else if (key in el) {
     el[key] = value;
   } else if (value === true) {
@@ -16352,7 +16399,10 @@ export const Tag = /* @__PURE__ */ new Proxy({} as TagFactories, {
         if (arg instanceof Node) { el.append(arg); return; }
         if (typeof arg === 'function') { arg(el); return; }
         if (typeof arg === 'object') {
-          if (_isComponentHandle(arg)) { el.append(...arg.nodes); return; }
+          if (_isComponentHandle(arg)) {
+            arg.nodes.forEach(n => { (n as any)[_COMPONENT_NODE] = true; el.append(n); });
+            return;
+          }
           Object.entries(arg).forEach(([k, v]) => _applyProp(el, k, v));
           return;
         }
@@ -16417,6 +16467,44 @@ export type ComponentCtx<Events extends ComponentEvents = ComponentEvents> = {
     type: K,
     handler: (e: CustomEvent<Events[K]>) => void
   ) => Unsubscribe;
+  /**
+   * Keeps a child component instance alive across re-renders. `create` runs
+   * once per key; later renders return the cached handle, so the child's
+   * state and DOM survive parent updates (its nodes are simply re-appended).
+   *
+   * Lifecycle: a cached child whose key is not requested during a render is
+   * destroyed and evicted after that render. Children created outside a
+   * render pass (i.e. during setup) are pinned and never auto-evicted. All
+   * cached children are destroyed when the parent is destroyed.
+   *
+   * The factory form takes props and keeps them updatable: on a cache hit the
+   * `update` callback runs with the cached handle and the new props. When
+   * `update` is omitted and both old and new props are objects, the default
+   * shallow-assigns the new props into the object the child's setup received
+   * (setup closures read through it) and calls `handle.update()`.
+   *
+   * @example
+   * return () => Tag.ul(
+   *   todos.map(t => ctx.child(t.id, TodoItem, { todo: t }))
+   * );
+   */
+  child: {
+    <T extends ComponentHandle<any>>(key: string | number, create: () => T): T;
+    <T extends ComponentHandle<any>, P>(
+      key: string | number,
+      factory: (props: P) => T,
+      // NoInfer: P comes from the factory alone, so a props literal is
+      // checked against it (wrong types AND excess keys are compile errors).
+      props: NoInfer<P>,
+      update?: (handle: T, props: NoInfer<P>) => void
+    ): T;
+  };
+  /**
+   * Registers a callback that runs after every render (including the initial
+   * one) with the freshly rendered nodes — for focus management, measuring,
+   * third-party init. Returns a function that unregisters it.
+   */
+  afterRender: (fn: (nodes: Node[]) => void) => Unsubscribe;
   /** The nodes currently rendered in the DOM (empty before first render). */
   readonly last: Node[];
 };
@@ -16424,14 +16512,21 @@ export type ComponentCtx<Events extends ComponentEvents = ComponentEvents> = {
 /**
  * A mounted functional component instance. Implements the EventTarget
  * interface (delegating to the component's event bus).
+ *
+ * After every render the bus fires a `'render'` event (via
+ * `addEventListener('render', ...)`) — integrations can react to `nodes`
+ * changing in replace mode.
  */
 export type ComponentHandle<Events extends ComponentEvents = ComponentEvents> = {
   /** The rendered top-level nodes. */
   readonly nodes: Node[];
   /** The first rendered node (convenience for single-root components). */
   readonly el: HTMLElement | null;
-  /** Appends the component's nodes to a parent. Returns the instance for chaining. */
-  mount: (parent: Element) => ComponentHandle<Events>;
+  /**
+   * Appends the component's nodes to a parent (element or selector).
+   * Returns the instance for chaining. Throws if a selector matches nothing.
+   */
+  mount: (parent: Element | string) => ComponentHandle<Events>;
   /** Queue a re-render (batched, microtask). */
   update: () => void;
   /** Aborts the component's signal and removes its nodes from the DOM. */
@@ -16450,13 +16545,153 @@ export type ComponentHandle<Events extends ComponentEvents = ComponentEvents> = 
 };
 
 /**
+ * Reconciles a re-render: morphs `from` (the element currently in the DOM)
+ * to match `to` (the freshly rendered element), preserving `from`'s identity
+ * so focus, selection, and scroll state survive. Adapt a morphing library:
+ *
+ * @example
+ * // idiomorph
+ * const reconcile: Reconciler = (from, to) => Idiomorph.morph(from, to, {
+ *   callbacks: { beforeNodeMorphed: (oldNode, newNode) => {
+ *     if (oldNode instanceof Element && newNode instanceof Element) syncListeners(oldNode, newNode);
+ *     return true;
+ *   }}
+ * });
+ */
+export type Reconciler = (from: Element, to: Element) => void;
+
+/** Match key for morphing: explicit `data-key`, else `id`. */
+const _morphKey = (n: Node): string | null =>
+  n instanceof Element ? (n.getAttribute('data-key') ?? (n.id ? `#${n.id}` : null)) : null;
+
+const _morphChildren = (from: Element, to: Element): void => {
+  const fromKeyed = new Map<string, Element>();
+  for (const c of Array.from(from.children)) {
+    const k = _morphKey(c);
+    if (k) fromKeyed.set(k, c);
+  }
+  const unmatched = new Set<Node>(Array.from(from.childNodes));
+  let cursor: Node | null = from.firstChild;
+
+  for (const tc of Array.from(to.childNodes)) {
+    // Find the old node this new node corresponds to: by key, else the first
+    // unmatched old node of the same kind (and not reserved by another key).
+    // Component-owned nodes are opaque: adopt, never match-and-morph.
+    let match: Node | null = null;
+    const k = (tc as any)[_COMPONENT_NODE] ? null : _morphKey(tc);
+    if (!(tc as any)[_COMPONENT_NODE]) {
+      if (k !== null) {
+        const keyed = fromKeyed.get(k);
+        if (keyed && unmatched.has(keyed)) match = keyed;
+      } else {
+        for (const fc of unmatched) {
+          if (fc.nodeType === tc.nodeType && fc.nodeName === tc.nodeName && _morphKey(fc) === null) {
+            match = fc;
+            break;
+          }
+        }
+      }
+    }
+
+    let node: Node;
+    if (match) {
+      unmatched.delete(match);
+      if (tc instanceof Element) {
+        morph(match as Element, tc);
+      } else if (match.nodeValue !== tc.nodeValue) {
+        match.nodeValue = tc.nodeValue;
+      }
+      node = match;
+    } else {
+      node = tc; // adopt the fresh node (also covers kept-alive child nodes)
+    }
+
+    if (node === cursor) {
+      cursor = cursor.nextSibling;
+    } else {
+      from.insertBefore(node, cursor);
+    }
+  }
+
+  unmatched.forEach(n => (n as ChildNode).remove());
+};
+
+/**
+ * Built-in zero-dependency reconciler for `component({ reconcile: morph })`.
+ * Mutates `from` (the element in the DOM) to match `to` (the fresh render)
+ * while preserving node identity, so focus, selection, and scroll survive:
+ *
+ * - attributes are added/updated/removed to match `to`
+ * - listeners attached via `Tag`/`Attr` are synced ({@link syncListeners})
+ * - live form state (`value`, `checked`, `selected`) follows `to` — render
+ *   inputs controlled (set `value` every render) or they reset on morph
+ * - children match by `data-key` (or `id`) when present, else pairwise by
+ *   node type and tag; matched elements recurse, everything else is
+ *   adopted/removed. Give list items a `data-key` to survive reordering.
+ *
+ * Unmatched new nodes are adopted as-is, which is what keeps `ctx.child`
+ * subtrees untouched. For fancier diffing (e.g. idiomorph), supply your own
+ * {@link Reconciler} instead.
+ */
+export const morph: Reconciler = (from, to) => {
+  if (from === to) return;
+  for (const a of Array.from(from.attributes)) {
+    if (!to.hasAttribute(a.name)) from.removeAttribute(a.name);
+  }
+  for (const a of Array.from(to.attributes)) {
+    if (from.getAttribute(a.name) !== a.value) from.setAttribute(a.name, a.value);
+  }
+  syncListeners(from, to);
+  for (const p of ['value', 'checked', 'selected'] as const) {
+    if (p in to && (from as any)[p] !== (to as any)[p]) (from as any)[p] = (to as any)[p];
+  }
+  _morphChildren(from, to);
+};
+
+/** Options for {@link component}. */
+export interface ComponentOptions {
+  /**
+   * When provided, updates morph the existing DOM instead of replacing it:
+   * each previously rendered top-level element whose tag matches the new
+   * render at the same position is kept and passed to `reconcile(from, to)`.
+   * Non-matching nodes fall back to replacement. Remember to sync listeners —
+   * see {@link syncListeners}. The built-in {@link morph} works out of the box.
+   */
+  reconcile?: Reconciler;
+  /**
+   * Called when a render function throws. The previous DOM is kept and the
+   * component stays usable (a later `update()` re-renders normally). Without
+   * it, the error propagates — from an unhandled microtask on batched updates.
+   */
+  onError?: (error: unknown) => void;
+}
+
+/** True outside production builds; the check is statically strippable. */
+const _DEV = typeof process === 'undefined' || process.env?.NODE_ENV !== 'production';
+
+/** >0 while some component's render function is executing. */
+let _renderDepth = 0;
+/** >0 while a `ctx.child` create() callback is executing. */
+let _childCreateDepth = 0;
+/** Setup functions already warned about render-scope instantiation. */
+const _warnedSetups = _DEV ? new WeakSet<Function>() : null;
+
+/**
  * Creates a functional component factory. The setup function runs once per
  * instance — component state lives in plain closure variables. It returns a
  * render function producing the component's DOM (a Node or array of Nodes).
  *
  * Re-rendering is explicit: call `ctx.update()` (or wrap handlers in
  * `ctx.event(...)` to update automatically). Updates are batched per
- * microtask, and each render replaces the previously rendered nodes in place.
+ * microtask. By default each render replaces the previously rendered nodes in
+ * place; pass `{ reconcile: morph }` (or a custom {@link Reconciler}) to
+ * morph the existing DOM instead, preserving focus/selection/scroll.
+ *
+ * Compose child components with `ctx.child` (keeps them alive across parent
+ * renders), run post-render logic with `ctx.afterRender`, and make render
+ * failures recoverable with the `onError` option. In development,
+ * instantiating a component factory inside a render function logs a warning
+ * (it resets child state every render and leaks the old instance).
  *
  * @example
  * const Counter = component((ctx) => {
@@ -16466,34 +16701,135 @@ export type ComponentHandle<Events extends ComponentEvents = ComponentEvents> = 
  *     Tag.div(Attr.innerText(count)),
  *     Tag.button({ onclick: ctx.event(() => count -= 1), innerText: 'Dec' })
  *   );
- * });
+ * }, { reconcile: morph });
  *
  * const counter = Counter();
- * counter.mount(document.body);
- * counter.addEventListener('change', e => console.log(e));
- * counter.destroy(); // aborts ctx.signal, removes nodes
+ * counter.mount('#app');       // element or selector
+ * counter.addEventListener('render', () => {}); // fires after every render
+ * counter.destroy();           // aborts ctx.signal, removes nodes, destroys children
  */
 export const component = <P = void, Events extends ComponentEvents = ComponentEvents>(
-  setup: (ctx: ComponentCtx<Events>, props: P) => () => Node | Node[]
+  setup: (ctx: ComponentCtx<Events>, props: P) => () => Node | Node[],
+  options?: ComponentOptions
 ) => {
   return (props: P): ComponentHandle<Events> => {
+    if (_DEV && _renderDepth > 0 && _childCreateDepth === 0 && !_warnedSetups!.has(setup)) {
+      _warnedSetups!.add(setup);
+      console.warn(
+        '[component] A component instance was created inside another component’s render function. ' +
+        'It will be re-created from scratch on every parent render (state reset) and the previous ' +
+        'instance is never destroyed — its ctx.signal never aborts, so intervals, fetches, and ' +
+        'listeners leak. Keep it alive with ctx.child(key, () => MyComponent(...)) instead, or create ' +
+        'it once in setup scope.'
+      );
+    }
     const bus = new EventTarget();
     const controller = new AbortController();
     let last: Node[] = [];
     let queued = false;
     let render: () => Node | Node[];
+    const afterRenderFns: Array<(nodes: Node[]) => void> = [];
+
+    const childCache = new Map<string | number, { handle: ComponentHandle<any>; props?: unknown }>();
+    const pinnedChildren = new Set<string | number>();
+    let requestedChildren: Set<string | number> | null = null;
+
+    const child = (
+      key: string | number,
+      createOrFactory: (props?: unknown) => ComponentHandle<any>,
+      ...rest: [props?: unknown, update?: (handle: ComponentHandle<any>, props: unknown) => void]
+    ): ComponentHandle<any> => {
+      const hasProps = rest.length > 0;
+      let entry = childCache.get(key);
+      if (!entry) {
+        _childCreateDepth++;
+        try {
+          entry = hasProps
+            ? { handle: createOrFactory(rest[0]), props: rest[0] }
+            : { handle: createOrFactory() };
+        } finally {
+          _childCreateDepth--;
+        }
+        childCache.set(key, entry);
+        // Created outside a render pass (setup scope): pin so eviction skips it.
+        if (!requestedChildren) pinnedChildren.add(key);
+      } else if (hasProps) {
+        const [nextProps, updateChild] = rest;
+        if (updateChild) {
+          updateChild(entry.handle, nextProps);
+        } else if (isObject(entry.props) && isObject(nextProps)) {
+          // Default: mutate the props object the child's setup closed over.
+          Object.assign(entry.props, nextProps);
+          entry.handle.update();
+        }
+      }
+      requestedChildren?.add(key);
+      return entry.handle;
+    };
 
     const doRender = (): void => {
-      const out = render();
-      const nodes = (Array.isArray(out) ? out : [out]).filter(Boolean);
-      const anchor = last.find(n => n.parentNode);
-      if (anchor?.parentNode) {
-        const parent = anchor.parentNode;
-        const keep = new Set(nodes);
-        nodes.forEach(n => parent.insertBefore(n, anchor));
-        last.forEach(n => { if (!keep.has(n)) (n as ChildNode).remove(); });
+      const requested = new Set<string | number>();
+      requestedChildren = requested;
+      // A child's initial render runs inside its parent's ctx.child(create) —
+      // reset the create-depth for the duration so inline instantiation
+      // inside the CHILD's own render still warns.
+      const outerChildCreateDepth = _childCreateDepth;
+      _childCreateDepth = 0;
+      _renderDepth++;
+      let out: Node | Node[];
+      try {
+        out = render();
+      } catch (err) {
+        // Keep the previous DOM and cached children; stay usable.
+        if (options?.onError) {
+          options.onError(err);
+          return;
+        }
+        throw err;
+      } finally {
+        _renderDepth--;
+        _childCreateDepth = outerChildCreateDepth;
+        requestedChildren = null;
       }
-      last = nodes;
+      for (const [key, entry] of childCache) {
+        if (!requested.has(key) && !pinnedChildren.has(key)) {
+          childCache.delete(key);
+          entry.handle.destroy();
+        }
+      }
+      const nodes = (Array.isArray(out) ? out : [out]).filter(Boolean);
+      const anchored = last.filter(n => n.parentNode);
+      const parent = anchored[0]?.parentNode;
+      if (parent) {
+        const reconcile = options?.reconcile;
+        // Positionally pair old and new top-level nodes: matching element
+        // tags get morphed in place (old node survives); anything else is
+        // swapped for the new node.
+        const final = !reconcile ? nodes : nodes.map((n, i) => {
+          const o = last[i];
+          if (
+            o && o !== n && o.parentNode === parent &&
+            o instanceof Element && n instanceof Element &&
+            o.tagName === n.tagName && !nodes.includes(o)
+          ) {
+            reconcile(o, n);
+            return o;
+          }
+          return n;
+        });
+        // Insert before the sibling that follows the rendered block — a fixed
+        // reference outside `final`, so sequential inserts preserve order even
+        // when `final` contains kept old nodes.
+        const end = anchored[anchored.length - 1].nextSibling;
+        const keep = new Set(final);
+        final.forEach(n => parent.insertBefore(n, end));
+        last.forEach(n => { if (!keep.has(n)) (n as ChildNode).remove(); });
+        last = final;
+      } else {
+        last = nodes;
+      }
+      afterRenderFns.forEach(fn => fn([...last]));
+      bus.dispatchEvent(new CustomEvent('render'));
     };
 
     const update = (): void => {
@@ -16524,6 +16860,14 @@ export const component = <P = void, Events extends ComponentEvents = ComponentEv
       },
       dispatch: (type, ...[detail]) => bus.dispatchEvent(new CustomEvent(type, { detail })),
       on,
+      child: child as ComponentCtx<Events>['child'],
+      afterRender: (fn) => {
+        afterRenderFns.push(fn);
+        return () => {
+          const i = afterRenderFns.indexOf(fn);
+          if (i >= 0) afterRenderFns.splice(i, 1);
+        };
+      },
       get last() { return [...last]; }
     };
 
@@ -16533,11 +16877,18 @@ export const component = <P = void, Events extends ComponentEvents = ComponentEv
     const instance: ComponentHandle<Events> = {
       get nodes() { return [...last]; },
       get el() { return (last[0] as HTMLElement) ?? null; },
-      mount: (parent) => { parent.append(...last); return instance; },
+      mount: (parent) => {
+        const target = typeof parent === 'string' ? document.querySelector(parent) : parent;
+        if (!target) throw new Error(`component.mount: target not found: ${parent}`);
+        target.append(...last);
+        return instance;
+      },
       on,
       update,
       destroy: () => {
         controller.abort();
+        childCache.forEach(e => e.handle.destroy());
+        childCache.clear();
         last.forEach(n => (n as ChildNode).remove());
       },
       addEventListener: (...args: Parameters<EventTarget['addEventListener']>) => bus.addEventListener(...args),

@@ -6,7 +6,7 @@ closure variables, and re-rendering is explicit.
 > **Own the HTML? Use `component`. The server owns it? Use [`enhance`](29-components.md).**
 > `enhance` attaches behavior to DOM that already exists (server-rendered,
 > templates) and patches it fine-grained; `component` renders its own DOM and
-> replaces it on update.
+> replaces — or, with the `morph` reconciler, patches — it on update.
 
 ## Why?
 For dynamically spawned, self-contained widgets — counters, toasts, modals,
@@ -18,7 +18,11 @@ list items — you want to describe the view in JS and get a managed instance
 ### `component`
 ```typescript
 function component<P = void, Events extends ComponentEvents = ComponentEvents>(
-  setup: (ctx: ComponentCtx<Events>, props: P) => () => Node | Node[]
+  setup: (ctx: ComponentCtx<Events>, props: P) => () => Node | Node[],
+  options?: {
+    reconcile?: (from: Element, to: Element) => void; // morph instead of replace
+    onError?: (error: unknown) => void;               // render threw: old DOM kept
+  }
 ): (props: P) => ComponentHandle<Events>;
 ```
 
@@ -34,6 +38,12 @@ interface ComponentCtx<Events> {
   event: <A, R>(fn: (...a: A) => R) => (...a: A) => R; // run fn, then update()
   dispatch: <K extends keyof Events>(type: K, detail: Events[K]) => boolean; // typed CustomEvent
   on: <K extends keyof Events>(type: K, fn: (e: CustomEvent<Events[K]>) => void) => Unsubscribe;
+  child: {                                   // keep-alive child instances
+    <T extends ComponentHandle>(key: string | number, create: () => T): T;
+    <T extends ComponentHandle, P>(key: string | number, factory: (props: P) => T,
+      props: P, update?: (handle: T, props: P) => void): T;
+  };
+  afterRender: (fn: (nodes: Node[]) => void) => Unsubscribe; // post-render hook (focus, measure)
   readonly last: Node[];                     // currently rendered nodes
 }
 ```
@@ -43,9 +53,10 @@ interface ComponentCtx<Events> {
 interface ComponentHandle<Events> {
   readonly nodes: Node[];        // rendered top-level nodes
   readonly el: HTMLElement | null; // first node (single-root convenience)
-  mount: (parent: Element) => ComponentHandle<Events>;
+  mount: (parent: Element | string) => ComponentHandle<Events>; // selector ok; throws if missing
   update: () => void;            // batched re-render
   destroy: () => void;           // aborts ctx.signal, removes nodes
+  // fires 'render' (untyped, via addEventListener) after every render
   on: <K extends keyof Events>(type: K, fn: (e: CustomEvent<Events[K]>) => void) => Unsubscribe;
   // Implements EventTarget (delegates to ctx.target):
   addEventListener; removeEventListener; dispatchEvent;
@@ -53,8 +64,71 @@ interface ComponentHandle<Events> {
 ```
 
 Update semantics: `update()` calls in the same task collapse into one render on
-the next microtask, and are no-ops after `destroy()`. Each render **replaces**
-the previous nodes in place (position among siblings is preserved).
+the next microtask, and are no-ops after `destroy()`. By default each render
+**replaces** the previous nodes in place (position among siblings is
+preserved); pass a `reconcile` option to morph instead (see below).
+
+### Morphing updates — the `reconcile` option
+By default, updating swaps the rendered subtree, so focus, selection, and
+scroll state inside it are lost. Pass `reconcile` to keep the existing DOM and
+morph it instead: each previously rendered top-level element whose tag matches
+the new render at the same position is kept and passed to
+`reconcile(from, to)` — `from` is the live element, `to` is the fresh render.
+Non-matching nodes (different tag, non-elements) fall back to replacement, and
+kept-alive `ctx.child` nodes are never reconciled against themselves.
+
+A built-in zero-dependency reconciler is included — pass `morph`:
+
+```typescript
+import { component, morph, Tag } from '@doeixd/dom';
+
+const Editor = component((ctx) => {
+  let value = '';
+  return () => Tag.div(
+    Tag.input({ value, oninput: ctx.event(e => value = (e.target as HTMLInputElement).value) }),
+    Tag.p(Attr.innerText(`${value.length} chars`))
+  );
+}, { reconcile: morph });
+// The <input> keeps focus and caret position across re-renders.
+```
+
+`morph` syncs attributes, `Tag`/`Attr` listeners, and live form state
+(`value`/`checked`/`selected` follow the new render — keep inputs controlled),
+and matches children by `data-key` (or `id`) when present, else pairwise by
+node type and tag. Give list items a `data-key` to survive reordering with
+identity intact. `ctx.child` subtrees are treated as opaque and adopted
+untouched. For fancier diffing, adapt a library instead (e.g. idiomorph):
+
+```typescript
+import { component, syncListeners, type Reconciler } from '@doeixd/dom';
+import { Idiomorph } from 'idiomorph';
+
+const idiomorphReconcile: Reconciler = (from, to) => Idiomorph.morph(from, to, {
+  callbacks: {
+    beforeNodeMorphed: (oldNode, newNode) => {
+      if (oldNode instanceof Element && newNode instanceof Element) {
+        syncListeners(oldNode, newNode);
+      }
+      return true;
+    }
+  }
+});
+
+component(setup, { reconcile: idiomorphReconcile });
+```
+
+#### Listener tracking — `syncListeners` / `getTrackedListeners`
+Morph libraries copy attributes but not listeners, so a morphed element would
+keep the previous render's handlers and never receive conditionally-added
+ones. Every listener attached through `Tag`/`Attr` (props objects and
+`Attr.on*`) is recorded on the element; `syncListeners(target, source)`
+removes `target`'s tracked listeners and attaches `source`'s, leaving
+listeners added directly via `addEventListener` untouched.
+`getTrackedListeners(el)` exposes the record for custom reconcilers.
+
+Note that handlers close over setup-scope variables, so even *without*
+`syncListeners` stale handlers are often still semantically correct — sync
+matters when handlers are conditional or capture render-scope values.
 
 ### `Tag`
 Hyperscript factory with a modifier calling convention. `Tag.div(...args)`
@@ -208,6 +282,54 @@ const Clock = component((ctx) => {
 });
 ```
 
+### Child components — `ctx.child` (keep-alive)
+Calling a component factory inside render creates a **new instance every
+render** (state reset) and leaks the old one (its `ctx.signal` never aborts).
+Use `ctx.child(key, create)` instead: `create` runs once per key, later renders
+return the cached handle, so the child's state and DOM survive parent updates —
+its live nodes are simply re-appended into the new tree.
+
+```typescript
+const TodoList = component((ctx) => {
+  let todos = [{ id: 1, text: 'a' }, { id: 2, text: 'b' }];
+  return () => Tag.ul(
+    todos.map(t => ctx.child(t.id, () => TodoItem({ todo: t })))
+  );
+});
+```
+
+For prop-driven children, use the factory form —
+`ctx.child(key, Factory, props, update?)`. `Factory(props)` runs once; on
+later renders the `update` callback receives the cached handle and the new
+props. When `update` is omitted and both props are objects, the default
+shallow-assigns the new props into the object the child's setup received
+(setup closures read through it) and calls `handle.update()`:
+
+```typescript
+return () => Tag.ul(
+  todos.map(t => ctx.child(t.id, TodoItem, { todo: t }))
+);
+// TodoItem's render reads props.todo — it sees the new value after each parent render
+```
+
+Lifecycle rules:
+- A cached child whose key is **not requested** during a render is destroyed
+  and evicted after that render (conditionals and list removals clean up
+  automatically).
+- Children created **during setup** (outside a render pass) are pinned — never
+  auto-evicted, even in renders that don't include them.
+- All cached children are destroyed when the parent is destroyed.
+
+With the two-argument `create` form, the closure runs once — so don't capture
+changing values in it; use the factory form above for changing props, keep
+shared state in the parent's closure and read it from the child via functions,
+or communicate through events.
+
+In development (`NODE_ENV !== 'production'`), instantiating a component
+factory directly inside a render function logs a one-time warning pointing at
+`ctx.child`, since that pattern resets child state every render and leaks the
+previous instance.
+
 ### Props
 ```typescript
 const Greeting = component<{ name: string }>((_ctx, props) => {
@@ -217,11 +339,62 @@ const Greeting = component<{ name: string }>((_ctx, props) => {
 Greeting({ name: 'Pat' }).mount(document.body);
 ```
 
+Props are fully typed: `Greeting()` and `Greeting({ name: 7 })` are compile
+errors. The same checking applies through `ctx.child(key, Greeting, props)` —
+including excess-property checks, so a typo'd prop key fails to compile.
+
+### Render lifecycle — `afterRender`, the `render` event, `onError`
+
+**`ctx.afterRender(fn)`** runs after every render (including the initial one)
+with the freshly rendered nodes — the place for focus management, measuring,
+or initializing third-party widgets. It returns an unsubscribe function.
+
+```typescript
+const SearchBox = component((ctx) => {
+  let editing = false;
+  ctx.afterRender((nodes) => {
+    if (editing) (nodes[0] as HTMLElement).querySelector('input')?.focus();
+  });
+  return () => Tag.div(
+    editing
+      ? Tag.input({ onblur: ctx.event(() => editing = false) })
+      : Tag.button({ onclick: ctx.event(() => editing = true), innerText: 'Search…' })
+  );
+});
+```
+
+**The `'render'` event** fires on the handle's event bus after every render.
+Since replace-mode updates swap `handle.nodes`, integrations that hold node
+references can use it to re-read them:
+
+```typescript
+const c = Widget().mount('#app');
+c.addEventListener('render', () => syncSomething(c.nodes));
+```
+
+**`onError`** makes render failures recoverable. Without it, a throwing render
+propagates (from an unhandled microtask, when the update was batched). With it,
+the error is reported, the previous DOM and all kept-alive children stay
+intact, and a later `update()` renders normally:
+
+```typescript
+const Risky = component((ctx) => {
+  return () => renderThatMightThrow();
+}, {
+  onError: (err) => console.error('render failed, keeping last good DOM', err)
+});
+```
+
 ## Notes & Limitations
-- **Replace, not morph**: each update swaps the rendered subtree, so focus,
-  selection, and scroll state inside the component's nodes are not preserved.
-  For state-preserving fine-grained updates over existing DOM, use
+- **Replace by default**: without a `reconcile` option, each update swaps the
+  rendered subtree, so focus, selection, and scroll state inside the
+  component's nodes are not preserved. Pass `reconcile` (see above) to morph
+  instead, or for fine-grained updates over existing DOM use
   [`enhance`](29-components.md) or the [binder](48-binder.md).
+- **`cloneNode` is not a shortcut**: cloning copies markup but silently drops
+  event listeners (and the listener-tracking record), so it can't keep
+  children alive or speed up re-renders of interactive DOM. Caching the actual
+  node (via `ctx.child` or setup scope) is both faster and correct.
 - Renamed in 0.0.9: the old `component` (typed `data-ref` gatherer) is now
   [`refsOf`](29-components.md); `defineComponent` → `enhance`;
   `mountComponent` → `spawn` (deprecated aliases remain for one release).
