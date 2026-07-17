@@ -97,3 +97,4 @@ if (btn) {
 - [Signals Update](44-signals-update.md): `createUpdateAfter`
 - [Functional Components](49-component.md): `component`, `Tag`, `Attr`, `Style`, `morph`, `syncListeners`, `getTrackedListeners`
 - [Routing](50-routing.md): `createRouter`, `route`, `matchPath`, `buildPath`, `PathParams`
+- [Templating Interop](51-templating-interop.md): mixing `h`, `Tag`, and signals views — what works, what bites

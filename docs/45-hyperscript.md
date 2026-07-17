@@ -16,6 +16,13 @@ const card = h.div({ class: { card: true } }, [
 ]);
 ```
 
+> **Mixing with `Tag`/`Attr` or components?** Elements from `h` and
+> [`Tag`](49-component.md) nest freely in both directions, but `h` children do
+> not accept a `ComponentHandle`, and listeners on `h`-built DOM are not
+> tracked for morph-time syncing — see
+> [Templating Interop](51-templating-interop.md) before mixing systems inside
+> a morph-reconciled component.
+
 ## Why Use h/tags?
 
 **Advantages over `el()`:**

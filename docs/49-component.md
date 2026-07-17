@@ -145,7 +145,10 @@ Known tag names return their concrete element type — `Tag.input()` is an
 `HTMLElement`.
 
 Complements [`h`](45-hyperscript.md) (props-first). Prefer `Tag` + `Attr` for
-the curried, composition-friendly style used by `component`.
+the curried, composition-friendly style used by `component`. The two systems
+mix freely at the element level, but component composition and morph-time
+listener syncing are `Tag`-only — see
+[Templating Interop](51-templating-interop.md) for the exact boundaries.
 
 ### `Attr`
 Any property access returns a curried setter `(value) => (el) => void`:
