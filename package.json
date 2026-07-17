@@ -123,9 +123,22 @@
       },
       "require": "./dist/cjs/production/index.js",
       "import": "./dist/esm/production/index.js"
+    },
+    "./signals": {
+      "types": "./dist/types/signals/index.d.ts",
+      "development": {
+        "require": "./dist/cjs/development/signals.js",
+        "import": "./dist/esm/development/signals.js"
+      },
+      "require": "./dist/cjs/production/signals.js",
+      "import": "./dist/esm/production/signals.js"
     }
   },
   "typesVersions": {
-    "*": {}
+    "*": {
+      "signals": [
+        "./dist/types/signals/index.d.ts"
+      ]
+    }
   }
 }

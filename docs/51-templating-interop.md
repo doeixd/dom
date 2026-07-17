@@ -9,7 +9,7 @@ relate, what mixes freely, and the exact places where mixing bites.
 |---|---|---|---|
 | `h` / `el` / `tags` | Props-first, VanJS-style: `h.div({ dataRef: 'x' }, [children])` | `HTMLElement` | [45-hyperscript](45-hyperscript.md) |
 | `Tag` / `Attr` / `Style` | Curried modifiers: `Tag.div(Attr.onclick(fn), child)` | `HTMLElement` | [49-component](49-component.md) |
-| Signals views (`tag()`, `text()`, `attr()` with reactive bindings) | Declarative view descriptions with fine-grained reactivity | `ViewNode` (not a DOM node) until `render()`/`mount()` | *internal — currently not exported from the package* |
+| Signals views (`tag()`, `text()`, `attr()` with reactive bindings) | Declarative view descriptions with fine-grained reactivity | `ViewNode` (not a DOM node) until `render()`/`mount()` | [52-signals-views](52-signals-views.md) — `@doeixd/dom/signals` subpath |
 
 `h` and `Tag` both return **plain elements with no wrapper**, which is why most
 interop "just works": the DOM itself is the common format.
@@ -80,16 +80,16 @@ Consequences under `morph`:
 Replace-mode components are unaffected (nodes are swapped, listeners die with
 them).
 
-## The signals view system: bridged, not interoperable
+## The signals view system: bridged, and morph-safe
 
 Its `ViewNode`s are descriptions, not DOM, so they can't be passed to `Tag`
-or `h`. Interop is one-way: `render(view)` / `mount(view, container)` produce
-real DOM you can place anywhere, but that subtree is managed by its own
-reactive bindings and cleanup — treat it as a black box (and note its nodes
-carry no component branding, so keep it out of morphed regions too).
-
-It is currently **not exported** from the package entry; this section matters
-only if you wire it up.
+or `h` directly. Interop is one-way: `render(view)` / `mount(view, container)`
+(from the `@doeixd/dom/signals` subpath) produce real DOM you can place
+anywhere. The produced top-level nodes are **branded opaque**, so `morph`
+adopts them wholesale instead of morphing into them — a mounted signals view
+can live inside a morph-reconciled component with its bindings intact. The
+subtree is still managed exclusively by its own cleanup: treat it as a black
+box and don't hand-edit it.
 
 ## Cheat sheet
 
@@ -101,4 +101,4 @@ only if you wire it up.
 | `ComponentHandle` as `Tag` child | ✅ branded, morph-safe |
 | `ComponentHandle` in `h` children | ❌ compile error; `...handle.nodes` spread is morph-**unsafe** |
 | `on()` listeners + `morph` updates | ⚠️ persist but never re-sync; fine for stable setup-closure handlers |
-| Signals `ViewNode` in `Tag`/`h` | ❌ — bridge via `render()`/`mount()`, keep out of morphed regions |
+| Signals `ViewNode` in `Tag`/`h` | ❌ as a value — bridge via `render()`/`mount()`; the produced nodes are branded morph-safe |

@@ -1,10 +1,19 @@
 /**
  * @module reactive-dom
- * 
+ *
  * Reactive DOM building with linked signals.
  * Each part of the DOM (attributes, classes, text, children) is a linked signal
  * that auto-updates from sources but can also be manually overridden.
- * 
+ *
+ * Shipped as the `@doeixd/dom/signals` subpath. Several exports (`text`,
+ * `attr`, `on`, `mount`, `list`, `tags`, `render`) intentionally share names
+ * with different APIs on the main entry — import from one entry per file, or
+ * alias (`import { mount as mountView } from '@doeixd/dom/signals'`).
+ *
+ * Views rendered here are managed by their own reactive bindings; their
+ * top-level nodes are branded so the main entry's `morph` reconciler adopts
+ * them wholesale instead of morphing into them.
+ *
  * @example Basic Usage
  * ```typescript
  * import { tag, text, attr, cls, style, list, mount } from '@doeixd/dom';
@@ -151,8 +160,10 @@ type ViewNode =
   | ViewFragment 
   | ViewPortal
   | ViewConditional
-  | ViewList
-  | string 
+  // `any` for variance: ViewList<T>['render'] takes T, so ViewList<number>
+  // would not be assignable to ViewList<unknown>.
+  | ViewList<any>
+  | string
   | number 
   | null 
   | undefined;
@@ -205,8 +216,15 @@ interface ViewList<T = unknown> {
 interface MountedView {
   readonly element: Element | DocumentFragment;
   readonly cleanup: Unsubscribe;
-  readonly update: () => void;
 }
+
+/**
+ * Same brand the component system uses (`Symbol.for` — shared global key).
+ * Mounted signal-view nodes are managed by their own reactive bindings, so
+ * `morph` must treat them as opaque and adopt them wholesale rather than
+ * match-and-morph them.
+ */
+const COMPONENT_NODE = Symbol.for('doeixd.dom.componentNode');
 
 
 // ============================================
@@ -241,6 +259,35 @@ function isReactive<T>(value: Reactive<T>): value is ReadonlySignal<T> | (() => 
 
 function removeNode(node: Node): void {
   node.parentNode?.removeChild(node);
+}
+
+/**
+ * Indices of a longest increasing subsequence of `arr` (O(n log n), patience
+ * sorting with predecessor links). Negative entries never participate.
+ * Used by `list` for minimal-move reordering.
+ */
+function lisIndices(arr: number[]): Set<number> {
+  const tails: number[] = [];
+  const prev = new Array<number>(arr.length).fill(-1);
+  for (let i = 0; i < arr.length; i++) {
+    const v = arr[i];
+    if (v < 0) continue;
+    let lo = 0, hi = tails.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (arr[tails[mid]] < v) lo = mid + 1;
+      else hi = mid;
+    }
+    if (lo > 0) prev[i] = tails[lo - 1];
+    tails[lo] = i;
+  }
+  const result = new Set<number>();
+  let k = tails.length > 0 ? tails[tails.length - 1] : -1;
+  while (k >= 0) {
+    result.add(k);
+    k = prev[k];
+  }
+  return result;
 }
 
 /**
@@ -863,15 +910,34 @@ function renderNode(node: ViewNode, parent: Element | DocumentFragment): Unsubsc
 }
 
 /**
+ * SVG element names (from SVGElementTagNameMap), excluding names shared with
+ * HTML (`a`, `script`, `style`, `title`) which resolve to their HTML meaning.
+ * For the ambiguous ones inside an `<svg>` subtree, use `createElementNS`
+ * directly via `ref`.
+ */
+const SVG_TAGS = new Set([
+  'animate', 'animateMotion', 'animateTransform', 'circle', 'clipPath',
+  'defs', 'desc', 'ellipse', 'feBlend', 'feColorMatrix', 'feComponentTransfer',
+  'feComposite', 'feConvolveMatrix', 'feDiffuseLighting', 'feDisplacementMap',
+  'feDistantLight', 'feDropShadow', 'feFlood', 'feFuncA', 'feFuncB', 'feFuncG',
+  'feFuncR', 'feGaussianBlur', 'feImage', 'feMerge', 'feMergeNode',
+  'feMorphology', 'feOffset', 'fePointLight', 'feSpecularLighting',
+  'feSpotLight', 'feTile', 'feTurbulence', 'filter', 'foreignObject', 'g',
+  'image', 'line', 'linearGradient', 'marker', 'mask', 'metadata', 'mpath',
+  'path', 'pattern', 'polygon', 'polyline', 'radialGradient', 'rect', 'set',
+  'stop', 'svg', 'switch', 'symbol', 'text', 'textPath', 'tspan', 'use', 'view'
+]);
+
+/**
  * Render a view element
  */
 function renderElement(view: ViewElement, parent: Element | DocumentFragment): Unsubscribe[] {
   const cleanups: Unsubscribe[] = [];
   
-  // Create element
+  // Create element (SVG tags get the SVG namespace)
   const element = view.tag.includes('-')
     ? document.createElement(view.tag)
-    : ['svg', 'path', 'circle', 'rect', 'g', 'use', 'defs', 'symbol', 'line', 'polyline', 'polygon', 'text', 'tspan'].includes(view.tag)
+    : SVG_TAGS.has(view.tag)
       ? document.createElementNS('http://www.w3.org/2000/svg', view.tag)
       : document.createElement(view.tag);
   
@@ -1019,10 +1085,12 @@ function renderList<T>(view: ViewList<T>, parent: Element | DocumentFragment): U
     return index;
   };
   
+  let prevOrder: (string | number)[] = [];
+
   const update = (items: T[]) => {
     const newKeys = items.map(getKey);
     const newKeySet = new Set(newKeys);
-    
+
     // Remove items no longer present
     for (const [key, { nodes, cleanups }] of renderedItems) {
       if (!newKeySet.has(key)) {
@@ -1031,34 +1099,42 @@ function renderList<T>(view: ViewList<T>, parent: Element | DocumentFragment): U
         renderedItems.delete(key);
       }
     }
-    
-    // Create/reorder items
-    let insertBefore: Node = endMarker;
-    
-    for (let i = items.length - 1; i >= 0; i--) {
-      const item = items[i];
-      const key = newKeys[i];
-      
+
+    // Resolve every item to its (possibly newly created) entry, recording the
+    // position it held in the previous order (-1 for new items).
+    const oldIndex = new Map(prevOrder.map((k, i) => [k, i] as const));
+    const entries = newKeys.map((key, i) => {
       let entry = renderedItems.get(key);
-      
       if (!entry) {
-        // Create new item
         const fragment = document.createDocumentFragment();
-        const itemCleanups = renderNode(view.render(item, i), fragment);
-        const nodes = Array.from(fragment.childNodes);
-        entry = { nodes, cleanups: itemCleanups };
+        const itemCleanups = renderNode(view.render(items[i], i), fragment);
+        entry = { nodes: Array.from(fragment.childNodes), cleanups: itemCleanups };
         renderedItems.set(key, entry);
       }
-      
-      // Insert/move nodes
-      for (const node of entry.nodes) {
-        if (node.nextSibling !== insertBefore) {
-          startMarker.parentNode?.insertBefore(node, insertBefore);
+      return { entry, old: oldIndex.get(key) ?? -1 };
+    });
+
+    // Minimal moves: items whose old positions form a longest increasing
+    // subsequence are already in the right relative order and stay put;
+    // everything else (including new items) is inserted before the
+    // previously placed item, walking right to left toward the end marker.
+    const stable = lisIndices(entries.map(e => e.old));
+    const parent = endMarker.parentNode;
+    let anchor: Node = endMarker;
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const { nodes } = entries[i].entry;
+      if (nodes.length === 0) continue;
+      if (stable.has(i)) {
+        anchor = nodes[0];
+      } else if (parent) {
+        for (let j = nodes.length - 1; j >= 0; j--) {
+          parent.insertBefore(nodes[j], anchor);
+          anchor = nodes[j];
         }
-        insertBefore = node;
       }
     }
-    
+
+    prevOrder = newKeys;
   };
   
   // Initial render
@@ -1393,7 +1469,12 @@ export function portal(target: Element | string, ...children: ViewNode[]): ViewP
 
 /**
  * Create a conditional view.
- * 
+ *
+ * Branch semantics: each toggle **destroys** the inactive branch (running its
+ * cleanups) and renders the other from scratch — branches do not keep state
+ * while hidden. Keep state that must survive toggling in signals outside the
+ * branch, or lift it above the `when`.
+ *
  * @example
  * ```typescript
  * const view = when(
@@ -1502,20 +1583,20 @@ export function mount(view: ViewNode, container: Element | string): MountedView 
   
   const fragment = document.createDocumentFragment();
   const cleanups = renderNode(view, fragment);
-  
+
+  // Brand top-level nodes so `morph` treats this subtree as opaque.
+  fragment.childNodes.forEach(n => { (n as any)[COMPONENT_NODE] = true; });
+
   const element = fragment.childNodes.length === 1
     ? fragment.firstChild as Element
     : fragment;
-  
+
   target.appendChild(fragment);
-  
+
   return {
     element: element as Element | DocumentFragment,
     cleanup: () => {
       cleanups.forEach(fn => fn());
-    },
-    update: () => {
-      // Force re-render - mainly for debugging
     }
   };
 }
@@ -1532,7 +1613,10 @@ export function mount(view: ViewNode, container: Element | string): MountedView 
 export function render(view: ViewNode): { fragment: DocumentFragment; cleanup: Unsubscribe } {
   const fragment = document.createDocumentFragment();
   const cleanups = renderNode(view, fragment);
-  
+
+  // Brand top-level nodes so `morph` treats this subtree as opaque.
+  fragment.childNodes.forEach(n => { (n as any)[COMPONENT_NODE] = true; });
+
   return {
     fragment,
     cleanup: () => cleanups.forEach(fn => fn())

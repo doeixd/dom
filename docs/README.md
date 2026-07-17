@@ -98,3 +98,4 @@ if (btn) {
 - [Functional Components](49-component.md): `component`, `Tag`, `Attr`, `Style`, `morph`, `syncListeners`, `getTrackedListeners`
 - [Routing](50-routing.md): `createRouter`, `route`, `matchPath`, `buildPath`, `PathParams`
 - [Templating Interop](51-templating-interop.md): mixing `h`, `Tag`, and signals views — what works, what bites
+- [Signals Views](52-signals-views.md): `@doeixd/dom/signals` — fine-grained reactive views (`signal`, `tag`, parts, `when`, `list`, `mount`)
