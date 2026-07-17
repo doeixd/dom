@@ -4316,8 +4316,9 @@ export const waitTransition = (el: HTMLElement | null) => new Promise<HTMLElemen
   // Fallback: If no transition happens (e.g. display:none or 0s duration), resolve anyway.
   requestAnimationFrame(() => {
     const s = getComputedStyle(el);
-    const transitionDuration = parseFloat(s.transitionDuration) * 1000;
-    const animationDuration = parseFloat(s.animationDuration) * 1000;
+    // `|| 0`: an unparseable duration (NaN) must not produce a NaN timeout.
+    const transitionDuration = (parseFloat(s.transitionDuration) || 0) * 1000;
+    const animationDuration = (parseFloat(s.animationDuration) || 0) * 1000;
     const maxDuration = Math.max(transitionDuration, animationDuration);
 
     if (maxDuration === 0) {
